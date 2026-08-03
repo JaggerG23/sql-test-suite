@@ -1,0 +1,63 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>SQL Matrix - Participant Experiment Workspace</title>
+  <!-- Google Fonts -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Fira+Code:wght@400;500;600;700&family=Inter:wght@300;400;500;600;700;800&family=Outfit:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <!-- FontAwesome Icons -->
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+  <!-- CSS -->
+  <link rel="stylesheet" href="styles.css">
+  <!-- sql.js (SQLite WASM) library -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/sql.js/1.8.0/sql-wasm.js"></script>
+</head>
+<body class="dark-theme">
+  <div class="app-container">
+    <!-- Participant Restricted Navbar -->
+    <header class="app-header" style="justify-content: space-between;">
+      <div class="brand">
+        <div class="logo-icon"><i class="fa-solid fa-keyboard"></i></div>
+        <div class="brand-text">
+          <h1>SQL Matrix</h1>
+          <span class="badge badge-accent">Participant Experiment Workspace</span>
+        </div>
+      </div>
+      <div class="header-actions">
+        <div class="seed-control" style="background: rgba(99, 102, 241, 0.15); border-color: rgba(99, 102, 241, 0.35);">
+          <label for="participant-id-input"><i class="fa-solid fa-user-tag text-primary"></i> Participant ID:</label>
+          <input type="text" id="participant-id-input" placeholder="User ID" style="width: 120px; color: var(--color-primary); font-weight: 700;">
+        </div>
+        <span class="badge badge-success"><i class="fa-solid fa-circle-dot"></i> Active Session</span>
+      </div>
+    </header>
+
+    <!-- Full Width Workspace Layout for Participants -->
+    <main class="main-layout" style="grid-template-columns: 1fr; max-width: 1000px; margin: 0 auto; width: 100%;">
+      <section class="workspace-panel p-0" style="padding: 16px 0;">
+        <!-- Restricted Active Tab Container -->
+        <div id="tab-human" class="tab-content active">
+          <div id="human-challenge-container">
+            <!-- Dynamically rendered Participant Challenge Card -->
+          </div>
+        </div>
+      </section>
+    </main>
+  </div>
+
+  <!-- JS Module Scripts -->
+  <script src="js/schemaGenerator.js?v=7"></script>
+  <script src="js/queryGenerator.js?v=7"></script>
+  <script src="js/syntaxDialects.js?v=7"></script>
+  <script src="js/quizGenerator.js?v=7"></script>
+  <script src="js/participantAnalytics.js?v=7"></script>
+  <script src="js/engines/sqliteEngine.js?v=7"></script>
+  <script src="js/engines/customJsEngine.js?v=7"></script>
+  <script src="js/engines/optimizerEngine.js?v=7"></script>
+  <script src="js/humanResolver.js?v=7"></script>
+  <script src="js/app.js?v=7"></script>
+</body>
+</html>
