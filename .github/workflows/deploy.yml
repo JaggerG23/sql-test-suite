@@ -1,0 +1,22 @@
+name: Deploy to AWS Lightsail
+
+on:
+  push:
+    branches:
+      - main  # Change to 'master' if your main branch is named master
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: SSH into Lightsail and deploy
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.LIGHTSAIL_HOST }}
+          username: ${{ secrets.LIGHTSAIL_USERNAME }}
+          key: ${{ secrets.LIGHTSAIL_KEY }}
+          script: |
+            cd ~/sql-test-suite
+            git pull
+            cp -R ~/sql-test-suite/* /var/www/html/
