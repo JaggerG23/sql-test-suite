@@ -18,5 +18,7 @@ jobs:
           key: ${{ secrets.LIGHTSAIL_KEY }}
           script: |
             cd ~/sql-test-suite
-            git pull
-            cp -R ~/sql-test-suite/* /var/www/html/
+            git pull origin master
+            
+            # Sync files to the web root, delete old files, and ignore the .git folder
+            sudo rsync -av --delete --exclude='.git/' ~/sql-test-suite/ /var/www/html/
