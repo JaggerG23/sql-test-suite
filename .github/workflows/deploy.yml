@@ -3,7 +3,7 @@ name: Deploy to AWS Lightsail
 on:
   push:
     branches:
-      - main  # Change to 'master' if your main branch is named master
+      - master
 
 jobs:
   deploy:
