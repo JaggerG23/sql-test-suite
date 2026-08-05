@@ -214,6 +214,41 @@ class SQLMatrixApp {
     this.executeAcrossEngines();
   }
 
+  async generateNextIncrementalQuestion() {
+    const qIndex = this.humanResolver.stats.totalAnswered;
+    const blockIndex = Math.floor(qIndex / 6);
+    const blockSeed = this.seed + blockIndex * 137;
+    const variationIndex = qIndex % 6;
+
+    if (!this.currentSchema || this.lastBlockIndex !== blockIndex) {
+      this.lastBlockIndex = blockIndex;
+      this.schemaGenerator = new SchemaGenerator(blockSeed);
+      this.currentSchema = this.schemaGenerator.generateSchema(3, 4, 30, true);
+
+      await this.sqliteEngine.loadSchemaAndData(this.currentSchema);
+      this.customJsEngine.loadSchemaAndData(this.currentSchema);
+      this.optimizerEngine.loadSchemaAndData(this.currentSchema);
+      this.renderSchemaPreview();
+    }
+
+    this.queryGenerator = new QueryGenerator(blockSeed);
+    this.currentQuery = this.queryGenerator.generateIncrementalQuery(this.currentSchema, 'medium', true, variationIndex);
+
+    const editor = document.getElementById('sql-editor');
+    if (editor) editor.value = this.currentQuery;
+
+    const r1 = this.sqliteEngine.executeQuery(this.currentQuery);
+    const r2 = this.customJsEngine.executeQuery(this.currentQuery);
+    const r3 = this.optimizerEngine.executeQuery(this.currentQuery);
+
+    this.updateEngineCardUI(1, r1, r1.plan);
+    this.updateEngineCardUI(2, r2, r2.astTrace);
+    this.updateEngineCardUI(3, r3, this.formatCostAnalysis(r3.costAnalysis));
+    this.renderDifferentialComparison(r1, r2, r3);
+
+    this.humanResolver.startNewChallenge(this.currentSchema, this.currentQuery, r1);
+  }
+
   async executeAcrossEngines() {
     const editor = document.getElementById('sql-editor');
     const sqlText = editor ? editor.value.trim() : this.currentQuery;

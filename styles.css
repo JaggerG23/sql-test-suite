@@ -849,6 +849,16 @@ kbd {
   animation: shakeRed 0.4s ease;
 }
 
+.table-option-card {
+  transition: all 0.2s ease-in-out;
+}
+
+.table-option-card:hover {
+  border-color: var(--color-primary) !important;
+  box-shadow: 0 4px 20px rgba(99, 102, 241, 0.25) !important;
+  transform: translateY(-2px);
+}
+
 .opt-disabled {
   opacity: 0.5;
   cursor: not-allowed;

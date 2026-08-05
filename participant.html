@@ -18,26 +18,25 @@
 <body class="dark-theme">
   <div class="app-container">
     <!-- Participant Restricted Navbar -->
-    <header class="app-header" style="justify-content: space-between;">
+    <header class="app-header" style="justify-content: space-between; padding: 8px 20px;">
       <div class="brand">
-        <div class="logo-icon"><i class="fa-solid fa-keyboard"></i></div>
+        <div class="logo-icon" style="width: 32px; height: 32px; font-size: 15px;"><i class="fa-solid fa-keyboard"></i></div>
         <div class="brand-text">
-          <h1>SQL Matrix</h1>
-          <span class="badge badge-accent">Participant Experiment Workspace</span>
+          <h1 style="font-size: 17px;">SQL Matrix</h1>
+          <span class="badge badge-accent" style="font-size: 10px;">Participant Experiment Workspace</span>
         </div>
       </div>
       <div class="header-actions">
-        <div class="seed-control" style="background: rgba(99, 102, 241, 0.15); border-color: rgba(99, 102, 241, 0.35);">
-          <label for="participant-id-input"><i class="fa-solid fa-user-tag text-primary"></i> Participant ID:</label>
-          <input type="text" id="participant-id-input" placeholder="User ID" style="width: 120px; color: var(--color-primary); font-weight: 700;">
+        <div class="seed-control" style="background: rgba(99, 102, 241, 0.15); border-color: rgba(99, 102, 241, 0.35); padding: 2px 8px;">
+          <label for="participant-id-input" style="font-size: 12px;"><i class="fa-solid fa-user-tag text-primary"></i> Participant ID:</label>
+          <input type="text" id="participant-id-input" placeholder="User ID" style="width: 100px; color: var(--color-primary); font-weight: 700; font-size: 13px;">
         </div>
-        <span class="badge badge-success"><i class="fa-solid fa-circle-dot"></i> Active Session</span>
       </div>
     </header>
 
     <!-- Full Width Workspace Layout for Participants -->
-    <main class="main-layout" style="grid-template-columns: 1fr; max-width: 1000px; margin: 0 auto; width: 100%;">
-      <section class="workspace-panel p-0" style="padding: 16px 0;">
+    <main class="main-layout" style="grid-template-columns: 1fr; max-width: 1300px; margin: 0 auto; width: 100%; padding: 10px 16px;">
+      <section class="workspace-panel p-0" style="padding: 0;">
         <!-- Restricted Active Tab Container -->
         <div id="tab-human" class="tab-content active">
           <div id="human-challenge-container">
@@ -49,15 +48,15 @@
   </div>
 
   <!-- JS Module Scripts -->
-  <script src="js/schemaGenerator.js?v=7"></script>
-  <script src="js/queryGenerator.js?v=7"></script>
-  <script src="js/syntaxDialects.js?v=7"></script>
-  <script src="js/quizGenerator.js?v=7"></script>
-  <script src="js/participantAnalytics.js?v=7"></script>
-  <script src="js/engines/sqliteEngine.js?v=7"></script>
-  <script src="js/engines/customJsEngine.js?v=7"></script>
-  <script src="js/engines/optimizerEngine.js?v=7"></script>
-  <script src="js/humanResolver.js?v=7"></script>
-  <script src="js/app.js?v=7"></script>
+  <script src="js/schemaGenerator.js?v=8"></script>
+  <script src="js/queryGenerator.js?v=8"></script>
+  <script src="js/syntaxDialects.js?v=8"></script>
+  <script src="js/quizGenerator.js?v=8"></script>
+  <script src="js/participantAnalytics.js?v=8"></script>
+  <script src="js/engines/sqliteEngine.js?v=8"></script>
+  <script src="js/engines/customJsEngine.js?v=8"></script>
+  <script src="js/engines/optimizerEngine.js?v=8"></script>
+  <script src="js/humanResolver.js?v=8"></script>
+  <script src="js/app.js?v=8"></script>
 </body>
 </html>
