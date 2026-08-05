@@ -27,9 +27,14 @@
         </div>
       </div>
       <div class="header-actions">
-        <div class="seed-control" style="background: rgba(99, 102, 241, 0.15); border-color: rgba(99, 102, 241, 0.35); padding: 2px 8px;">
-          <label for="participant-id-input" style="font-size: 12px;"><i class="fa-solid fa-user-tag text-primary"></i> Participant ID:</label>
-          <input type="text" id="participant-id-input" placeholder="User ID" style="width: 100px; color: var(--color-primary); font-weight: 700; font-size: 13px;">
+        <!-- Participant ID & Questions Answered Counter Pill -->
+        <div class="seed-control d-flex align-center gap-2" style="background: rgba(99, 102, 241, 0.15); border-color: rgba(99, 102, 241, 0.35); padding: 4px 12px; border-radius: 6px;">
+          <label for="participant-id-input" style="font-size: 12px; margin: 0;"><i class="fa-solid fa-user-tag text-primary"></i> Participant ID:</label>
+          <input type="text" id="participant-id-input" placeholder="User ID" style="width: 85px; color: var(--color-primary); font-weight: 700; font-size: 13px;">
+          <span style="color: rgba(255,255,255,0.25); margin: 0 4px;">|</span>
+          <span style="font-size: 12px; color: var(--text-main); font-weight: 600;">
+            <i class="fa-solid fa-list-check text-primary"></i> Questions Answered: <strong id="nav-questions-counter" style="color: var(--color-primary); font-size: 13px; margin-left: 2px;">0 / 60</strong>
+          </span>
         </div>
       </div>
     </header>
@@ -48,15 +53,15 @@
   </div>
 
   <!-- JS Module Scripts -->
-  <script src="js/schemaGenerator.js?v=8"></script>
-  <script src="js/queryGenerator.js?v=8"></script>
-  <script src="js/syntaxDialects.js?v=8"></script>
-  <script src="js/quizGenerator.js?v=8"></script>
-  <script src="js/participantAnalytics.js?v=8"></script>
-  <script src="js/engines/sqliteEngine.js?v=8"></script>
-  <script src="js/engines/customJsEngine.js?v=8"></script>
-  <script src="js/engines/optimizerEngine.js?v=8"></script>
-  <script src="js/humanResolver.js?v=8"></script>
-  <script src="js/app.js?v=8"></script>
+  <script src="js/schemaGenerator.js?v=9"></script>
+  <script src="js/queryGenerator.js?v=9"></script>
+  <script src="js/syntaxDialects.js?v=9"></script>
+  <script src="js/quizGenerator.js?v=9"></script>
+  <script src="js/participantAnalytics.js?v=9"></script>
+  <script src="js/engines/sqliteEngine.js?v=9"></script>
+  <script src="js/engines/customJsEngine.js?v=9"></script>
+  <script src="js/engines/optimizerEngine.js?v=9"></script>
+  <script src="js/humanResolver.js?v=9"></script>
+  <script src="js/app.js?v=9"></script>
 </body>
 </html>

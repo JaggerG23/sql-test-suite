@@ -1,7 +1,9 @@
 /**
  * Human & Participant Test Suite Resolver Module
- * Manages participant test sessions, top full-width schema bar, vertically extended coding window (all code visible),
- * 2x2 candidate answer table cards on right, and keyboard navigation (Keys 1, 2, 3, 4).
+ * Manages participant test sessions, top full-width schema bar with distinct divider line,
+ * navbar Questions Answered counter integration synced to persistent telemetry logs,
+ * vertically extended coding window (all code visible), candidate answer cards capped to not exceed coding box height,
+ * and keyboard navigation (Keys 1, 2, 3, 4).
  */
 class HumanResolver {
   constructor(app) {
@@ -28,6 +30,13 @@ class HumanResolver {
     // Attach global keyboard shortcuts & focus tracking listeners
     this.bindKeyboardShortcuts();
     this.bindFocusListeners();
+  }
+
+  get totalAnswered() {
+    if (this.app && this.app.analytics) {
+      return this.app.analytics.getAllResponses().length;
+    }
+    return this.stats.totalAnswered;
   }
 
   bindFocusListeners() {
@@ -135,6 +144,13 @@ class HumanResolver {
     this.renderQuizUI();
   }
 
+  updateNavCounter() {
+    const navElem = document.getElementById('nav-questions-counter');
+    if (navElem) {
+      navElem.textContent = `${this.totalAnswered} / 60`;
+    }
+  }
+
   renderQuizUI() {
     const container = document.getElementById('human-challenge-container');
     if (!container || !this.currentQuestion) return;
@@ -144,34 +160,26 @@ class HumanResolver {
     const currentDialectIdx = this.app.syntaxDialects.currentSelectedDialectIndex;
     const isParticipantPage = window.location.pathname.includes('participant.html');
 
+    // Update navbar questions counter badge in Participant ID box
+    this.updateNavCounter();
+
     container.innerHTML = `
       <div class="card quiz-card glow-card compact-view" style="padding: 0;">
-        <!-- Compact Header Bar: Questions Answered Counter (out of 60) -->
-        <div class="card-header quiz-header p-2 px-3" style="min-height: 38px;">
-          <div class="quiz-title-box">
-            <h3 style="font-size: 13.5px; margin: 0;"><i class="fa-solid fa-code text-primary"></i> Embedded SQL & JavaScript Test Suite</h3>
-          </div>
-
-          <!-- Live Session Questions Answered Counter (Out of 60) -->
-          <div class="quiz-stats-bar">
-            <div class="stat-pill" style="padding: 2px 10px; font-size: 11.5px;">
-              <i class="fa-solid fa-list-check text-primary"></i> Questions Answered: <strong style="color: var(--color-primary); font-size: 12.5px; margin-left: 4px;">${this.stats.totalAnswered} / 60</strong>
-            </div>
-          </div>
-        </div>
-
         <div class="card-body p-2" style="display: flex; flex-direction: column; gap: 8px;">
           
-          <!-- 1. TOP FULL-WIDTH ROW: Input Schema Reference (3 Tables Across Top Width) -->
-          <div class="quiz-schema-top-bar p-2" style="border: 1px solid rgba(255, 255, 255, 0.08); border-radius: 6px; background: rgba(14, 18, 28, 0.65); width: 100%;">
+          <!-- 1. TOP FULL-WIDTH ROW: Input Schema Reference with Distinct Divider Line -->
+          <div class="quiz-schema-top-bar p-2" style="border: 1px solid rgba(255, 255, 255, 0.1); border-bottom: 2px solid var(--color-accent); border-radius: 6px; background: rgba(14, 18, 28, 0.8); width: 100%; box-shadow: 0 4px 12px rgba(0,0,0,0.3);">
             <div class="d-flex justify-between align-center mb-1 pb-1" style="border-bottom: 1px solid rgba(255,255,255,0.06);">
-              <strong style="color: var(--color-accent); font-size: 10.5px;"><i class="fa-solid fa-table-cells text-accent"></i> Input Schema Reference (${this.app.currentSchema ? this.app.currentSchema.tables.length : 0} Tables)</strong>
+              <strong style="color: var(--color-accent); font-size: 11px;"><i class="fa-solid fa-table-cells text-accent"></i> Input Schema Reference (${this.app.currentSchema ? this.app.currentSchema.tables.length : 0} Tables)</strong>
             </div>
             ${this.renderCompactSchemaHTML(this.app.currentSchema)}
           </div>
 
+          <!-- DISTINCT SEPARATION LINE -->
+          <div style="height: 1px; background: linear-gradient(90deg, transparent, var(--color-accent), transparent); margin: 2px 0 6px 0; opacity: 0.7;"></div>
+
           <!-- 2. MAIN 2-COLUMN SPLIT ROW (Left: Fully Extended Coding Window, Right: Prompt + Answers) -->
-          <div class="quiz-main-split" style="display: grid; grid-template-columns: 1.05fr 0.95fr; gap: 12px;">
+          <div class="quiz-main-split" style="display: grid; grid-template-columns: 1.05fr 0.95fr; gap: 12px; align-items: flex-start;">
             
             <!-- LEFT COLUMN: Fully Extended Coding Window (All Code Lines Visible at Once) -->
             <div class="quiz-left-column" style="display: flex; flex-direction: column; gap: 4px;">
@@ -192,7 +200,7 @@ class HumanResolver {
               </div>
 
               <!-- Coding Window: Displays all code lines at once with no scrolling required -->
-              <div class="query-code-preview p-2" style="border: 1px solid rgba(16, 185, 129, 0.3); border-radius: 6px; background: rgba(10, 14, 26, 0.95); flex: 1; min-height: 350px; overflow: visible;">
+              <div class="query-code-preview p-2" style="border: 1px solid rgba(16, 185, 129, 0.3); border-radius: 6px; background: rgba(10, 14, 26, 0.95); flex: 1; min-height: 350px; max-height: 380px; overflow: visible;">
                 <div class="d-flex justify-between align-center mb-1" style="font-size: 10px; color: var(--color-success); border-bottom: 1px solid rgba(255,255,255,0.06); padding-bottom: 3px;">
                   <span><i class="fa-brands fa-js text-warning"></i> <strong>JavaScript Code (with Embedded SQL):</strong></span>
                   <span class="badge badge-accent" style="font-size: 9px; padding: 1px 4px;">${q.dialect ? q.dialect.name : 'SQL'}</span>
@@ -212,19 +220,20 @@ class HumanResolver {
                 <span class="text-muted fs-xs" style="font-size: 10.5px;">Press <strong>1, 2, 3, or 4</strong></span>
               </div>
 
-              <!-- 4 Candidate Output Tables (2x2 Grid on Right Side) -->
-              <div class="quiz-options-grid" style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px; flex: 1;">
+              <!-- 4 Candidate Output Tables (2x2 Grid Capped to NOT exceed Coding Box height) -->
+              <div class="quiz-options-grid" style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px; max-height: 340px;">
                 ${q.options.map((opt, idx) => `
-                  <div class="quiz-option-card table-option-card" id="opt-btn-${idx}" data-idx="${idx}" style="cursor: pointer; border: 1px solid rgba(255,255,255,0.1); border-radius: 6px; background: rgba(18, 24, 38, 0.7); overflow: hidden; display: flex; flex-direction: column;">
-                    <div class="opt-header p-1 px-2 d-flex justify-between align-center" style="border-bottom: 1px solid rgba(255,255,255,0.08); background: rgba(0,0,0,0.3); font-size: 10.5px;">
-                      <div class="d-flex align-center gap-1">
+                  <div class="quiz-option-card table-option-card" id="opt-btn-${idx}" data-idx="${idx}" style="cursor: pointer; border: 1px solid rgba(255,255,255,0.1); border-radius: 6px; background: rgba(18, 24, 38, 0.7); overflow: hidden; display: flex; flex-direction: column; max-height: 165px;">
+                    <div class="opt-header p-1 px-2 d-flex justify-between align-center" style="border-bottom: 1px solid rgba(255,255,255,0.08); background: rgba(0,0,0,0.3); font-size: 10.5px; min-height: 26px;">
+                      <div class="d-flex align-center gap-1" style="width: 100%; justify-content: center;">
                         <kbd style="background: var(--color-primary); color: #fff; padding: 1px 5px; font-size: 9.5px; font-weight: 700; border-radius: 3px;">${idx + 1}</kbd>
                         <strong style="color: var(--text-main); font-size: 10.5px;">Opt ${String.fromCharCode(65 + idx)}</strong>
-                        <span class="text-muted" style="font-size: 9px;">(${opt.rows.length}r)</span>
+                        <span class="text-muted" style="font-size: 9px;">(${opt.rows.length} rows)</span>
                       </div>
                       <div class="opt-status-icon" id="opt-icon-${idx}"></div>
                     </div>
-                    <div class="opt-body p-1" style="max-height: 145px; overflow-x: auto; overflow-y: auto; flex: 1;">
+                    <!-- Data Preview Table: Capped height under title bar with 0 top gap -->
+                    <div class="opt-body" style="display: flex; justify-content: center; align-items: flex-start; overflow-x: auto; overflow-y: auto; width: 100%; flex: 1; padding: 2px 4px 4px 4px; margin: 0; max-height: 135px;">
                       ${this.renderOptionTableHTML(opt.columns, opt.rows)}
                     </div>
                   </div>
@@ -352,6 +361,7 @@ class HumanResolver {
 
     // Stats update: Only track questions answered counter
     this.stats.totalAnswered++;
+    this.updateNavCounter();
 
     // Finalize focus loss duration
     if (this.focusMetrics.lastBlurTime) {
@@ -360,7 +370,7 @@ class HumanResolver {
       this.focusMetrics.lastBlurTime = null;
     }
 
-    // Log telemetry to analytics storage
+    // Log telemetry to analytics storage (stored persistently in localStorage)
     if (this.app.analytics) {
       const responseTimeMs = q.startTime ? (Date.now() - q.startTime) : 0;
       this.app.analytics.logResponse({
@@ -430,13 +440,20 @@ class HumanResolver {
 
   renderOptionTableHTML(columns, rows) {
     if (!columns || columns.length === 0) {
-      return `<div class="p-1 text-muted fs-xs">Empty Dataset</div>`;
+      return `<div class="p-1 text-muted fs-xs text-center">Empty Dataset</div>`;
     }
 
-    let html = `<div style="overflow-x: auto; max-width: 100%; border-radius: 4px; border: 1px solid rgba(255,255,255,0.06);"><table class="data-table opt-table" style="width: 100%; min-width: max-content; font-size: 11px; border-collapse: collapse;"><thead><tr>`;
+    let html = `
+      <div style="display: flex; justify-content: center; width: 100%; margin: 0;">
+        <table class="data-table opt-table" style="margin: 0 auto; border-collapse: collapse; border-radius: 4px; border: 1px solid rgba(255,255,255,0.12); font-size: 11px; background: rgba(10, 14, 26, 0.65);">
+          <thead>
+            <tr>
+    `;
+
     columns.forEach(col => { 
-      html += `<th style="padding: 5px 10px; background: rgba(0,0,0,0.5); text-transform: none; font-size: 10.5px; border-bottom: 1px solid rgba(255,255,255,0.12); color: var(--color-accent); font-weight: 600;">${this.escapeHTML(col)}</th>`; 
+      html += `<th style="padding: 4px 12px; background: rgba(0,0,0,0.6); text-transform: none; font-size: 10.5px; border-bottom: 1px solid rgba(255,255,255,0.15); color: var(--color-accent); font-weight: 600; text-align: center;">${this.escapeHTML(col)}</th>`; 
     });
+    
     html += `</tr></thead><tbody>`;
 
     if (!rows || rows.length === 0) {
@@ -446,7 +463,7 @@ class HumanResolver {
         html += `<tr>`;
         row.forEach(val => {
           const dispVal = val === null ? '<span class="text-muted">NULL</span>' : this.escapeHTML(val);
-          html += `<td style="padding: 4px 10px; border-bottom: 1px solid rgba(255,255,255,0.04); white-space: nowrap; font-family: var(--font-mono);">${dispVal}</td>`;
+          html += `<td style="padding: 3px 12px; border-bottom: 1px solid rgba(255,255,255,0.05); white-space: nowrap; font-family: var(--font-mono); text-align: center;">${dispVal}</td>`;
         });
         html += `</tr>`;
       });
@@ -467,7 +484,7 @@ class HumanResolver {
               <strong style="color: var(--color-accent); font-family: var(--font-mono);">
                 <i class="fa-solid fa-table text-primary"></i> ${tbl.name}
               </strong>
-              <span class="text-muted" style="font-size: 9px;">(${tbl.rows.length}r, ${tbl.columns.length}c)</span>
+              <span class="text-muted" style="font-size: 9px;">(${tbl.rows.length} rows, ${tbl.columns.length} cols)</span>
             </div>
             <div class="col-badges mt-1" style="display: flex; flex-wrap: wrap; gap: 2px; font-family: var(--font-mono);">
               ${tbl.columns.map(c => `

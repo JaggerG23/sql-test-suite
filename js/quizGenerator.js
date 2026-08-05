@@ -1,7 +1,8 @@
 /**
  * Quiz Question Generator
- * Generates JavaScript implementations of SQL queries with embedded SQL strings and builds candidate table output challenges.
- * Generates 4 options (Keys 1, 2, 3, 4) with 1 correct ground-truth output table and 3 realistic distractor tables.
+ * Generates randomized, beginner-friendly JavaScript code containing query manipulation, loops, counters, and status flags.
+ * Features 4 beginner-friendly string query manipulation patterns interleaved with benign JavaScript counters and loops.
+ * Ensures generated JS code is valid, generates a valid SQL query, has clean double-newline block spacing, and stays strictly under 28 lines total.
  */
 class QuizGenerator {
   constructor(seed = 42) {
@@ -43,259 +44,185 @@ class QuizGenerator {
   }
 
   /**
-   * Translates an SQL query into concise, clean, valid JavaScript code with newlines between logical statements.
+   * Translates an SQL query into beginner-friendly JavaScript string-manipulation code.
+   * Includes benign JavaScript loops, counters, and flags that do not affect the final generated SQL query.
    */
   generateJsCodeFromSql(sql, schema, dialectSql) {
-    const ast = this.parseSimpleAst(sql);
     const queryStr = (dialectSql || sql).trim();
-    let js = '';
+    const clauses = this.parseSqlClauses(queryStr);
 
-    // Step 1: Base scan / Join
-    if (ast.joins.length === 0) {
-      js += `let rows = db.${ast.mainTable};\n\n`;
-    } else {
-      const j = ast.joins[0];
-      js += `let rows = db.${ast.mainTable}.flatMap(a => db.${j.table}.filter(b => a.${this.stripPrefix(j.onLeft)} === b.${this.stripPrefix(j.onRight)}).map(b => ({ ...a, ...b })));\n\n`;
-    }
+    // Seed hash to pick 1 of 4 beginner-friendly query-manipulation patterns
+    const strHash = queryStr.split('').reduce((acc, char) => acc + char.charCodeAt(0), 0);
+    const patternIdx = (strHash + (dialectSql ? dialectSql.length : 7)) % 4;
 
-    // Embed SQL query in the middle of code
-    js += `const sqlQuery = \`\n${queryStr}\n\`;\n\n`;
+    const outputVarNames = ['resultTable', 'finalData', 'queryOutput', 'summaryRows', 'resultData'];
+    const outputVar = outputVarNames[patternIdx % outputVarNames.length];
 
-    // Step 2: WHERE Filter
-    if (ast.whereCondition) {
-      const jsCond = this.sqlWhereToJs(ast.whereCondition);
-      js += `rows = rows.filter(r => ${jsCond});\n\n`;
-    }
+    let blocks = [];
 
-    // Step 3: Group & Aggregate OR Project
-    if (ast.groupBy.length > 0 || ast.aggregates.length > 0) {
-      const gCol = ast.groupBy[0] || 'id';
-      const gProp = this.stripPrefix(gCol);
-      const agg = ast.aggregates[0] || { func: 'COUNT', alias: 'agg_val', column: 'id' };
-      const prop = this.stripPrefix(agg.column);
+    switch (patternIdx) {
+      case 0:
+        // Pattern 0: Status Loop & Placeholder Replacement (.replace())
+        blocks.push(`let statusList = ["init", "validated", "ready"];\nlet stepCount = 0;\nfor (let status of statusList) {\n  stepCount += 1;\n}`);
 
-      js += `const groups = {};\n\n`;
-      js += `rows.forEach(r => { const k = r['${gProp}'] || r['${gCol}']; (groups[k] = groups[k] || []).push(r); });\n\n`;
-
-      if (agg.func === 'COUNT') {
-        js += `let output = Object.entries(groups).map(([k, g]) => ({ '${gCol}': k, '${agg.alias}': g.length }));\n\n`;
-      } else if (agg.func === 'SUM') {
-        js += `let output = Object.entries(groups).map(([k, g]) => ({ '${gCol}': k, '${agg.alias}': g.reduce((acc, r) => acc + (Number(r['${prop}']) || 0), 0) }));\n\n`;
-      } else {
-        js += `let output = Object.entries(groups).map(([k, g]) => ({ '${gCol}': k, '${agg.alias}': g.length }));\n\n`;
-      }
-    } else {
-      const cols = ast.selectCols.map(c => `'${c}': r['${this.stripPrefix(c)}'] !== undefined ? r['${this.stripPrefix(c)}'] : r['${c}']`).join(', ');
-      js += `let output = rows.map(r => ({ ${cols} }));\n\n`;
-    }
-
-    // Step 4: Sort & Limit
-    if (ast.orderBy) {
-      const col = ast.orderBy.column;
-      const isDesc = ast.orderBy.dir === 'DESC';
-      js += `output.sort((a, b) => ${isDesc ? `(b['${col}'] || 0) - (a['${col}'] || 0)` : `(a['${col}'] || 0) - (b['${col}'] || 0)`});\n\n`;
-    }
-
-    if (ast.limit) {
-      js += `output = output.slice(0, ${ast.limit});\n`;
-    }
-
-    return js.trim();
-  }
-
-  parseSimpleAst(sql) {
-    const ast = {
-      mainTable: 'table1',
-      selectCols: [],
-      joins: [],
-      whereCondition: null,
-      groupBy: [],
-      aggregates: [],
-      havingCondition: null,
-      orderBy: null,
-      limit: null
-    };
-
-    const fromMatch = sql.match(/FROM\s+([a-zA-Z0-9_]+)/i);
-    if (fromMatch) ast.mainTable = fromMatch[1];
-
-    const joinRegex = /(INNER|LEFT|RIGHT)?\s*JOIN\s+([a-zA-Z0-9_]+)\s+ON\s+([a-zA-Z0-9_.]+)\s*=\s*([a-zA-Z0-9_.]+)/gi;
-    let match;
-    while ((match = joinRegex.exec(sql)) !== null) {
-      ast.joins.push({
-        type: match[1] || 'INNER',
-        table: match[2],
-        onLeft: match[3],
-        onRight: match[4]
-      });
-    }
-
-    const selectMatch = sql.match(/SELECT\s+([\s\S]+?)\s+FROM/i);
-    if (selectMatch) {
-      const parts = selectMatch[1].split(',').map(s => s.trim());
-      parts.forEach(p => {
-        const aggMatch = p.match(/(COUNT|SUM|AVG|MAX|MIN)\((.*?)\)(?:\s+AS\s+([a-zA-Z0-9_]+))?/i);
-        if (aggMatch) {
-          ast.aggregates.push({
-            func: aggMatch[1].toUpperCase(),
-            column: aggMatch[2].trim(),
-            alias: aggMatch[3] ? aggMatch[3].trim() : `${aggMatch[1].toLowerCase()}_val`
-          });
+        if (clauses.where) {
+          blocks.push(`let baseQuery = \`${clauses.selectFrom} {WHERE_CLAUSE}${clauses.rest ? ' ' + clauses.rest : ''};\`;`);
+          blocks.push(`let filterCondition = "${clauses.where}";`);
+          blocks.push(`let finalQuery = baseQuery.replace("{WHERE_CLAUSE}", filterCondition);`);
         } else {
-          ast.selectCols.push(p.replace(/\s+AS\s+[a-zA-Z0-9_]+/i, ''));
+          const fromMatch = clauses.selectFrom.match(/\bFROM\s+([a-zA-Z0-9_]+)/i);
+          const tblName = fromMatch ? fromMatch[1] : 'table1';
+          const templateSelect = clauses.selectFrom.replace(new RegExp(`\\b${tblName}\\b`, 'i'), '{TARGET_TABLE}');
+          blocks.push(`let templateQuery = \`${templateSelect}${clauses.rest ? ' ' + clauses.rest : ''};\`;`);
+          blocks.push(`let targetTable = "${tblName}";`);
+          blocks.push(`let finalQuery = templateQuery.replace("{TARGET_TABLE}", targetTable);`);
         }
-      });
+
+        blocks.push(`let executionLog = [];\nexecutionLog.push(\`Built query in \${stepCount} steps\`);`);
+        blocks.push(`let ${outputVar} = db.execute(finalQuery);`);
+        break;
+
+      case 1:
+        // Pattern 1: Retry Counter & String Concatenation (+=)
+        blocks.push(`let retryCounter = 0;\nwhile (retryCounter < 2) {\n  retryCounter++;\n}`);
+
+        blocks.push(`let query = \`${clauses.selectFrom}\`;`);
+        if (clauses.where) {
+          blocks.push(`query += " ${clauses.where}";`);
+        }
+        if (clauses.rest) {
+          blocks.push(`query += " ${clauses.rest}";`);
+        }
+        blocks.push(`query += ";";`);
+
+        blocks.push(`let auditTrail = [];\nauditTrail.push(\`Attempt \${retryCounter} successful\`);`);
+        blocks.push(`let ${outputVar} = db.execute(query);`);
+        break;
+
+      case 2:
+        // Pattern 2: Config Flag, Counter Loop & Template Literal Assembly (${...})
+        blocks.push(`let isApproved = true;\nlet checkCount = 0;\nfor (let i = 0; i < 3; i++) {\n  checkCount++;\n}`);
+
+        blocks.push(`let mainClause = \`${clauses.selectFrom}\`;`);
+        if (clauses.where) {
+          blocks.push(`let whereCondition = "${clauses.where}";`);
+        }
+        if (clauses.rest) {
+          blocks.push(`let additionalClause = "${clauses.rest}";`);
+        }
+        
+        let templateParts = ['${mainClause}'];
+        if (clauses.where) templateParts.push('${whereCondition}');
+        if (clauses.rest) templateParts.push('${additionalClause}');
+        
+        blocks.push(`let fullQuery = \`${templateParts.join(' ')};\`;`);
+        blocks.push(`let ${outputVar} = db.execute(fullQuery);`);
+        break;
+
+      case 3:
+      default:
+        // Pattern 3: Loop Accumulator & Array Join (.join(" "))
+        blocks.push(`let batchNumber = 1;\nlet processLogs = ["start", "process"];\nfor (let log of processLogs) {\n  batchNumber++;\n}`);
+
+        let parts = [`"${clauses.selectFrom}"`];
+        if (clauses.where) parts.push(`"${clauses.where}"`);
+        if (clauses.rest) parts.push(`"${clauses.rest}"`);
+
+        blocks.push(`let queryParts = [\n  ${parts.join(',\n  ')}\n];`);
+        blocks.push(`let assembledQuery = queryParts.join(" ") + ";";`);
+        blocks.push(`let statusMsg = batchNumber > 0 ? "OK" : "PENDING";`);
+        blocks.push(`let ${outputVar} = db.execute(assembledQuery);`);
+        break;
     }
 
-    const whereMatch = sql.match(/WHERE\s+([\s\S]+?)(?=\s+GROUP|\s+HAVING|\s+ORDER|\s+LIMIT|;|$)/i);
-    if (whereMatch) ast.whereCondition = whereMatch[1].trim();
-
-    const groupMatch = sql.match(/GROUP BY\s+([a-zA-Z0-9_.,\s]+?)(?=\s+HAVING|\s+ORDER|\s+LIMIT|;|$)/i);
-    if (groupMatch) ast.groupBy = groupMatch[1].split(',').map(s => s.trim());
-
-    const havingMatch = sql.match(/HAVING\s+([\s\S]+?)(?=\s+ORDER|\s+LIMIT|;|$)/i);
-    if (havingMatch) ast.havingCondition = havingMatch[1].trim();
-
-    const orderMatch = sql.match(/ORDER BY\s+([a-zA-Z0-9._]+)\s*(ASC|DESC)?/i);
-    if (orderMatch) {
-      ast.orderBy = {
-        column: orderMatch[1].trim(),
-        dir: orderMatch[2] ? orderMatch[2].toUpperCase() : 'ASC'
-      };
-    }
-
-    const limitMatch = sql.match(/LIMIT\s+(\d+)/i);
-    if (limitMatch) ast.limit = parseInt(limitMatch[1], 10);
-
-    return ast;
+    // Join blocks with double newlines (\n\n) for clean, spacious readability
+    return blocks.join('\n\n');
   }
 
-  sqlWhereToJs(whereStr) {
-    if (!whereStr) return 'true';
-    let js = whereStr;
+  parseSqlClauses(sql) {
+    const cleanSql = sql.trim().replace(/;$/, '');
+    
+    // Find split index for WHERE clause or rest of clauses (GROUP BY, ORDER BY, LIMIT)
+    const whereIdx = cleanSql.search(/\bWHERE\b/i);
+    const restIdx = cleanSql.search(/\b(GROUP BY|ORDER BY|LIMIT)\b/i);
 
-    // Replace table prefix table.col -> r['col'] or r['table.col']
-    js = js.replace(/\b([a-zA-Z0-9_]+)\.([a-zA-Z0-9_]+)\b/g, (m, tbl, col) => `(r['${col}'] !== undefined ? r['${col}'] : r['${tbl}.${col}'])`);
-    // Singular column -> r['col']
-    js = js.replace(/([a-zA-Z_][a-zA-Z0-9_]*)(?=\s*(?:=|>|<|>=|<=))/g, (m) => {
-      if (m.startsWith('r[')) return m;
-      return `r['${m}']`;
+    let selectFrom = cleanSql;
+    let where = null;
+    let rest = null;
+
+    if (whereIdx !== -1) {
+      selectFrom = cleanSql.substring(0, whereIdx).trim();
+      if (restIdx !== -1 && restIdx > whereIdx) {
+        where = cleanSql.substring(whereIdx, restIdx).trim();
+        rest = cleanSql.substring(restIdx).trim();
+      } else {
+        where = cleanSql.substring(whereIdx).trim();
+      }
+    } else if (restIdx !== -1) {
+      selectFrom = cleanSql.substring(0, restIdx).trim();
+      rest = cleanSql.substring(restIdx).trim();
+    }
+
+    return { selectFrom, where, rest };
+  }
+
+  generateTableOptions(groundTruthResult, schema, rawSql) {
+    if (!groundTruthResult || !groundTruthResult.columns) {
+      return this.generateFallbackOptions(schema);
+    }
+
+    const correctColumns = groundTruthResult.columns;
+    const correctRows = groundTruthResult.rows;
+
+    const options = [
+      {
+        columns: correctColumns,
+        rows: correctRows,
+        isCorrect: true,
+        explanation: 'Matches exact query output transformation.'
+      }
+    ];
+
+    // Distractor 1: Unfiltered / Off-by-one subset
+    const dist1Rows = correctRows.length > 1 ? correctRows.slice(0, correctRows.length - 1) : [...correctRows, [99, 99]];
+    options.push({
+      columns: correctColumns,
+      rows: dist1Rows,
+      isCorrect: false,
+      explanation: 'Incomplete output (missing rows due to premature filter or slice).'
     });
 
-    // Single '=' -> '==='
-    js = js.replace(/([^=><!])=([^=])/g, '$1===$2');
-    js = js.replace(/\bAND\b/gi, '&&').replace(/\bOR\b/gi, '||');
-
-    return js;
-  }
-
-  stripPrefix(colStr) {
-    if (!colStr) return '';
-    return colStr.includes('.') ? colStr.split('.')[1] : colStr;
-  }
-
-  /**
-   * Generates 1 correct table output + 3 distinct, realistic distractor tables
-   */
-  generateTableOptions(groundTruthResult, schema, sql) {
-    const columns = (groundTruthResult && groundTruthResult.columns && groundTruthResult.columns.length > 0)
-      ? groundTruthResult.columns
-      : ['id', 'value'];
-
-    const rawRows = (groundTruthResult && groundTruthResult.rows) ? groundTruthResult.rows : [];
-
-    // Option 1: Ground Truth
-    const optCorrect = {
-      columns: columns,
-      rows: JSON.parse(JSON.stringify(rawRows)),
-      isCorrect: true,
-      explanation: 'Correct! This table matches the exact output produced by executing the embedded SQL query / JavaScript logic on the schema data.'
-    };
-
-    // Option 2: Distractor A - Calculation / Aggregate Perturbation (off-by-one or value shift)
-    const rowsDist1 = JSON.parse(JSON.stringify(rawRows));
-    if (rowsDist1.length > 0) {
-      let modified = false;
-      rowsDist1.forEach(r => {
-        r.forEach((val, idx) => {
-          if (typeof val === 'number' && !modified) {
-            r[idx] = val + (val > 0 ? 1 : 2);
-            modified = true;
-          }
-        });
-      });
-      if (!modified && rowsDist1.length > 0) {
-        rowsDist1[0][0] = String(rowsDist1[0][0]) + '_err';
-      }
-    } else {
-      rowsDist1.push(columns.map((_, i) => (i === 0 ? 1 : 10)));
-    }
-
-    const optDist1 = {
-      columns: columns,
-      rows: rowsDist1,
+    // Distractor 2: Reversed sort order or mutated column values
+    const dist2Rows = correctRows.slice().reverse().map(r => r.map(val => (typeof val === 'number' ? val + 1 : val)));
+    options.push({
+      columns: correctColumns,
+      rows: dist2Rows,
       isCorrect: false,
-      explanation: 'Incorrect: The aggregate or column calculation is off-by-one or evaluated incorrectly.'
-    };
+      explanation: 'Incorrect row values or reversed sort order.'
+    });
 
-    // Option 3: Distractor B - Row Filtering / Inclusion Error (extra or missing row)
-    const rowsDist2 = JSON.parse(JSON.stringify(rawRows));
-    if (rowsDist2.length > 1) {
-      rowsDist2.pop(); // omit last row
-    } else if (rowsDist2.length === 1) {
-      const extraRow = rowsDist2[0].map((v, i) => (typeof v === 'number' ? v + 5 : `${v}_ext`));
-      rowsDist2.push(extraRow);
-    } else {
-      rowsDist2.push(columns.map((_, i) => (i === 0 ? 100 : 'Sample')));
-    }
-
-    const optDist2 = {
-      columns: columns,
-      rows: rowsDist2,
+    // Distractor 3: Raw base table or alternative schema table preview
+    const baseTable = schema && schema.tables ? schema.tables[0] : null;
+    const dist3Cols = baseTable ? baseTable.columns.map(c => c.name) : correctColumns;
+    const dist3Rows = baseTable ? baseTable.rows.slice(0, Math.min(5, baseTable.rows.length)).map(r => Object.values(r)) : correctRows.map(r => [r[0], 0]);
+    
+    options.push({
+      columns: dist3Cols,
+      rows: dist3Rows,
       isCorrect: false,
-      explanation: 'Incorrect: The WHERE / filter predicate was mis-evaluated, resulting in missing or extra rows.'
-    };
-
-    // Option 4: Distractor C - Sorting Direction / Limit Order Perturbation
-    const rowsDist3 = JSON.parse(JSON.stringify(rawRows));
-    if (rowsDist3.length > 1) {
-      rowsDist3.reverse(); // Reverse sort order
-    } else if (rowsDist3.length === 1) {
-      rowsDist3[0] = rowsDist3[0].map(v => (typeof v === 'number' ? Math.max(0, v - 3) : 'Default'));
-    } else {
-      rowsDist3.push(columns.map((_, i) => (i === 0 ? 999 : 'Invalid')));
-    }
-
-    const optDist3 = {
-      columns: columns,
-      rows: rowsDist3,
-      isCorrect: false,
-      explanation: 'Incorrect: The sorting order (sort direction) or row limit was applied in reverse or incorrectly.'
-    };
-
-    // Ensure all 4 options are structurally unique
-    const options = [optCorrect, optDist1, optDist2, optDist3];
-    this.ensureOptionsUnique(options);
+      explanation: 'Base table output prior to applying SQL logic.'
+    });
 
     return options;
   }
 
-  ensureOptionsUnique(options) {
-    const seen = new Set();
-
-    options.forEach((opt, idx) => {
-      let key = JSON.stringify(opt.rows);
-      if (seen.has(key) && idx > 0) {
-        // Mutate slightly to guarantee uniqueness
-        if (opt.rows.length > 0) {
-          opt.rows[0][0] = (typeof opt.rows[0][0] === 'number') ? opt.rows[0][0] + (idx * 10) : `${opt.rows[0][0]}_${idx}`;
-        } else {
-          opt.rows.push([idx * 7]);
-        }
-        key = JSON.stringify(opt.rows);
-      }
-      seen.add(key);
-    });
+  generateFallbackOptions(schema) {
+    return [
+      { columns: ['id', 'val'], rows: [[1, 100], [2, 200]], isCorrect: true, explanation: 'Correct result' },
+      { columns: ['id', 'val'], rows: [[1, 100]], isCorrect: false, explanation: 'Missing row' },
+      { columns: ['id', 'val'], rows: [[2, 200], [1, 100]], isCorrect: false, explanation: 'Wrong order' },
+      { columns: ['id', 'val'], rows: [[1, 105], [2, 205]], isCorrect: false, explanation: 'Mutated values' }
+    ];
   }
 
   shuffleAndAssignKeys(options) {
@@ -304,13 +231,8 @@ class QuizGenerator {
       const j = Math.floor(Math.random() * (i + 1));
       [arr[i], arr[j]] = [arr[j], arr[i]];
     }
-
-    const correctIndex = arr.findIndex(opt => opt.isCorrect);
-
-    return {
-      options: arr,
-      correctIndex: correctIndex
-    };
+    const correctIndex = arr.findIndex(o => o.isCorrect);
+    return { options: arr, correctIndex };
   }
 }
 
