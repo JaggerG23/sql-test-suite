@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>SQL Matrix - Participant Experiment Workspace</title>
+  <title>Participant Experiment Suite</title>
   <!-- Google Fonts -->
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -18,27 +18,23 @@
 <body class="dark-theme">
   <div class="app-container">
     <!-- Participant Restricted Navbar -->
-    <header class="app-header" style="justify-content: space-between; padding: 8px 20px;">
-      <div class="brand">
-        <div class="logo-icon" style="width: 32px; height: 32px; font-size: 15px;"><i class="fa-solid fa-keyboard"></i></div>
-        <div class="brand-text">
-          <h1 style="font-size: 17px;">SQL Matrix</h1>
-          <span class="badge badge-accent" style="font-size: 10px;">Participant Experiment Workspace</span>
-        </div>
+    <header class="app-header" style="justify-content: space-between; padding: 6px 16px;">
+      <div class="brand" style="gap: 8px;">
+        <div class="logo-icon" style="width: 30px; height: 30px; font-size: 15px;" title="Participant Workspace"><i class="fa-solid fa-keyboard"></i></div>
       </div>
-      <div class="header-actions" style="display: flex; align-items: center; gap: 8px;">
+      <div class="header-actions" style="display: flex; align-items: center; gap: 8px; flex-wrap: nowrap; white-space: nowrap;">
         <!-- Participant ID & Questions Answered Counter Pill -->
-        <div class="seed-control d-flex align-center gap-2" style="background: rgba(99, 102, 241, 0.15); border-color: rgba(99, 102, 241, 0.35); padding: 4px 12px; border-radius: 6px;">
-          <label for="participant-id-input" style="font-size: 12px; margin: 0;"><i class="fa-solid fa-user-tag text-primary"></i> Participant ID:</label>
-          <input type="text" id="participant-id-input" placeholder="User ID" style="width: 85px; color: var(--color-primary); font-weight: 700; font-size: 13px;">
-          <span style="color: rgba(255,255,255,0.25); margin: 0 4px;">|</span>
-          <span style="font-size: 12px; color: var(--text-main); font-weight: 600;">
-            <i class="fa-solid fa-list-check text-primary"></i> Questions Answered: <strong id="nav-questions-counter" style="color: var(--color-primary); font-size: 13px; margin-left: 2px;">0 / 60</strong>
+        <div class="seed-control d-flex align-center gap-1" style="background: rgba(99, 102, 241, 0.15); border-color: rgba(99, 102, 241, 0.35); padding: 3px 8px; border-radius: 6px; white-space: nowrap;">
+          <label for="participant-id-input" style="font-size: 11px; margin: 0; white-space: nowrap;"><i class="fa-solid fa-user-tag text-primary"></i> User:</label>
+          <input type="text" id="participant-id-input" placeholder="User ID" style="width: 70px; color: var(--color-primary); font-weight: 700; font-size: 11px; padding: 1px 4px;">
+          <span style="color: rgba(255,255,255,0.25); margin: 0 2px;">|</span>
+          <span style="font-size: 11px; color: var(--text-main); font-weight: 600; white-space: nowrap;">
+            <i class="fa-solid fa-list-check text-primary"></i> Answered: <strong id="nav-questions-counter" style="color: var(--color-primary); font-size: 12px; margin-left: 2px;">0/60</strong>
           </span>
         </div>
 
         <!-- Dev Reset Test Button (Toggled via ENABLE_DEV_RESET flag) -->
-        <button id="btn-reset-test" class="btn btn-sm" title="Reset test progress and start at Question 1" style="font-size: 11px; padding: 4px 10px; border-radius: 6px; border: 1px solid rgba(239, 68, 68, 0.4); background: rgba(239, 68, 68, 0.15); color: #f87171; cursor: pointer; display: inline-flex; align-items: center; gap: 4px;">
+        <button id="btn-reset-test" class="btn btn-sm" title="Reset test progress and start at Question 1" style="font-size: 11px; padding: 4px 8px; border-radius: 6px; border: 1px solid rgba(239, 68, 68, 0.4); background: rgba(239, 68, 68, 0.15); color: #f87171; cursor: pointer; display: inline-flex; align-items: center; gap: 4px; white-space: nowrap;">
           <i class="fa-solid fa-rotate-left"></i> Reset Test
         </button>
       </div>

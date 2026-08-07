@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>SQL Matrix - Randomized Query & Schema Test Suite</title>
+  <title>Participant Experiment Suite</title>
   <!-- Google Fonts -->
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -18,38 +18,48 @@
 <body class="dark-theme">
   <div class="app-container">
     <!-- Header Navbar -->
-    <header class="app-header">
-      <div class="brand">
-        <div class="logo-icon"><i class="fa-solid fa-database"></i></div>
-        <div class="brand-text">
-          <h1>SQL Matrix</h1>
-          <span class="badge">Randomized Test Suite & Human Interactive Engine</span>
-        </div>
+    <header class="app-header" style="padding: 6px 16px;">
+      <div class="brand" style="gap: 8px;">
+        <div class="logo-icon" style="width: 30px; height: 30px; font-size: 15px;" title="Participant Experiment Suite"><i class="fa-solid fa-database"></i></div>
       </div>
-      <div class="header-actions">
-        <div class="seed-control d-flex align-center gap-2" style="background: rgba(99, 102, 241, 0.12); border-color: rgba(99, 102, 241, 0.3); padding: 4px 12px; border-radius: 6px;">
-          <label for="participant-id-input" style="font-size: 12px; margin: 0;"><i class="fa-solid fa-user-tag text-primary"></i> User ID:</label>
-          <input type="text" id="participant-id-input" placeholder="User ID" style="width: 85px; color: var(--color-primary); font-weight: 600;">
-          <span style="color: rgba(255,255,255,0.25); margin: 0 4px;">|</span>
-          <span style="font-size: 12px; color: var(--text-main); font-weight: 600;">
-            <i class="fa-solid fa-list-check text-primary"></i> Questions Answered: <strong id="nav-questions-counter" style="color: var(--color-primary); font-size: 13px; margin-left: 2px;">0 / 60</strong>
+      <div class="header-actions" style="display: flex; align-items: center; gap: 8px; flex-wrap: nowrap; white-space: nowrap;">
+        <div class="seed-control d-flex align-center gap-1" style="background: rgba(99, 102, 241, 0.12); border-color: rgba(99, 102, 241, 0.3); padding: 3px 8px; border-radius: 6px; white-space: nowrap;">
+          <label for="participant-id-input" style="font-size: 11px; margin: 0; white-space: nowrap;"><i class="fa-solid fa-user-tag text-primary"></i> User:</label>
+          <input type="text" id="participant-id-input" placeholder="User ID" style="width: 70px; color: var(--color-primary); font-weight: 600; font-size: 11px; padding: 1px 4px;">
+          <span style="color: rgba(255,255,255,0.25); margin: 0 2px;">|</span>
+          <span style="font-size: 11px; color: var(--text-main); font-weight: 600; white-space: nowrap;">
+            <i class="fa-solid fa-list-check text-primary"></i> Answered: <strong id="nav-questions-counter" style="color: var(--color-primary); font-size: 12px; margin-left: 2px;">0/60</strong>
           </span>
         </div>
-        <div class="seed-control">
-          <label for="seed-input"><i class="fa-solid fa-dice"></i> Seed:</label>
-          <input type="number" id="seed-input" placeholder="Random seed">
-          <button id="btn-randomize-seed" class="btn btn-sm btn-icon" title="Generate New Seed">
+        <div class="seed-control" style="padding: 3px 8px; white-space: nowrap;">
+          <label for="seed-input" style="font-size: 11px; margin: 0; white-space: nowrap;"><i class="fa-solid fa-dice"></i> Seed:</label>
+          <input type="number" id="seed-input" placeholder="Seed" style="width: 45px; font-size: 11px; padding: 1px 4px;">
+          <button id="btn-randomize-seed" class="btn btn-sm btn-icon" title="Generate New Seed" style="padding: 2px 4px;">
             <i class="fa-solid fa-shuffle"></i>
           </button>
         </div>
-        <button id="btn-reset-test" class="btn btn-sm" title="Reset test progress and start at Question 1" style="font-size: 11px; padding: 4px 10px; border-radius: 6px; border: 1px solid rgba(239, 68, 68, 0.4); background: rgba(239, 68, 68, 0.15); color: #f87171; cursor: pointer; display: inline-flex; align-items: center; gap: 4px;">
+        <!-- Question 1-60 Jump Selector Control -->
+        <div class="d-flex align-center gap-1" style="background: rgba(16, 185, 129, 0.15); border: 1px solid rgba(16, 185, 129, 0.4); padding: 3px 8px; border-radius: 6px; white-space: nowrap;">
+          <button id="btn-prev-q" class="btn btn-sm btn-ghost p-1" title="Previous Question" style="padding: 2px 5px; font-size: 11px; color: #10b981; cursor: pointer;">
+            <i class="fa-solid fa-chevron-left"></i>
+          </button>
+          <label for="question-jump-select" style="font-size: 11px; color: #10b981; font-weight: 700; margin: 0; white-space: nowrap;"><i class="fa-solid fa-list-ol"></i> Q:</label>
+          <select id="question-jump-select" style="background: rgba(0, 0, 0, 0.4); border: 1px solid rgba(16, 185, 129, 0.5); color: #ecfdf5; font-weight: 700; font-size: 11px; padding: 2px 4px; border-radius: 4px; cursor: pointer; outline: none; white-space: nowrap;">
+            <!-- Populated dynamically 1 to 60 -->
+          </select>
+          <button id="btn-next-q" class="btn btn-sm btn-ghost p-1" title="Next Question" style="padding: 2px 5px; font-size: 11px; color: #10b981; cursor: pointer;">
+            <i class="fa-solid fa-chevron-right"></i>
+          </button>
+        </div>
+
+        <button id="btn-reset-test" class="btn btn-sm" title="Reset test progress and start at Question 1" style="font-size: 11px; padding: 4px 8px; border-radius: 6px; border: 1px solid rgba(239, 68, 68, 0.4); background: rgba(239, 68, 68, 0.15); color: #f87171; cursor: pointer; display: inline-flex; align-items: center; gap: 4px; white-space: nowrap;">
           <i class="fa-solid fa-rotate-left"></i> Reset Test
         </button>
-        <a href="participant.html" target="_blank" class="btn btn-accent btn-sm" title="Open Restricted Participant View Endpoint">
-          <i class="fa-solid fa-arrow-up-right-from-square"></i> Open Participant View
+        <a href="participant.html" target="_blank" class="btn btn-accent btn-sm" style="font-size: 11px; padding: 4px 8px; white-space: nowrap;" title="Open Restricted Participant View Endpoint">
+          <i class="fa-solid fa-arrow-up-right-from-square"></i> Participant View
         </a>
-        <button id="btn-generate-all" class="btn btn-primary">
-          <i class="fa-solid fa-wand-magic-sparkles"></i> Generate Schema & Query
+        <button id="btn-generate-all" class="btn btn-primary btn-sm" style="font-size: 11px; padding: 4px 8px; white-space: nowrap;">
+          <i class="fa-solid fa-wand-magic-sparkles"></i> Generate Query
         </button>
       </div>
     </header>
@@ -122,165 +132,12 @@
           <button class="nav-tab" data-tab="tab-analytics">
             <i class="fa-solid fa-chart-line"></i> Participant Analytics & Logs (<span id="resp-count-badge">0</span>)
           </button>
-          <button class="nav-tab" data-tab="tab-schema">
-            <i class="fa-solid fa-database"></i> Schema & Data Preview (<span id="table-count-badge">0</span>)
-          </button>
-          <button class="nav-tab" data-tab="tab-query">
-            <i class="fa-solid fa-microchip"></i> Engine Debugger
-          </button>
         </nav>
 
         <!-- Tab: Participant Test Suite Workspace (Default Active) -->
         <div id="tab-human" class="tab-content active">
           <div id="human-challenge-container">
             <!-- Dynamically rendered Participant Challenge Card -->
-          </div>
-        </div>
-
-        <!-- Tab 1: Query & Resolution Engines Workspace -->
-        <div id="tab-query" class="tab-content">
-          <!-- Active SQL Query Display / Editor -->
-          <div class="card editor-card">
-            <div class="card-header">
-              <div class="title-with-badge">
-                <i class="fa-solid fa-code"></i> Active Generated SQL Query
-                <span id="query-tier-badge" class="badge badge-outline">Medium Tier</span>
-              </div>
-              <div class="card-actions">
-                <button id="btn-format-sql" class="btn btn-sm btn-ghost" title="Format SQL">
-                  <i class="fa-solid fa-align-left"></i> Format
-                </button>
-                <button id="btn-copy-sql" class="btn btn-sm btn-ghost" title="Copy SQL">
-                  <i class="fa-solid fa-copy"></i> Copy
-                </button>
-                <button id="btn-execute-query" class="btn btn-sm btn-success">
-                  <i class="fa-solid fa-play"></i> Execute Across Engines
-                </button>
-              </div>
-            </div>
-            <div class="card-body p-0">
-              <textarea id="sql-editor" rows="6" spellcheck="false" placeholder="Generating SQL query..."></textarea>
-            </div>
-          </div>
-
-          <!-- Query Resolution Method Selector & Engine Tabs -->
-          <div class="engine-section">
-            <div class="section-title">
-              <h2><i class="fa-solid fa-microchip"></i> Query Resolution Engines</h2>
-              <span class="text-muted">Compare outputs and execution details across distinct resolution methods</span>
-            </div>
-
-            <!-- Engine Cards Container (3 Columns) -->
-            <div class="engine-grid">
-              <!-- Engine 1 Card -->
-              <div class="card engine-card" id="engine-card-1">
-                <div class="card-header engine-header e1-header">
-                  <div class="engine-title">
-                    <span class="engine-number">1</span>
-                    <div>
-                      <h4>SQLite WASM Engine</h4>
-                      <span class="engine-sub">Native WebAssembly Engine</span>
-                    </div>
-                  </div>
-                  <span id="status-e1" class="status-badge status-idle">Ready</span>
-                </div>
-                <div class="card-body">
-                  <div class="metric-row">
-                    <div class="metric"><span class="label">Rows:</span> <span id="rows-e1" class="value">-</span></div>
-                    <div class="metric"><span class="label">Time:</span> <span id="time-e1" class="value">-</span></div>
-                  </div>
-                  <div class="engine-tabs">
-                    <button class="e-tab active" data-target="e1-results">Results</button>
-                    <button class="e-tab" data-target="e1-plan">Execution Plan</button>
-                  </div>
-                  <div class="engine-tab-content active" id="e1-results">
-                    <div class="table-responsive" id="container-e1-results">
-                      <p class="placeholder-text">Execute query to see results</p>
-                    </div>
-                  </div>
-                  <div class="engine-tab-content" id="e1-plan">
-                    <pre class="code-block" id="container-e1-plan">Click execute to generate EXPLAIN QUERY PLAN</pre>
-                  </div>
-                </div>
-              </div>
-
-              <!-- Engine 2 Card -->
-              <div class="card engine-card" id="engine-card-2">
-                <div class="card-header engine-header e2-header">
-                  <div class="engine-title">
-                    <span class="engine-number">2</span>
-                    <div>
-                      <h4>Custom JS AST Engine</h4>
-                      <span class="engine-sub">In-Memory Relational Algebra</span>
-                    </div>
-                  </div>
-                  <span id="status-e2" class="status-badge status-idle">Ready</span>
-                </div>
-                <div class="card-body">
-                  <div class="metric-row">
-                    <div class="metric"><span class="label">Rows:</span> <span id="rows-e2" class="value">-</span></div>
-                    <div class="metric"><span class="label">Time:</span> <span id="time-e2" class="value">-</span></div>
-                  </div>
-                  <div class="engine-tabs">
-                    <button class="e-tab active" data-target="e2-results">Results</button>
-                    <button class="e-tab" data-target="e2-ast">AST / Step Trace</button>
-                  </div>
-                  <div class="engine-tab-content active" id="e2-results">
-                    <div class="table-responsive" id="container-e2-results">
-                      <p class="placeholder-text">Execute query to see results</p>
-                    </div>
-                  </div>
-                  <div class="engine-tab-content" id="e2-ast">
-                    <pre class="code-block" id="container-e2-ast">Click execute to see AST step trace</pre>
-                  </div>
-                </div>
-              </div>
-
-              <!-- Engine 3 Card -->
-              <div class="card engine-card" id="engine-card-3">
-                <div class="card-header engine-header e3-header">
-                  <div class="engine-title">
-                    <span class="engine-number">3</span>
-                    <div>
-                      <h4>Query Optimizer & Strategy</h4>
-                      <span class="engine-sub">Cost-Based / Strategy Simulator</span>
-                    </div>
-                  </div>
-                  <span id="status-e3" class="status-badge status-idle">Ready</span>
-                </div>
-                <div class="card-body">
-                  <div class="metric-row">
-                    <div class="metric"><span class="label">Rows:</span> <span id="rows-e3" class="value">-</span></div>
-                    <div class="metric"><span class="label">Est. Cost:</span> <span id="time-e3" class="value">-</span></div>
-                  </div>
-                  <div class="engine-tabs">
-                    <button class="e-tab active" data-target="e3-results">Results</button>
-                    <button class="e-tab" data-target="e3-cost">Cost Matrix</button>
-                  </div>
-                  <div class="engine-tab-content active" id="e3-results">
-                    <div class="table-responsive" id="container-e3-results">
-                      <p class="placeholder-text">Execute query to see results</p>
-                    </div>
-                  </div>
-                  <div class="engine-tab-content" id="e3-cost">
-                    <div class="cost-summary" id="container-e3-cost">
-                      <p class="placeholder-text">Click execute to analyze join strategy & cost metrics</p>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            <!-- Differential Comparison Panel -->
-            <div class="card diff-card mt-4">
-              <div class="card-header">
-                <h3><i class="fa-solid fa-scale-balanced"></i> Differential Engine Comparison & Validation</h3>
-                <span id="diff-status-badge" class="badge badge-neutral">Not Run Yet</span>
-              </div>
-              <div class="card-body" id="diff-summary-body">
-                <p class="text-muted">Run the query to verify if Engine 1 (WASM SQLite), Engine 2 (Custom JS), and Engine 3 (Strategy Engine) produce matching output tuple sets!</p>
-              </div>
-            </div>
           </div>
         </div>
 
@@ -364,27 +221,6 @@
           </div>
         </div>
 
-        <!-- Tab 2: Schema & Data Preview Workspace -->
-        <div id="tab-schema" class="tab-content">
-          <div class="schema-workspace">
-            <div class="card mb-4">
-              <div class="card-header">
-                <h3><i class="fa-solid fa-code"></i> Generated DDL Script</h3>
-                <button id="btn-copy-ddl" class="btn btn-sm btn-ghost"><i class="fa-solid fa-copy"></i> Copy DDL</button>
-              </div>
-              <div class="card-body p-0">
-                <pre class="code-block m-0" id="schema-ddl-output">-- Schema DDL will appear here</pre>
-              </div>
-            </div>
-
-            <div class="section-title">
-              <h3><i class="fa-solid fa-table"></i> Table Data Preview</h3>
-            </div>
-            <div id="schema-tables-container" class="schema-grid">
-              </div>
-            </div>
-          </div>
-        </div>
       </section>
     </main>
   </div>

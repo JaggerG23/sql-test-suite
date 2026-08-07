@@ -213,10 +213,6 @@ class HumanResolver {
 
               <!-- Coding Window: Displays all code lines at once with no scrolling required -->
               <div class="query-code-preview p-2" style="border: 1px solid rgba(16, 185, 129, 0.3); border-radius: 6px; background: rgba(10, 14, 26, 0.95); flex: 1; min-height: 350px; max-height: 380px; overflow: visible;">
-                <div class="d-flex justify-between align-center mb-1" style="font-size: 10px; color: var(--color-success); border-bottom: 1px solid rgba(255,255,255,0.06); padding-bottom: 3px;">
-                  <span><i class="fa-brands fa-js text-warning"></i> <strong>JavaScript Code (with Embedded SQL):</strong></span>
-                  <span class="badge badge-accent" style="font-size: 9px; padding: 1px 4px;">${q.dialect ? q.dialect.name : 'SQL'}</span>
-                </div>
                 <pre style="margin: 0; font-family: var(--font-mono); font-size: 11.5px; line-height: 1.45; color: #e2e8f0; white-space: pre-wrap; overflow: visible;"><code>${this.escapeHTML(q.jsCode)}</code></pre>
               </div>
             </div>

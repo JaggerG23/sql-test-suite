@@ -3,7 +3,7 @@
  */
 window.ENABLE_DEV_RESET = true;
 
-class SQLMatrixApp {
+class QueryExperimentApp {
   constructor() {
     // Fixed deterministic seed (randomization disabled for un-randomized questions)
     this.seed = 42;
@@ -34,6 +34,7 @@ class SQLMatrixApp {
 
   async init() {
     this.seed = 42;
+    this.currentQuestionNumber = 1;
     const seedInput = document.getElementById('seed-input');
     if (seedInput) {
       seedInput.value = 42;
@@ -42,6 +43,7 @@ class SQLMatrixApp {
     }
     this.bindEvents();
     this.initParticipantUI();
+    this.populateQuestionJumpDropdown();
     try {
       await Promise.race([
         this.sqliteEngine.init(),
@@ -50,17 +52,41 @@ class SQLMatrixApp {
     } catch (e) {
       console.warn('SQLite WASM init deferred:', e);
     }
-    await this.generateAll();
+    await this.loadIncrementalQuestion(1);
     this.renderAnalyticsDashboard();
   }
 
   bindEvents() {
+    // Question Jump Select and Step Buttons
+    const jumpSelect = document.getElementById('question-jump-select');
+    if (jumpSelect) {
+      jumpSelect.addEventListener('change', (e) => {
+        this.loadIncrementalQuestion(e.target.value);
+      });
+    }
+
+    const btnPrevQ = document.getElementById('btn-prev-q');
+    if (btnPrevQ) {
+      btnPrevQ.addEventListener('click', () => {
+        const cur = this.currentQuestionNumber || 1;
+        if (cur > 1) this.loadIncrementalQuestion(cur - 1);
+      });
+    }
+
+    const btnNextQ = document.getElementById('btn-next-q');
+    if (btnNextQ) {
+      btnNextQ.addEventListener('click', () => {
+        const cur = this.currentQuestionNumber || 1;
+        if (cur < 60) this.loadIncrementalQuestion(cur + 1);
+      });
+    }
+
     // Top Bar Seed
     const seedInput = document.getElementById('seed-input');
     if (seedInput) {
       seedInput.addEventListener('change', (e) => {
         this.seed = parseInt(e.target.value, 10) || 42;
-        this.generateAll();
+        this.loadIncrementalQuestion(this.currentQuestionNumber || 1);
       });
     }
 
@@ -227,8 +253,31 @@ class SQLMatrixApp {
     this.executeAcrossEngines();
   }
 
-  async generateNextIncrementalQuestion() {
-    const qIndex = this.humanResolver.stats.totalAnswered;
+  populateQuestionJumpDropdown() {
+    const select = document.getElementById('question-jump-select');
+    if (!select) return;
+
+    select.innerHTML = '';
+    for (let qNum = 1; qNum <= 60; qNum++) {
+      const bIdx = Math.floor((qNum - 1) / 6) + 1;
+      const vIdx = ((qNum - 1) % 6) + 1;
+      const opt = document.createElement('option');
+      opt.value = qNum;
+      opt.textContent = `Q ${qNum} / 60 (Block ${bIdx}.${vIdx})`;
+      select.appendChild(opt);
+    }
+
+    select.value = this.currentQuestionNumber || 1;
+  }
+
+  async loadIncrementalQuestion(targetQNum) {
+    const qNum = Math.max(1, Math.min(60, parseInt(targetQNum, 10) || 1));
+    this.currentQuestionNumber = qNum;
+
+    const select = document.getElementById('question-jump-select');
+    if (select) select.value = qNum;
+
+    const qIndex = qNum - 1; // 0 to 59
     const blockIndex = Math.floor(qIndex / 6);
     const blockSeed = this.seed + blockIndex * 137;
     const variationIndex = qIndex % 6;
@@ -260,6 +309,10 @@ class SQLMatrixApp {
     this.renderDifferentialComparison(r1, r2, r3);
 
     this.humanResolver.startNewChallenge(this.currentSchema, this.currentQuery, r1);
+  }
+
+  async generateNextIncrementalQuestion() {
+    await this.loadIncrementalQuestion(this.humanResolver.stats.totalAnswered + 1);
   }
 
   async executeAcrossEngines() {
@@ -596,7 +649,7 @@ class SQLMatrixApp {
       if (this.humanResolver) {
         this.humanResolver.resetToFirstQuestion();
       }
-      await this.generateAll();
+      await this.loadIncrementalQuestion(1);
     }
   }
 
@@ -708,8 +761,9 @@ class SQLMatrixApp {
   }
 }
 
-window.SQLMatrixApp = SQLMatrixApp;
+window.QueryExperimentApp = QueryExperimentApp;
+window.SQLMatrixApp = QueryExperimentApp;
 
 document.addEventListener('DOMContentLoaded', () => {
-  window.app = new SQLMatrixApp();
+  window.app = new QueryExperimentApp();
 });
