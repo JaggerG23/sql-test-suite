@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Participant Experiment Suite</title>
+  <title>Admin Dashboard</title>
   <!-- Google Fonts -->
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -20,7 +20,7 @@
     <!-- Header Navbar -->
     <header class="app-header" style="padding: 6px 16px;">
       <div class="brand" style="gap: 8px;">
-        <div class="logo-icon" style="width: 30px; height: 30px; font-size: 15px;" title="Participant Experiment Suite"><i class="fa-solid fa-database"></i></div>
+        <div class="logo-icon" style="width: 30px; height: 30px; font-size: 15px;" title="Admin Dashboard"><i class="fa-solid fa-database"></i></div>
       </div>
       <div class="header-actions" style="display: flex; align-items: center; gap: 8px; flex-wrap: nowrap; white-space: nowrap;">
         <div class="seed-control d-flex align-center gap-1" style="background: rgba(99, 102, 241, 0.12); border-color: rgba(99, 102, 241, 0.3); padding: 3px 8px; border-radius: 6px; white-space: nowrap;">
@@ -188,34 +188,25 @@
                 </div>
               </div>
 
-              <!-- Raw Telemetry Table -->
-              <div class="section-title mb-2">
-                <h4><i class="fa-solid fa-list-ul"></i> Raw Event Log Data</h4>
+              <!-- Raw Telemetry Folders (Grouped per unique UserID) -->
+              <div class="section-title mb-2 d-flex justify-between align-center" style="display: flex; justify-content: space-between; align-items: center;">
+                <h4><i class="fa-solid fa-folder-tree text-warning"></i> Raw Event Log Data (Grouped per User ID)</h4>
+                <div class="d-flex align-center gap-2" style="display: flex; align-items: center; gap: 8px;">
+                  <button id="btn-expand-all-folders" class="btn btn-sm btn-ghost" title="Expand All User Folders" style="font-size: 11px; padding: 2px 8px; border: 1px solid rgba(255,255,255,0.15);">
+                    <i class="fa-solid fa-folder-open text-accent"></i> Expand All Folders
+                  </button>
+                  <button id="btn-collapse-all-folders" class="btn btn-sm btn-ghost" title="Collapse All User Folders" style="font-size: 11px; padding: 2px 8px; border: 1px solid rgba(255,255,255,0.15);">
+                    <i class="fa-solid fa-folder text-muted"></i> Collapse All Folders
+                  </button>
+                </div>
               </div>
-              <div class="table-responsive" style="max-height: 380px; overflow: auto; border: 1px solid rgba(255,255,255,0.08); border-radius: 6px;">
-                <table class="batch-results-table" style="white-space: nowrap;">
-                  <thead>
-                    <tr style="position: sticky; top: 0; background: #111520; z-index: 2;">
-                      <th>#</th>
-                      <th>Timestamp</th>
-                      <th>User ID</th>
-                      <th>Session ID</th>
-                      <th>Dialect</th>
-                      <th>Category</th>
-                      <th>Key</th>
-                      <th>User Answer</th>
-                      <th>Correct Answer</th>
-                      <th>Result</th>
-                      <th>Tab Focus / Integrity</th>
-                      <th>Time (ms)</th>
-                    </tr>
-                  </thead>
-                  <tbody id="analytics-logs-tbody">
-                    <tr>
-                      <td colspan="12" class="text-center text-muted p-4">No participant answers logged yet. Take tests in the Participant Test Suite tab!</td>
-                    </tr>
-                  </tbody>
-                </table>
+
+              <!-- User Folders Accordion Container -->
+              <div id="analytics-user-folders-container" style="display: flex; flex-direction: column; gap: 10px; min-height: 150px;">
+                <div class="card p-4 text-center text-muted fs-xs" style="background: rgba(0,0,0,0.2); border: 1px dashed rgba(255,255,255,0.1);">
+                  <i class="fa-solid fa-folder-open text-muted mb-2" style="font-size: 24px;"></i><br>
+                  No participant event logs recorded yet. Participant responses will be organized into User ID folders automatically.
+                </div>
               </div>
             </div>
           </div>

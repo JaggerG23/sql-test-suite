@@ -95,11 +95,12 @@ class HumanResolver {
     });
   }
 
-  startNewChallenge(schema, query, groundTruthResult) {
+  startNewChallenge(schema, query, groundTruthResult, targetQNum) {
     if (!this.app.syntaxDialects || !this.app.quizGenerator) return;
 
+    const qNum = targetQNum || (this.stats ? this.stats.totalAnswered + 1 : 1);
     if (this.app.syntaxDialects.currentSelectedDialectIndex === 3) {
-      this.app.syntaxDialects.pickRandomMixedDialect();
+      this.app.syntaxDialects.pickMixedDialectForQuestion(qNum, this.app.seed || 42);
     }
 
     this.currentSchema = schema;
@@ -195,21 +196,21 @@ class HumanResolver {
             
             <!-- LEFT COLUMN: Fully Extended Coding Window (All Code Lines Visible at Once) -->
             <div class="quiz-left-column" style="display: flex; flex-direction: column; gap: 4px;">
-              <div class="dialect-config-bar p-1 px-2 d-flex justify-between align-center" style="background: rgba(0, 0, 0, 0.3); border-radius: 5px; font-size: 10.5px;">
-                <div class="dialect-tabs d-flex align-center gap-1">
-                  <span class="text-muted" style="font-size: 10px; margin-right: 2px;"><i class="fa-solid fa-sliders"></i> Dialect:</span>
-                  ${activeDialects.map((d, idx) => `
-                    <button class="btn btn-sm dialect-tab ${idx === currentDialectIdx ? 'active' : ''}" data-idx="${idx}" style="padding: 1px 7px; font-size: 10px; border-radius: 4px;">
-                      ${d.name}
-                    </button>
-                  `).join('')}
-                </div>
-                ${!isParticipantPage ? `
+              ${!isParticipantPage ? `
+                <div class="dialect-config-bar p-1 px-2 d-flex justify-between align-center" style="background: rgba(0, 0, 0, 0.3); border-radius: 5px; font-size: 10.5px;">
+                  <div class="dialect-tabs d-flex align-center gap-1">
+                    <span class="text-muted" style="font-size: 10px; margin-right: 2px;"><i class="fa-solid fa-sliders"></i> Dialect:</span>
+                    ${activeDialects.map((d, idx) => `
+                      <button class="btn btn-sm dialect-tab ${idx === currentDialectIdx ? 'active' : ''}" data-idx="${idx}" style="padding: 1px 7px; font-size: 10px; border-radius: 4px;">
+                        ${d.name}
+                      </button>
+                    `).join('')}
+                  </div>
                   <button id="btn-configure-syntaxes" class="btn btn-sm btn-ghost p-0 px-1" title="Configure Dialects" style="font-size: 10.5px;">
                     <i class="fa-solid fa-gear"></i> Settings
                   </button>
-                ` : ''}
-              </div>
+                </div>
+              ` : ''}
 
               <!-- Coding Window: Displays all code lines at once with no scrolling required -->
               <div class="query-code-preview p-2" style="border: 1px solid rgba(16, 185, 129, 0.3); border-radius: 6px; background: rgba(10, 14, 26, 0.95); flex: 1; min-height: 350px; max-height: 380px; overflow: visible;">
@@ -497,7 +498,7 @@ class HumanResolver {
             <div class="col-badges mt-1" style="display: flex; flex-wrap: wrap; gap: 2px; font-family: var(--font-mono);">
               ${tbl.columns.map(c => `
                 <span style="background: rgba(255,255,255,0.05); padding: 1px 4px; border-radius: 3px; border: 1px solid rgba(255,255,255,0.07); font-size: 9px;">
-                  ${c.pk ? '🔑 ' : c.fk ? '🔗 ' : ''}<strong>${c.name}</strong> <span style="color:var(--color-primary);">${c.type}</span>
+                  ${c.pk ? '🔑 ' : ''}<strong>${c.name}</strong> <span style="color:var(--color-primary);">${c.type}</span>
                 </span>
               `).join('')}
             </div>

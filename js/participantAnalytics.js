@@ -253,6 +253,119 @@ class ParticipantAnalytics {
     URL.revokeObjectURL(url);
   }
 
+  getResponsesGroupedByParticipant() {
+    const groups = {};
+    this.responses.forEach(r => {
+      const uid = r.participantId || 'Anonymous';
+      if (!groups[uid]) {
+        groups[uid] = {
+          participantId: uid,
+          responses: [],
+          totalAnswers: 0,
+          correctCount: 0,
+          totalTimeMs: 0,
+          focusLostCount: 0,
+          lastActive: r.timestamp
+        };
+      }
+      groups[uid].responses.push(r);
+      groups[uid].totalAnswers++;
+      if (r.isCorrect) groups[uid].correctCount++;
+      groups[uid].totalTimeMs += (r.responseTimeMs || 0);
+      if (r.tabFocusLost) groups[uid].focusLostCount++;
+      if (new Date(r.timestamp) > new Date(groups[uid].lastActive)) {
+        groups[uid].lastActive = r.timestamp;
+      }
+    });
+
+    Object.keys(groups).forEach(uid => {
+      const g = groups[uid];
+      g.accuracy = g.totalAnswers > 0 ? Math.round((g.correctCount / g.totalAnswers) * 100) : 0;
+      g.avgTimeMs = g.totalAnswers > 0 ? Math.round(g.totalTimeMs / g.totalAnswers) : 0;
+    });
+
+    return groups;
+  }
+
+  exportUserCSV(participantId) {
+    const userResponses = this.responses.filter(r => (r.participantId || 'Anonymous') === participantId);
+    if (userResponses.length === 0) {
+      alert(`No responses logged for User ID: ${participantId}`);
+      return;
+    }
+
+    const headers = [
+      'Response ID',
+      'Participant ID',
+      'Session ID',
+      'Timestamp (ISO)',
+      'Question Category',
+      'Active Dialect ID',
+      'Active Dialect Name',
+      'Selected Key (1-4)',
+      'Selected Option',
+      'Correct Option',
+      'Is Correct',
+      'Response Time (ms)',
+      'Random Seed',
+      'Tab Focus Lost',
+      'Tab Switch Count',
+      'Focus Lost Duration (ms)',
+      'Incomplete Query',
+      'Raw Complete Query'
+    ];
+
+    const escapeCsvCell = cell => {
+      if (cell === null || cell === undefined) return '""';
+      const str = String(cell).replace(/"/g, '""');
+      return `"${str}"`;
+    };
+
+    const rows = userResponses.map(r => [
+      r.id,
+      r.participantId,
+      r.sessionId,
+      r.timestamp,
+      r.questionCategory,
+      r.activeDialect,
+      r.activeDialectName,
+      r.selectedKey,
+      r.selectedOptionText,
+      r.correctOptionText,
+      r.isCorrect ? 'TRUE' : 'FALSE',
+      r.responseTimeMs,
+      r.seed,
+      r.tabFocusLost ? 'TRUE' : 'FALSE',
+      r.tabSwitchCount || 0,
+      r.focusLostDurationMs || 0,
+      r.incompleteQuery,
+      r.rawQuery
+    ].map(escapeCsvCell).join(','));
+
+    const csvContent = [headers.map(escapeCsvCell).join(','), ...rows].join('\n');
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `responses_${participantId}_${new Date().toISOString().slice(0, 10)}.csv`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  }
+
+  deleteUserResponses(participantId) {
+    if (confirm(`Are you sure you want to delete all response logs for User ID: ${participantId}?`)) {
+      this.responses = this.responses.filter(r => (r.participantId || 'Anonymous') !== participantId);
+      this.saveResponses();
+      if (this.channel) {
+        this.channel.postMessage({ type: 'DELETE_USER', participantId });
+      }
+      this.notifyCallbacks({ type: 'DELETE_USER', participantId });
+    }
+  }
+
   exportToJSON() {
     if (this.responses.length === 0) {
       alert('No participant responses logged yet to export!');

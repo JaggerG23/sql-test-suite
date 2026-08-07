@@ -83,8 +83,32 @@ class SyntaxDialectManager {
     // Dialect 3: Quorum Syntax
     // Dialect 4: Mixed (Random selection among Dialects 1-3)
     this.activeDialectKeys = ['mysql', 'pipe', 'quorum'];
-    this.currentSelectedDialectIndex = 0; // 0 (MySQL), 1 (Pipe), 2 (Quorum), or 3 (Mixed)
+    this.currentSelectedDialectIndex = 3; // Default to 3 (Mixed) for random shuffling across questions
     this.currentMixedResolvedKey = null;
+    this.balancedSequence = null;
+    this.initBalancedSequence(42);
+  }
+
+  initBalancedSequence(seed = 42) {
+    const list = [];
+    for (let i = 0; i < 20; i++) list.push('mysql');
+    for (let i = 0; i < 20; i++) list.push('pipe');
+    for (let i = 0; i < 20; i++) list.push('quorum');
+
+    // Deterministic Fisher-Yates Shuffle using pseudo-RNG
+    let currentSeed = seed * 10007 + 1337;
+    const nextFloat = () => {
+      currentSeed = (currentSeed * 9301 + 49297) % 233280;
+      return currentSeed / 233280;
+    };
+
+    for (let i = list.length - 1; i > 0; i--) {
+      const j = Math.floor(nextFloat() * (i + 1));
+      const temp = list[i];
+      list[i] = list[j];
+      list[j] = temp;
+    }
+    this.balancedSequence = list;
   }
 
   getActiveDialects() {
@@ -93,14 +117,17 @@ class SyntaxDialectManager {
     return list;
   }
 
-  pickRandomMixedDialect() {
-    if (this.activeDialectKeys.length > 0) {
-      const randomIndex = Math.floor(Math.random() * this.activeDialectKeys.length);
-      this.currentMixedResolvedKey = this.activeDialectKeys[randomIndex];
-    } else {
-      this.currentMixedResolvedKey = 'mysql';
+  pickMixedDialectForQuestion(qNumber = 1, seed = 42) {
+    if (!this.balancedSequence || this.balancedSequence.length !== 60) {
+      this.initBalancedSequence(seed);
     }
+    const qIdx = Math.max(0, Math.min(59, (parseInt(qNumber, 10) || 1) - 1));
+    this.currentMixedResolvedKey = this.balancedSequence[qIdx];
     return this.currentMixedResolvedKey;
+  }
+
+  pickRandomMixedDialect(qNumber = 1) {
+    return this.pickMixedDialectForQuestion(qNumber);
   }
 
   getCurrentDialect() {

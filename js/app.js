@@ -103,6 +103,17 @@ class QueryExperimentApp {
       });
     }
 
+    // User Folders Expand / Collapse All Buttons
+    const btnExpandAll = document.getElementById('btn-expand-all-folders');
+    if (btnExpandAll) {
+      btnExpandAll.addEventListener('click', () => this.expandAllUserFolders());
+    }
+
+    const btnCollapseAll = document.getElementById('btn-collapse-all-folders');
+    if (btnCollapseAll) {
+      btnCollapseAll.addEventListener('click', () => this.collapseAllUserFolders());
+    }
+
     // Sliders
     ['cfg-tables', 'cfg-cols', 'cfg-rows', 'cfg-batch-count'].forEach(id => {
       const input = document.getElementById(id);
@@ -308,7 +319,7 @@ class QueryExperimentApp {
     this.updateEngineCardUI(3, r3, this.formatCostAnalysis(r3.costAnalysis));
     this.renderDifferentialComparison(r1, r2, r3);
 
-    this.humanResolver.startNewChallenge(this.currentSchema, this.currentQuery, r1);
+    this.humanResolver.startNewChallenge(this.currentSchema, this.currentQuery, r1, qNum);
   }
 
   async generateNextIncrementalQuestion() {
@@ -514,7 +525,7 @@ class QueryExperimentApp {
             ${cols.map(col => `
               <div class="attribute-item" style="display: flex; justify-content: space-between; align-items: center; padding: 8px 12px; background: rgba(0, 0, 0, 0.3); border: 1px solid rgba(255, 255, 255, 0.08); border-radius: 6px; font-family: var(--font-mono); font-size: 13px;">
                 <span class="attr-name" style="color: var(--text-main); font-weight: 600;">
-                  ${col.pk ? '<span title="Primary Key" style="color: #f59e0b; margin-right: 4px;">🔑</span>' : col.fk ? '<span title="Foreign Key" style="color: #06b6d4; margin-right: 4px;">🔗</span>' : ''}${col.name}
+                  ${col.pk ? '<span title="Primary Key" style="color: #f59e0b; margin-right: 4px;">🔑</span>' : ''}${col.name}
                 </span>
                 <span class="attr-type" style="color: var(--color-primary); background: rgba(99, 102, 241, 0.12); padding: 2px 8px; border-radius: 4px; font-size: 11px; border: 1px solid rgba(99, 102, 241, 0.25);">
                   ${col.type} ${col.pk ? '(PK)' : col.fk ? '(FK)' : ''}
@@ -714,41 +725,150 @@ class QueryExperimentApp {
       }
     }
 
-    // Raw Event Logs Table
-    const tbody = document.getElementById('analytics-logs-tbody');
-    if (tbody) {
-      if (responses.length === 0) {
-        tbody.innerHTML = `<tr><td colspan="12" class="text-center text-muted p-4">No participant answers logged yet. Take tests in the Participant Test Suite tab!</td></tr>`;
+    // Raw Event Logs Grouped by User ID Folders
+    const foldersContainer = document.getElementById('analytics-user-folders-container');
+    if (foldersContainer) {
+      const userGroups = this.analytics.getResponsesGroupedByParticipant();
+      const uids = Object.keys(userGroups);
+
+      if (uids.length === 0) {
+        foldersContainer.innerHTML = `
+          <div class="card p-4 text-center text-muted fs-xs" style="background: rgba(0,0,0,0.2); border: 1px dashed rgba(255,255,255,0.1);">
+            <i class="fa-solid fa-folder-open text-muted mb-2" style="font-size: 24px;"></i><br>
+            No participant event logs recorded yet. Participant responses will be organized into User ID folders automatically.
+          </div>
+        `;
       } else {
-        tbody.innerHTML = responses.slice().reverse().map((r, idx) => {
-          const timeFormatted = new Date(r.timestamp).toLocaleTimeString();
-          const isLatest = payload && payload.type === 'NEW_RESPONSE' && idx === 0;
+        foldersContainer.innerHTML = uids.map(uid => {
+          const group = userGroups[uid];
+          const safeUidId = uid.replace(/[^a-zA-Z0-9_-]/g, '_');
+          const isLatestUser = payload && payload.type === 'NEW_RESPONSE' && payload.response && payload.response.participantId === uid;
+
           return `
-            <tr class="${isLatest ? 'row-highlight' : ''}">
-              <td>${responses.length - idx}</td>
-              <td class="fs-xs text-muted">${timeFormatted}</td>
-              <td><span class="badge badge-accent">${r.participantId}</span></td>
-              <td class="fs-xs text-dim">${r.sessionId ? r.sessionId.slice(-8) : '-'}</td>
-              <td><span class="badge badge-outline">${r.activeDialectName || r.activeDialect}</span></td>
-              <td><span class="badge badge-primary">${r.questionCategory}</span></td>
-              <td><kbd>${r.selectedKey}</kbd></td>
-              <td><code>${this.escapeHTML(r.selectedOptionText)}</code></td>
-              <td><code>${this.escapeHTML(r.correctOptionText)}</code></td>
-              <td>
-                ${r.isCorrect 
-                  ? '<span class="status-badge status-success">Correct</span>' 
-                  : '<span class="status-badge status-error">Incorrect</span>'}
-              </td>
-              <td>
-                ${r.tabFocusLost 
-                  ? `<span class="badge badge-danger" style="font-size:10px;" title="Participant left tab ${r.tabSwitchCount} time(s). Total away time: ${(r.focusLostDurationMs / 1000).toFixed(1)}s"><i class="fa-solid fa-triangle-exclamation text-danger"></i> Focus Lost (${r.tabSwitchCount}x, ${(r.focusLostDurationMs / 1000).toFixed(1)}s)</span>` 
-                  : '<span class="badge badge-success" style="font-size:10px;"><i class="fa-solid fa-circle-check text-success"></i> Active Focus</span>'}
-              </td>
-              <td>${r.responseTimeMs} ms</td>
-            </tr>
+            <div class="user-folder-card mb-2" style="border: 1px solid ${isLatestUser ? 'var(--color-accent)' : 'rgba(255,255,255,0.1)'}; border-radius: 8px; background: rgba(14, 18, 28, 0.85); overflow: hidden; box-shadow: 0 4px 12px rgba(0,0,0,0.25);">
+              <!-- Folder Header Bar -->
+              <div class="user-folder-header p-2 px-3 d-flex justify-between align-center" style="background: rgba(0,0,0,0.4); cursor: pointer; border-bottom: 1px solid rgba(255,255,255,0.08); display: flex; justify-content: space-between; align-items: center;" onclick="window.app.toggleUserFolder('${safeUidId}')">
+                <div class="d-flex align-center gap-2" style="display: flex; align-items: center; gap: 8px;">
+                  <i class="fa-solid fa-folder-closed text-warning" id="folder-icon-${safeUidId}" style="font-size: 16px;"></i>
+                  <strong style="color: var(--color-primary); font-size: 13px;">User ID: ${this.escapeHTML(uid)}</strong>
+                  <span class="badge badge-accent" style="font-size: 10.5px;">${group.totalAnswers} / 60 Questions</span>
+                  <span class="badge ${group.accuracy >= 70 ? 'badge-success' : 'badge-warning'}" style="font-size: 10.5px;">${group.accuracy}% Accuracy</span>
+                  <span class="badge badge-outline text-muted" style="font-size: 10px;">Avg: ${group.avgTimeMs}ms</span>
+                  ${group.focusLostCount > 0 ? `<span class="badge badge-danger" style="font-size: 9.5px;" title="Focus lost ${group.focusLostCount} times"><i class="fa-solid fa-triangle-exclamation"></i> Focus Lost (${group.focusLostCount}x)</span>` : ''}
+                </div>
+                <div class="d-flex align-center gap-2" style="display: flex; align-items: center; gap: 8px;" onclick="event.stopPropagation();">
+                  <button class="btn btn-sm btn-accent" style="padding: 2px 8px; font-size: 10.5px;" onclick="window.app.exportUserCSV('${this.escapeHTML(uid)}')" title="Export CSV for ${this.escapeHTML(uid)}">
+                    <i class="fa-solid fa-file-csv"></i> Export CSV
+                  </button>
+                  <button class="btn btn-sm btn-danger" style="padding: 2px 8px; font-size: 10.5px; background: rgba(239,68,68,0.2); border-color: rgba(239,68,68,0.4); color: #f87171;" onclick="window.app.deleteUserResponses('${this.escapeHTML(uid)}')" title="Delete data for ${this.escapeHTML(uid)}">
+                    <i class="fa-solid fa-trash-can"></i>
+                  </button>
+                  <i class="fa-solid fa-chevron-down text-muted" id="folder-chevron-${safeUidId}" style="font-size: 12px; transition: transform 0.2s;"></i>
+                </div>
+              </div>
+
+              <!-- Folder Body (Table of Event Logs for this User) -->
+              <div class="user-folder-body p-2" id="folder-body-${safeUidId}" style="display: none; background: rgba(10, 14, 26, 0.95);">
+                <div class="table-responsive" style="max-height: 320px; overflow: auto; border: 1px solid rgba(255,255,255,0.06); border-radius: 6px;">
+                  <table class="batch-results-table" style="white-space: nowrap; font-size: 11px;">
+                    <thead>
+                      <tr style="position: sticky; top: 0; background: #111520; z-index: 2;">
+                        <th>#</th>
+                        <th>Timestamp</th>
+                        <th>Session ID</th>
+                        <th>Dialect</th>
+                        <th>Category</th>
+                        <th>Key</th>
+                        <th>User Answer</th>
+                        <th>Correct Answer</th>
+                        <th>Result</th>
+                        <th>Tab Focus / Integrity</th>
+                        <th>Time (ms)</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      ${group.responses.slice().reverse().map((r, idx) => {
+                        const timeFormatted = new Date(r.timestamp).toLocaleTimeString();
+                        return `
+                          <tr>
+                            <td>${group.responses.length - idx}</td>
+                            <td class="fs-xs text-muted">${timeFormatted}</td>
+                            <td class="fs-xs text-dim">${r.sessionId ? r.sessionId.slice(-8) : '-'}</td>
+                            <td><span class="badge badge-outline">${r.activeDialectName || r.activeDialect}</span></td>
+                            <td><span class="badge badge-primary">${r.questionCategory}</span></td>
+                            <td><kbd>${r.selectedKey}</kbd></td>
+                            <td><code>${this.escapeHTML(r.selectedOptionText)}</code></td>
+                            <td><code>${this.escapeHTML(r.correctOptionText)}</code></td>
+                            <td>
+                              ${r.isCorrect 
+                                ? '<span class="status-badge status-success">Correct</span>' 
+                                : '<span class="status-badge status-error">Incorrect</span>'}
+                            </td>
+                            <td>
+                              ${r.tabFocusLost 
+                                ? `<span class="badge badge-danger" style="font-size:10px;" title="Participant left tab ${r.tabSwitchCount} time(s). Total away time: ${(r.focusLostDurationMs / 1000).toFixed(1)}s"><i class="fa-solid fa-triangle-exclamation text-danger"></i> Focus Lost (${r.tabSwitchCount}x, ${(r.focusLostDurationMs / 1000).toFixed(1)}s)</span>` 
+                                : '<span class="badge badge-success" style="font-size:10px;"><i class="fa-solid fa-circle-check text-success"></i> Active Focus</span>'}
+                            </td>
+                            <td>${r.responseTimeMs} ms</td>
+                          </tr>
+                        `;
+                      }).join('')}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            </div>
           `;
         }).join('');
       }
+    }
+  }
+
+  toggleUserFolder(safeUidId) {
+    const body = document.getElementById(`folder-body-${safeUidId}`);
+    const icon = document.getElementById(`folder-icon-${safeUidId}`);
+    const chevron = document.getElementById(`folder-chevron-${safeUidId}`);
+
+    if (body) {
+      const isHidden = body.style.display === 'none';
+      body.style.display = isHidden ? 'block' : 'none';
+      if (icon) {
+        icon.className = isHidden ? 'fa-solid fa-folder-open text-warning' : 'fa-solid fa-folder-closed text-warning';
+      }
+      if (chevron) {
+        chevron.style.transform = isHidden ? 'rotate(180deg)' : 'rotate(0deg)';
+      }
+    }
+  }
+
+  expandAllUserFolders() {
+    const bodies = document.querySelectorAll('.user-folder-body');
+    bodies.forEach(b => { b.style.display = 'block'; });
+    const icons = document.querySelectorAll('.user-folder-header .fa-folder-closed');
+    icons.forEach(i => { i.className = 'fa-solid fa-folder-open text-warning'; });
+    const chevrons = document.querySelectorAll('.user-folder-header .fa-chevron-down');
+    chevrons.forEach(c => { c.style.transform = 'rotate(180deg)'; });
+  }
+
+  collapseAllUserFolders() {
+    const bodies = document.querySelectorAll('.user-folder-body');
+    bodies.forEach(b => { b.style.display = 'none'; });
+    const icons = document.querySelectorAll('.user-folder-header .fa-folder-open');
+    icons.forEach(i => { i.className = 'fa-solid fa-folder-closed text-warning'; });
+    const chevrons = document.querySelectorAll('.user-folder-header .fa-chevron-down');
+    chevrons.forEach(c => { c.style.transform = 'rotate(0deg)'; });
+  }
+
+  exportUserCSV(userId) {
+    if (this.analytics) {
+      this.analytics.exportUserCSV(userId);
+    }
+  }
+
+  deleteUserResponses(userId) {
+    if (this.analytics) {
+      this.analytics.deleteUserResponses(userId);
+      this.renderAnalyticsDashboard();
     }
   }
 
