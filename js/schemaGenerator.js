@@ -173,4 +173,5 @@ class SchemaGenerator {
   }
 }
 
+window.RandomGenerator = RandomGenerator;
 window.SchemaGenerator = SchemaGenerator;

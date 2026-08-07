@@ -25,8 +25,15 @@ class SQLiteEngine {
   }
 
   async loadSchemaAndData(schema) {
-    await this.init();
-    if (!this.SQL) throw new Error('SQLite WASM not initialized');
+    try {
+      await this.init();
+    } catch (e) {
+      console.warn('SQLite WASM init deferred:', e);
+    }
+    if (!this.SQL) {
+      console.warn('SQLite WASM engine unavailable. Falling back to Custom JS engine.');
+      return;
+    }
 
     if (this.db) {
       this.db.close();

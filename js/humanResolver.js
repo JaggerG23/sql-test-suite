@@ -98,6 +98,10 @@ class HumanResolver {
   startNewChallenge(schema, query, groundTruthResult) {
     if (!this.app.syntaxDialects || !this.app.quizGenerator) return;
 
+    if (this.app.syntaxDialects.currentSelectedDialectIndex === 3) {
+      this.app.syntaxDialects.pickRandomMixedDialect();
+    }
+
     this.currentSchema = schema;
     this.currentRawQuery = query;
     if (groundTruthResult) {
@@ -129,6 +133,14 @@ class HumanResolver {
     this.renderQuizUI();
   }
 
+  resetToFirstQuestion() {
+    this.stats.totalAnswered = 0;
+    this.isAnswered = false;
+    this.selectedOptionIndex = null;
+    this.currentQuestion = null;
+    this.updateNavCounter();
+  }
+
   switchDialect(dialectIdx) {
     if (!this.currentQuestion || !this.app.syntaxDialects || !this.app.quizGenerator) return;
 
@@ -158,7 +170,7 @@ class HumanResolver {
     const q = this.currentQuestion;
     const activeDialects = this.app.syntaxDialects.getActiveDialects();
     const currentDialectIdx = this.app.syntaxDialects.currentSelectedDialectIndex;
-    const isParticipantPage = window.location.pathname.includes('participant.html');
+    const isParticipantPage = window.location && window.location.pathname ? window.location.pathname.includes('participant.html') : false;
 
     // Update navbar questions counter badge in Participant ID box
     this.updateNavCounter();

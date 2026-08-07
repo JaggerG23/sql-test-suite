@@ -176,6 +176,178 @@ class CustomJsEngine {
   }
 
   parseQuery(sql) {
+    if (sql.includes('query:SetTable') || sql.includes('query:')) {
+      return this.parseQuorumQuery(sql);
+    }
+    if (sql.includes('|>') || /^\s*FROM\b/i.test(sql)) {
+      return this.parsePipeQuery(sql);
+    }
+    return this.parseStandardQuery(sql);
+  }
+
+  parseQuorumQuery(sql) {
+    const ast = {
+      mainTable: '',
+      selectCols: [],
+      joins: [],
+      whereCondition: null,
+      groupBy: [],
+      aggregates: [],
+      orderBy: null,
+      limit: null
+    };
+
+    const lines = sql.split('\n').map(l => l.trim()).filter(l => l.length > 0);
+
+    lines.forEach(line => {
+      const fromQuorumCols = (str) => str.replace(/\b([a-zA-Z_][a-zA-Z0-9_]*):([a-zA-Z_][a-zA-Z0-9_]*)\b/g, '$1.$2');
+
+      const setTblMatch = line.match(/^query:SetTable\("([^"]+)"(?:\s*,\s*"([^"]+)")?\)/i);
+      if (setTblMatch) {
+        ast.mainTable = setTblMatch[1];
+      }
+
+      const joinMatch = line.match(/^query:(AddJoin|AddLeftJoin|AddRightJoin|AddCrossJoin)\("([^"]+)"(?:\s*,\s*"([^"]+)")?\)/i);
+      if (joinMatch) {
+        const jAction = joinMatch[1];
+        const jTable = joinMatch[2];
+        const jCond = joinMatch[3] ? fromQuorumCols(joinMatch[3]) : '';
+        let jType = 'INNER';
+        if (jAction === 'AddLeftJoin') jType = 'LEFT';
+        else if (jAction === 'AddRightJoin') jType = 'RIGHT';
+        else if (jAction === 'AddCrossJoin') jType = 'CROSS';
+
+        ast.joins.push({
+          type: jType,
+          table: jTable,
+          onCondition: jCond
+        });
+      }
+
+      const filterMatch = line.match(/^query:Filter\("([^"]+)"\)/i);
+      if (filterMatch) {
+        const cond = fromQuorumCols(filterMatch[1]);
+        ast.whereCondition = ast.whereCondition ? `${ast.whereCondition} AND ${cond}` : cond;
+      }
+
+      const groupMatch = line.match(/^query:AddGroupColumn\("([^"]+)"\)/i);
+      if (groupMatch) {
+        ast.groupBy.push(fromQuorumCols(groupMatch[1]));
+      }
+
+      const colMatch = line.match(/^query:AddColumn\("([^"]+)"(?:\s*,\s*"([^"]+)")?\)/i);
+      if (colMatch) {
+        const rawExpr = fromQuorumCols(colMatch[1]);
+        const alias = colMatch[2];
+        const aggMatch = rawExpr.match(/(COUNT|SUM|AVG|MAX|MIN)\((.*?)\)/i);
+        if (aggMatch) {
+          ast.aggregates.push({
+            func: aggMatch[1].toUpperCase(),
+            column: aggMatch[2].trim(),
+            alias: alias || `${aggMatch[1].toLowerCase()}_val`
+          });
+        } else if (rawExpr !== '*') {
+          ast.selectCols.push(rawExpr);
+        } else {
+          ast.selectCols.push('*');
+        }
+      }
+
+      const sortMatch = line.match(/^query:Sort\("([^"]+)"(?:\s*,\s*"([^"]+)")?\)/i);
+      if (sortMatch) {
+        ast.orderBy = {
+          column: fromQuorumCols(sortMatch[1]),
+          dir: sortMatch[2] ? sortMatch[2].toUpperCase() : 'ASC'
+        };
+      }
+
+      const limitMatch = line.match(/^query:SetLimit\((\d+)\)/i);
+      if (limitMatch) {
+        ast.limit = parseInt(limitMatch[1], 10);
+      }
+    });
+
+    return ast;
+  }
+
+  parsePipeQuery(sql) {
+    const ast = {
+      mainTable: '',
+      selectCols: [],
+      joins: [],
+      whereCondition: null,
+      groupBy: [],
+      aggregates: [],
+      orderBy: null,
+      limit: null
+    };
+
+    const lines = sql.split('\n').map(l => l.trim()).filter(l => l.length > 0);
+
+    lines.forEach(line => {
+      if (line.startsWith('FROM')) {
+        const fromMatch = line.match(/^FROM\s+([a-zA-Z0-9._`"\[\]]+)/i);
+        if (fromMatch) ast.mainTable = fromMatch[1].replace(/[`"\[\]]/g, '');
+      } else if (line.startsWith('|> JOIN') || line.startsWith('|> INNER JOIN') || line.startsWith('|> LEFT JOIN')) {
+        const joinMatch = line.match(/^\|>\s*(?:(INNER|LEFT)\s+)?JOIN\s+([a-zA-Z0-9._`"\[\]]+)\s+ON\s+(.*)$/i);
+        if (joinMatch) {
+          ast.joins.push({
+            type: joinMatch[1] ? joinMatch[1].toUpperCase() : 'INNER',
+            table: joinMatch[2].replace(/[`"\[\]]/g, ''),
+            onCondition: joinMatch[3].trim()
+          });
+        }
+      } else if (line.startsWith('|> WHERE')) {
+        const cond = line.replace(/^\|>\s*WHERE\s+/i, '').trim();
+        ast.whereCondition = ast.whereCondition ? `${ast.whereCondition} AND ${cond}` : cond;
+      } else if (line.startsWith('|> AGGREGATE')) {
+        const aggText = line.replace(/^\|>\s*AGGREGATE\s+/i, '').trim();
+        const groupIdx = aggText.search(/\bGROUP BY\b/i);
+        let aggPart = aggText;
+        let groupPart = '';
+
+        if (groupIdx !== -1) {
+          aggPart = aggText.substring(0, groupIdx).trim();
+          groupPart = aggText.substring(groupIdx).replace(/^GROUP BY\s+/i, '').trim();
+        }
+
+        if (groupPart) {
+          ast.groupBy = groupPart.split(',').map(s => s.trim().replace(/[`"\[\]]/g, ''));
+        }
+
+        if (aggPart) {
+          const items = aggPart.split(',').map(s => s.trim());
+          items.forEach(item => {
+            const aggMatch = item.match(/(COUNT|SUM|AVG|MAX|MIN)\((.*?)\)\s*(?:AS\s+([a-zA-Z0-9_]+))?/i);
+            if (aggMatch) {
+              ast.aggregates.push({
+                func: aggMatch[1].toUpperCase(),
+                column: aggMatch[2].trim().replace(/[`"\[\]]/g, ''),
+                alias: aggMatch[3] || `${aggMatch[1].toLowerCase()}_val`
+              });
+            }
+          });
+        }
+      } else if (line.startsWith('|> SELECT')) {
+        const selectText = line.replace(/^\|>\s*SELECT\s+/i, '').trim();
+        ast.selectCols = selectText.split(',').map(s => s.trim().replace(/[`"\[\]]/g, ''));
+      } else if (line.startsWith('|> ORDER BY')) {
+        const orderText = line.replace(/^\|>\s*ORDER BY\s+/i, '').trim();
+        const parts = orderText.split(/\s+/);
+        ast.orderBy = {
+          column: parts[0].replace(/[`"\[\]]/g, ''),
+          dir: parts[1] ? parts[1].toUpperCase() : 'ASC'
+        };
+      } else if (line.startsWith('|> LIMIT')) {
+        const limitText = line.replace(/^\|>\s*LIMIT\s+/i, '').trim();
+        ast.limit = parseInt(limitText, 10);
+      }
+    });
+
+    return ast;
+  }
+
+  parseStandardQuery(sql) {
     const ast = {
       mainTable: '',
       selectCols: [],

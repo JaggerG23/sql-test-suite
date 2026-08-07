@@ -26,7 +26,7 @@
           <span class="badge badge-accent" style="font-size: 10px;">Participant Experiment Workspace</span>
         </div>
       </div>
-      <div class="header-actions">
+      <div class="header-actions" style="display: flex; align-items: center; gap: 8px;">
         <!-- Participant ID & Questions Answered Counter Pill -->
         <div class="seed-control d-flex align-center gap-2" style="background: rgba(99, 102, 241, 0.15); border-color: rgba(99, 102, 241, 0.35); padding: 4px 12px; border-radius: 6px;">
           <label for="participant-id-input" style="font-size: 12px; margin: 0;"><i class="fa-solid fa-user-tag text-primary"></i> Participant ID:</label>
@@ -36,6 +36,11 @@
             <i class="fa-solid fa-list-check text-primary"></i> Questions Answered: <strong id="nav-questions-counter" style="color: var(--color-primary); font-size: 13px; margin-left: 2px;">0 / 60</strong>
           </span>
         </div>
+
+        <!-- Dev Reset Test Button (Toggled via ENABLE_DEV_RESET flag) -->
+        <button id="btn-reset-test" class="btn btn-sm" title="Reset test progress and start at Question 1" style="font-size: 11px; padding: 4px 10px; border-radius: 6px; border: 1px solid rgba(239, 68, 68, 0.4); background: rgba(239, 68, 68, 0.15); color: #f87171; cursor: pointer; display: inline-flex; align-items: center; gap: 4px;">
+          <i class="fa-solid fa-rotate-left"></i> Reset Test
+        </button>
       </div>
     </header>
 

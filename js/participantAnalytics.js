@@ -279,14 +279,18 @@ class ParticipantAnalytics {
     URL.revokeObjectURL(url);
   }
 
+  clearAllResponsesWithoutConfirm() {
+    this.responses = [];
+    localStorage.removeItem(this.storageKey);
+    if (this.channel) {
+      this.channel.postMessage({ type: 'CLEAR_LOGS' });
+    }
+    this.notifyCallbacks({ type: 'CLEAR_LOGS' });
+  }
+
   clearAllResponses() {
     if (confirm('Are you sure you want to delete all stored participant response logs? This action cannot be undone.')) {
-      this.responses = [];
-      localStorage.removeItem(this.storageKey);
-      if (this.channel) {
-        this.channel.postMessage({ type: 'CLEAR_LOGS' });
-      }
-      this.notifyCallbacks({ type: 'CLEAR_LOGS' });
+      this.clearAllResponsesWithoutConfirm();
       alert('All response logs cleared.');
     }
   }

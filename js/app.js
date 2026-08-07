@@ -1,10 +1,12 @@
 /**
  * Main Application Orchestrator
  */
+window.ENABLE_DEV_RESET = true;
+
 class SQLMatrixApp {
   constructor() {
-    // Shuffle seed automatically every time the suite is accessed
-    this.seed = Math.floor(Math.random() * 10000) + 1;
+    // Fixed deterministic seed (randomization disabled for un-randomized questions)
+    this.seed = 42;
     this.schemaGenerator = new SchemaGenerator(this.seed);
     this.queryGenerator = new QueryGenerator(this.seed);
     this.syntaxDialects = new SyntaxDialectManager();
@@ -24,16 +26,30 @@ class SQLMatrixApp {
   }
 
   randomizeSeed() {
-    this.seed = Math.floor(Math.random() * 899999) + 100000;
+    // Keep seed fixed to 42 while randomization is disabled
+    this.seed = 42;
     const seedInput = document.getElementById('seed-input');
     if (seedInput) seedInput.value = this.seed;
   }
 
   async init() {
-    this.randomizeSeed();
+    this.seed = 42;
+    const seedInput = document.getElementById('seed-input');
+    if (seedInput) {
+      seedInput.value = 42;
+      seedInput.setAttribute('disabled', 'disabled');
+      seedInput.setAttribute('title', 'Seed randomization disabled');
+    }
     this.bindEvents();
     this.initParticipantUI();
-    await this.sqliteEngine.init();
+    try {
+      await Promise.race([
+        this.sqliteEngine.init(),
+        new Promise(resolve => setTimeout(resolve, 2000))
+      ]);
+    } catch (e) {
+      console.warn('SQLite WASM init deferred:', e);
+    }
     await this.generateAll();
     this.renderAnalyticsDashboard();
   }
@@ -43,23 +59,20 @@ class SQLMatrixApp {
     const seedInput = document.getElementById('seed-input');
     if (seedInput) {
       seedInput.addEventListener('change', (e) => {
-        this.seed = parseInt(e.target.value, 10) || Math.floor(Math.random() * 100000);
+        this.seed = parseInt(e.target.value, 10) || 42;
         this.generateAll();
       });
     }
 
     const btnRandSeed = document.getElementById('btn-randomize-seed');
     if (btnRandSeed) {
-      btnRandSeed.addEventListener('click', () => {
-        this.randomizeSeed();
-        this.generateAll();
-      });
+      btnRandSeed.setAttribute('disabled', 'disabled');
+      btnRandSeed.setAttribute('title', 'Seed randomization disabled');
     }
 
     const btnGenAll = document.getElementById('btn-generate-all');
     if (btnGenAll) {
       btnGenAll.addEventListener('click', () => {
-        this.randomizeSeed();
         this.generateAll();
       });
     }
@@ -538,6 +551,17 @@ class SQLMatrixApp {
       });
     }
 
+    // Dev Reset Test button binding (controlled by window.ENABLE_DEV_RESET)
+    const btnResetTest = document.getElementById('btn-reset-test');
+    if (btnResetTest) {
+      if (!window.ENABLE_DEV_RESET) {
+        btnResetTest.style.display = 'none';
+      } else {
+        btnResetTest.style.display = 'inline-flex';
+        btnResetTest.addEventListener('click', () => this.resetParticipantTest());
+      }
+    }
+
     // Subscribe to real-time telemetry updates across tabs/windows
     if (this.analytics) {
       this.analytics.subscribe((payload) => {
@@ -561,6 +585,18 @@ class SQLMatrixApp {
         this.analytics.clearAllResponses();
         this.renderAnalyticsDashboard();
       });
+    }
+  }
+
+  async resetParticipantTest() {
+    if (confirm('Reset experiment progress and return to Question 1? All dev response progress will be wiped.')) {
+      if (this.analytics) {
+        this.analytics.clearAllResponsesWithoutConfirm();
+      }
+      if (this.humanResolver) {
+        this.humanResolver.resetToFirstQuestion();
+      }
+      await this.generateAll();
     }
   }
 
@@ -671,6 +707,8 @@ class SQLMatrixApp {
       .replace(/"/g, '&quot;');
   }
 }
+
+window.SQLMatrixApp = SQLMatrixApp;
 
 document.addEventListener('DOMContentLoaded', () => {
   window.app = new SQLMatrixApp();

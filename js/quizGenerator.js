@@ -49,98 +49,104 @@ class QuizGenerator {
    */
   generateJsCodeFromSql(sql, schema, dialectSql) {
     const queryStr = (dialectSql || sql).trim();
-    const clauses = this.parseSqlClauses(queryStr);
 
-    // Seed hash to pick 1 of 4 beginner-friendly query-manipulation patterns
+    // Seed hash to pick 1 of 4 beginner-friendly code structure variations
     const strHash = queryStr.split('').reduce((acc, char) => acc + char.charCodeAt(0), 0);
     const patternIdx = (strHash + (dialectSql ? dialectSql.length : 7)) % 4;
 
-    const outputVarNames = ['resultTable', 'finalData', 'queryOutput', 'summaryRows', 'resultData'];
+    const outputVarNames = ['resultTable', 'finalData', 'queryOutput', 'summaryRows'];
     const outputVar = outputVarNames[patternIdx % outputVarNames.length];
 
     let blocks = [];
 
     switch (patternIdx) {
       case 0:
-        // Pattern 0: Status Loop & Placeholder Replacement (.replace())
+        // Pattern 0: Status Loop & Multi-line String
         blocks.push(`let statusList = ["init", "validated", "ready"];\nlet stepCount = 0;\nfor (let status of statusList) {\n  stepCount += 1;\n}`);
-
-        if (clauses.where) {
-          blocks.push(`let baseQuery = \`${clauses.selectFrom} {WHERE_CLAUSE}${clauses.rest ? ' ' + clauses.rest : ''};\`;`);
-          blocks.push(`let filterCondition = "${clauses.where}";`);
-          blocks.push(`let finalQuery = baseQuery.replace("{WHERE_CLAUSE}", filterCondition);`);
-        } else {
-          const fromMatch = clauses.selectFrom.match(/\bFROM\s+([a-zA-Z0-9_]+)/i);
-          const tblName = fromMatch ? fromMatch[1] : 'table1';
-          const templateSelect = clauses.selectFrom.replace(new RegExp(`\\b${tblName}\\b`, 'i'), '{TARGET_TABLE}');
-          blocks.push(`let templateQuery = \`${templateSelect}${clauses.rest ? ' ' + clauses.rest : ''};\`;`);
-          blocks.push(`let targetTable = "${tblName}";`);
-          blocks.push(`let finalQuery = templateQuery.replace("{TARGET_TABLE}", targetTable);`);
-        }
-
+        blocks.push(`let query = \`\n${queryStr}\n\`;`);
         blocks.push(`let executionLog = [];\nexecutionLog.push(\`Built query in \${stepCount} steps\`);`);
-        blocks.push(`let ${outputVar} = db.execute(finalQuery);`);
-        break;
-
-      case 1:
-        // Pattern 1: Retry Counter & String Concatenation (+=)
-        blocks.push(`let retryCounter = 0;\nwhile (retryCounter < 2) {\n  retryCounter++;\n}`);
-
-        blocks.push(`let query = \`${clauses.selectFrom}\`;`);
-        if (clauses.where) {
-          blocks.push(`query += " ${clauses.where}";`);
-        }
-        if (clauses.rest) {
-          blocks.push(`query += " ${clauses.rest}";`);
-        }
-        blocks.push(`query += ";";`);
-
-        blocks.push(`let auditTrail = [];\nauditTrail.push(\`Attempt \${retryCounter} successful\`);`);
         blocks.push(`let ${outputVar} = db.execute(query);`);
         break;
 
-      case 2:
-        // Pattern 2: Config Flag, Counter Loop & Template Literal Assembly (${...})
-        blocks.push(`let isApproved = true;\nlet checkCount = 0;\nfor (let i = 0; i < 3; i++) {\n  checkCount++;\n}`);
+      case 1:
+        // Pattern 1: Retry Counter & Direct String Assignment
+        blocks.push(`let retryCounter = 0;\nwhile (retryCounter < 2) {\n  retryCounter++;\n}`);
+        blocks.push(`let targetQuery = \`\n${queryStr}\n\`;`);
+        blocks.push(`let auditTrail = [];\nauditTrail.push(\`Attempt \${retryCounter} successful\`);`);
+        blocks.push(`let ${outputVar} = db.execute(targetQuery);`);
+        break;
 
-        blocks.push(`let mainClause = \`${clauses.selectFrom}\`;`);
-        if (clauses.where) {
-          blocks.push(`let whereCondition = "${clauses.where}";`);
-        }
-        if (clauses.rest) {
-          blocks.push(`let additionalClause = "${clauses.rest}";`);
-        }
-        
-        let templateParts = ['${mainClause}'];
-        if (clauses.where) templateParts.push('${whereCondition}');
-        if (clauses.rest) templateParts.push('${additionalClause}');
-        
-        blocks.push(`let fullQuery = \`${templateParts.join(' ')};\`;`);
-        blocks.push(`let ${outputVar} = db.execute(fullQuery);`);
+      case 2:
+        // Pattern 2: Config Flag & Statement Variable
+        blocks.push(`let isApproved = true;\nlet checkCount = 0;\nfor (let i = 0; i < 3; i++) {\n  checkCount++;\n}`);
+        blocks.push(`let sqlStatement = \`\n${queryStr}\n\`;`);
+        blocks.push(`let ${outputVar} = db.execute(sqlStatement);`);
         break;
 
       case 3:
       default:
-        // Pattern 3: Loop Accumulator & Array Join (.join(" "))
+        // Pattern 3: Loop Accumulator & Full Query Template
         blocks.push(`let batchNumber = 1;\nlet processLogs = ["start", "process"];\nfor (let log of processLogs) {\n  batchNumber++;\n}`);
-
-        let parts = [`"${clauses.selectFrom}"`];
-        if (clauses.where) parts.push(`"${clauses.where}"`);
-        if (clauses.rest) parts.push(`"${clauses.rest}"`);
-
-        blocks.push(`let queryParts = [\n  ${parts.join(',\n  ')}\n];`);
-        blocks.push(`let assembledQuery = queryParts.join(" ") + ";";`);
+        blocks.push(`let fullQuery = \`\n${queryStr}\n\`;`);
         blocks.push(`let statusMsg = batchNumber > 0 ? "OK" : "PENDING";`);
-        blocks.push(`let ${outputVar} = db.execute(assembledQuery);`);
+        blocks.push(`let ${outputVar} = db.execute(fullQuery);`);
         break;
     }
 
-    // Join blocks with double newlines (\n\n) for clean, spacious readability
+    // Join code blocks with clean double newlines (\n\n)
     return blocks.join('\n\n');
   }
 
   parseSqlClauses(sql) {
     const cleanSql = sql.trim().replace(/;$/, '');
+
+    // Check if query is in Quorum syntax
+    if (cleanSql.includes('query:SetTable') || cleanSql.includes('query:')) {
+      const lines = cleanSql.split('\n').map(l => l.trim()).filter(l => l.length > 0);
+      let selectFromParts = [];
+      let where = null;
+      let restParts = [];
+
+      lines.forEach(line => {
+        if (line.startsWith('query:SetTable') || line.startsWith('query:AddJoin') || line.startsWith('query:AddLeftJoin') || line.startsWith('query:AddRightJoin')) {
+          selectFromParts.push(line);
+        } else if (line.startsWith('query:Filter')) {
+          where = line;
+        } else {
+          restParts.push(line);
+        }
+      });
+
+      return {
+        selectFrom: selectFromParts.join('\n'),
+        where: where,
+        rest: restParts.join('\n')
+      };
+    }
+
+    // Check if query is in Google SQL Pipe syntax
+    if (cleanSql.includes('|>') || /^\s*FROM\b/i.test(cleanSql)) {
+      const lines = cleanSql.split('\n').map(l => l.trim()).filter(l => l.length > 0);
+      let selectFromParts = [];
+      let where = null;
+      let restParts = [];
+
+      lines.forEach(line => {
+        if (line.startsWith('FROM') || line.startsWith('|> JOIN') || line.startsWith('|> INNER JOIN') || line.startsWith('|> LEFT JOIN')) {
+          selectFromParts.push(line);
+        } else if (line.startsWith('|> WHERE')) {
+          where = line;
+        } else {
+          restParts.push(line);
+        }
+      });
+
+      return {
+        selectFrom: selectFromParts.join('\n'),
+        where: where,
+        rest: restParts.join('\n')
+      };
+    }
     
     // Find split index for WHERE clause or rest of clauses (GROUP BY, ORDER BY, LIMIT)
     const whereIdx = cleanSql.search(/\bWHERE\b/i);
