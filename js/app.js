@@ -221,7 +221,7 @@ class QueryExperimentApp {
 
   async generateSchemaOnly() {
     const numTablesElem = document.getElementById('cfg-tables');
-    const numTables = numTablesElem ? parseInt(numTablesElem.value, 10) : 3;
+    const numTables = numTablesElem ? parseInt(numTablesElem.value, 10) : 5;
 
     const colsPerTableElem = document.getElementById('cfg-cols');
     const colsPerTable = colsPerTableElem ? parseInt(colsPerTableElem.value, 10) : 4;
@@ -269,6 +269,12 @@ class QueryExperimentApp {
     if (!select) return;
 
     select.innerHTML = '';
+    
+    const optIntake = document.createElement('option');
+    optIntake.value = 'intake';
+    optIntake.textContent = '📋 Pre-Experiment Questionnaire';
+    select.appendChild(optIntake);
+
     for (let qNum = 1; qNum <= 60; qNum++) {
       const bIdx = Math.floor((qNum - 1) / 6) + 1;
       const vIdx = ((qNum - 1) % 6) + 1;
@@ -278,10 +284,42 @@ class QueryExperimentApp {
       select.appendChild(opt);
     }
 
+    const optFinal = document.createElement('option');
+    optFinal.value = 'final_thoughts';
+    optFinal.textContent = '🏁 Final Thoughts & Conclusion';
+    select.appendChild(optFinal);
+
     select.value = this.currentQuestionNumber || 1;
   }
 
   async loadIncrementalQuestion(targetQNum) {
+    if (targetQNum === 'intake') {
+      const select = document.getElementById('question-jump-select');
+      if (select) select.value = 'intake';
+      if (this.humanResolver) this.humanResolver.renderIntakeScreen();
+      return;
+    }
+
+    if (targetQNum === 'final_thoughts' || (typeof targetQNum === 'number' && targetQNum > 60)) {
+      const select = document.getElementById('question-jump-select');
+      if (select) select.value = 'final_thoughts';
+      if (this.humanResolver) this.humanResolver.renderFinalThoughtsScreen();
+      return;
+    }
+
+    // Check if intake form has been completed
+    if (this.humanResolver && !this.humanResolver.intakeCompleted) {
+      const demo = this.analytics ? this.analytics.getDemographics() : null;
+      if (!demo) {
+        const select = document.getElementById('question-jump-select');
+        if (select) select.value = 'intake';
+        this.humanResolver.renderIntakeScreen();
+        return;
+      } else {
+        this.humanResolver.intakeCompleted = true;
+      }
+    }
+
     const qNum = Math.max(1, Math.min(60, parseInt(targetQNum, 10) || 1));
     this.currentQuestionNumber = qNum;
 
@@ -296,7 +334,7 @@ class QueryExperimentApp {
     if (!this.currentSchema || this.lastBlockIndex !== blockIndex) {
       this.lastBlockIndex = blockIndex;
       this.schemaGenerator = new SchemaGenerator(blockSeed);
-      this.currentSchema = this.schemaGenerator.generateSchema(3, 4, 30, true);
+      this.currentSchema = this.schemaGenerator.generateSchema(5, 4, 30, true);
 
       await this.sqliteEngine.loadSchemaAndData(this.currentSchema);
       this.customJsEngine.loadSchemaAndData(this.currentSchema);
@@ -448,7 +486,7 @@ class QueryExperimentApp {
       const tier = tiers[(i - 1) % 3];
 
       const sGen = new SchemaGenerator(iterSeed);
-      const schema = sGen.generateSchema(3, 4, 30, true);
+      const schema = sGen.generateSchema(5, 4, 30, true);
 
       const qGen = new QueryGenerator(iterSeed);
       const query = qGen.generateQuery(schema, tier, true);
@@ -609,10 +647,10 @@ class QueryExperimentApp {
     const input = document.getElementById('participant-id-input');
     if (input) {
       input.value = this.analytics.participantId;
-      input.addEventListener('change', (e) => {
-        this.analytics.setParticipantId(e.target.value);
-        this.renderAnalyticsDashboard();
-      });
+      input.setAttribute('readonly', 'readonly');
+      input.setAttribute('disabled', 'disabled');
+      input.setAttribute('title', 'Participant ID is automatically assigned and cannot be modified');
+      input.style.cursor = 'not-allowed';
     }
 
     // Dev Reset Test button binding (controlled by window.ENABLE_DEV_RESET)
@@ -653,14 +691,15 @@ class QueryExperimentApp {
   }
 
   async resetParticipantTest() {
-    if (confirm('Reset experiment progress and return to Question 1? All dev response progress will be wiped.')) {
+    if (confirm('Reset experiment progress and return to Questionnaire & Question 1? All dev response progress will be wiped.')) {
       if (this.analytics) {
         this.analytics.clearAllResponsesWithoutConfirm();
       }
       if (this.humanResolver) {
         this.humanResolver.resetToFirstQuestion();
+        this.humanResolver.intakeCompleted = false;
       }
-      await this.loadIncrementalQuestion(1);
+      await this.loadIncrementalQuestion('intake');
     }
   }
 
@@ -769,6 +808,28 @@ class QueryExperimentApp {
 
               <!-- Folder Body (Table of Event Logs for this User) -->
               <div class="user-folder-body p-2" id="folder-body-${safeUidId}" style="display: none; background: rgba(10, 14, 26, 0.95);">
+                ${group.demographics || group.finalThoughts ? `
+                  <div class="user-demo-bar p-2 mb-2" style="background: rgba(99, 102, 241, 0.08); border: 1px solid rgba(99, 102, 241, 0.2); border-radius: 6px; font-size: 11px;">
+                    ${group.demographics ? `
+                      <div class="d-flex flex-wrap gap-3 align-center mb-1" style="display:flex; flex-wrap:wrap; gap:12px;">
+                        <span><i class="fa-solid fa-cake-candles text-accent"></i> <strong>Age:</strong> ${this.escapeHTML(group.demographics.age || 'N/A')}</span>
+                        <span><i class="fa-solid fa-venus-mars text-accent"></i> <strong>Gender:</strong> ${this.escapeHTML(group.demographics.gender || 'N/A')}</span>
+                        <span><i class="fa-solid fa-graduation-cap text-accent"></i> <strong>Academic:</strong> ${this.escapeHTML(group.demographics.academicStanding || 'N/A')}</span>
+                      </div>
+                      <div class="d-flex flex-wrap gap-3 align-center" style="display:flex; flex-wrap:wrap; gap:12px;">
+                        <span><i class="fa-solid fa-code text-success"></i> <strong>Coding Exp:</strong> ${this.escapeHTML(group.demographics.codingExp || 'N/A')}</span>
+                        <span><i class="fa-solid fa-database text-warning"></i> <strong>DB Exp:</strong> ${this.escapeHTML(group.demographics.dbExp || 'N/A')}</span>
+                        <span><i class="fa-solid fa-terminal text-info"></i> <strong>Query Exp:</strong> ${this.escapeHTML(group.demographics.queryExp || 'N/A')}</span>
+                      </div>
+                    ` : ''}
+                    ${group.finalThoughts && group.finalThoughts.thoughts ? `
+                      <div class="mt-2 pt-2 border-top" style="border-top: 1px solid rgba(255,255,255,0.08); margin-top: 6px; padding-top: 6px;">
+                        <strong style="color: var(--color-accent);"><i class="fa-solid fa-comment-dots"></i> Final Thoughts:</strong>
+                        <em class="text-main" style="display: block; margin-top: 2px;">"${this.escapeHTML(group.finalThoughts.thoughts)}"</em>
+                      </div>
+                    ` : ''}
+                  </div>
+                ` : ''}
                 <div class="table-responsive" style="max-height: 320px; overflow: auto; border: 1px solid rgba(255,255,255,0.06); border-radius: 6px;">
                   <table class="batch-results-table" style="white-space: nowrap; font-size: 11px;">
                     <thead>

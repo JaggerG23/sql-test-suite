@@ -36,7 +36,7 @@ class SchemaGenerator {
     this.categoryNames = ['Electronics', 'Home & Kitchen', 'Books', 'Clothing', 'Sports', 'Toys', 'Automotive', 'Beauty'];
   }
 
-  generateSchema(numTables = 3, colsPerTable = 4, rowsPerTable = 50, useFK = true) {
+  generateSchema(numTables = 5, colsPerTable = 4, rowsPerTable = 50, useFK = true) {
     const selectedTables = this.tablePool.slice(0, numTables);
     const schema = {
       tables: [],

@@ -7,6 +7,8 @@ class ParticipantAnalytics {
     this.storageKey = 'sql_test_suite_participant_responses';
     this.participantIdKey = 'sql_test_suite_participant_id';
     this.sessionIdKey = 'sql_test_suite_session_id';
+    this.demographicsKeyPrefix = 'sql_test_suite_demographics_';
+    this.finalThoughtsKeyPrefix = 'sql_test_suite_final_thoughts_';
 
     this.participantId = this.initParticipantId();
     this.sessionId = this.initSessionId();
@@ -64,6 +66,59 @@ class ParticipantAnalytics {
     if (!newId || !newId.trim()) return;
     this.participantId = newId.trim();
     localStorage.setItem(this.participantIdKey, this.participantId);
+  }
+
+  saveDemographics(data, pid = this.participantId) {
+    if (!pid) return null;
+    const record = {
+      age: data.age || '',
+      gender: data.gender || '',
+      academicStanding: data.academicStanding || '',
+      codingExp: data.codingExp || '',
+      dbExp: data.dbExp || '',
+      queryExp: data.queryExp || '',
+      timestamp: new Date().toISOString()
+    };
+    try {
+      localStorage.setItem(this.demographicsKeyPrefix + pid, JSON.stringify(record));
+    } catch (e) {
+      console.error('Failed to save demographics:', e);
+    }
+    return record;
+  }
+
+  getDemographics(pid = this.participantId) {
+    if (!pid) return null;
+    try {
+      const data = localStorage.getItem(this.demographicsKeyPrefix + pid);
+      return data ? JSON.parse(data) : null;
+    } catch (e) {
+      return null;
+    }
+  }
+
+  saveFinalThoughts(thoughtsText, pid = this.participantId) {
+    if (!pid) return null;
+    const record = {
+      thoughts: thoughtsText || '',
+      timestamp: new Date().toISOString()
+    };
+    try {
+      localStorage.setItem(this.finalThoughtsKeyPrefix + pid, JSON.stringify(record));
+    } catch (e) {
+      console.error('Failed to save final thoughts:', e);
+    }
+    return record;
+  }
+
+  getFinalThoughts(pid = this.participantId) {
+    if (!pid) return null;
+    try {
+      const data = localStorage.getItem(this.finalThoughtsKeyPrefix + pid);
+      return data ? JSON.parse(data) : null;
+    } catch (e) {
+      return null;
+    }
   }
 
   initSessionId() {
@@ -195,6 +250,13 @@ class ParticipantAnalytics {
     const headers = [
       'Response ID',
       'Participant ID',
+      'Age',
+      'Gender',
+      'Academic Standing',
+      'Coding Experience',
+      'Database Experience',
+      'Query Writing Experience',
+      'Final Thoughts',
       'Session ID',
       'Timestamp (ISO)',
       'Question Category',
@@ -219,26 +281,37 @@ class ParticipantAnalytics {
       return `"${str}"`;
     };
 
-    const rows = this.responses.map(r => [
-      r.id,
-      r.participantId,
-      r.sessionId,
-      r.timestamp,
-      r.questionCategory,
-      r.activeDialect,
-      r.activeDialectName,
-      r.selectedKey,
-      r.selectedOptionText,
-      r.correctOptionText,
-      r.isCorrect ? 'TRUE' : 'FALSE',
-      r.responseTimeMs,
-      r.seed,
-      r.tabFocusLost ? 'TRUE' : 'FALSE',
-      r.tabSwitchCount || 0,
-      r.focusLostDurationMs || 0,
-      r.incompleteQuery,
-      r.rawQuery
-    ].map(escapeCsvCell).join(','));
+    const rows = this.responses.map(r => {
+      const demo = this.getDemographics(r.participantId) || {};
+      const thoughtsObj = this.getFinalThoughts(r.participantId) || {};
+      return [
+        r.id,
+        r.participantId,
+        demo.age || '',
+        demo.gender || '',
+        demo.academicStanding || '',
+        demo.codingExp || '',
+        demo.dbExp || '',
+        demo.queryExp || '',
+        thoughtsObj.thoughts || '',
+        r.sessionId,
+        r.timestamp,
+        r.questionCategory,
+        r.activeDialect,
+        r.activeDialectName,
+        r.selectedKey,
+        r.selectedOptionText,
+        r.correctOptionText,
+        r.isCorrect ? 'TRUE' : 'FALSE',
+        r.responseTimeMs,
+        r.seed,
+        r.tabFocusLost ? 'TRUE' : 'FALSE',
+        r.tabSwitchCount || 0,
+        r.focusLostDurationMs || 0,
+        r.incompleteQuery,
+        r.rawQuery
+      ].map(escapeCsvCell).join(',');
+    });
 
     const csvContent = [headers.map(escapeCsvCell).join(','), ...rows].join('\n');
     const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
@@ -282,6 +355,8 @@ class ParticipantAnalytics {
       const g = groups[uid];
       g.accuracy = g.totalAnswers > 0 ? Math.round((g.correctCount / g.totalAnswers) * 100) : 0;
       g.avgTimeMs = g.totalAnswers > 0 ? Math.round(g.totalTimeMs / g.totalAnswers) : 0;
+      g.demographics = this.getDemographics(uid);
+      g.finalThoughts = this.getFinalThoughts(uid);
     });
 
     return groups;
@@ -297,6 +372,13 @@ class ParticipantAnalytics {
     const headers = [
       'Response ID',
       'Participant ID',
+      'Age',
+      'Gender',
+      'Academic Standing',
+      'Coding Experience',
+      'Database Experience',
+      'Query Writing Experience',
+      'Final Thoughts',
       'Session ID',
       'Timestamp (ISO)',
       'Question Category',
@@ -321,26 +403,37 @@ class ParticipantAnalytics {
       return `"${str}"`;
     };
 
-    const rows = userResponses.map(r => [
-      r.id,
-      r.participantId,
-      r.sessionId,
-      r.timestamp,
-      r.questionCategory,
-      r.activeDialect,
-      r.activeDialectName,
-      r.selectedKey,
-      r.selectedOptionText,
-      r.correctOptionText,
-      r.isCorrect ? 'TRUE' : 'FALSE',
-      r.responseTimeMs,
-      r.seed,
-      r.tabFocusLost ? 'TRUE' : 'FALSE',
-      r.tabSwitchCount || 0,
-      r.focusLostDurationMs || 0,
-      r.incompleteQuery,
-      r.rawQuery
-    ].map(escapeCsvCell).join(','));
+    const rows = userResponses.map(r => {
+      const demo = this.getDemographics(r.participantId) || {};
+      const thoughtsObj = this.getFinalThoughts(r.participantId) || {};
+      return [
+        r.id,
+        r.participantId,
+        demo.age || '',
+        demo.gender || '',
+        demo.academicStanding || '',
+        demo.codingExp || '',
+        demo.dbExp || '',
+        demo.queryExp || '',
+        thoughtsObj.thoughts || '',
+        r.sessionId,
+        r.timestamp,
+        r.questionCategory,
+        r.activeDialect,
+        r.activeDialectName,
+        r.selectedKey,
+        r.selectedOptionText,
+        r.correctOptionText,
+        r.isCorrect ? 'TRUE' : 'FALSE',
+        r.responseTimeMs,
+        r.seed,
+        r.tabFocusLost ? 'TRUE' : 'FALSE',
+        r.tabSwitchCount || 0,
+        r.focusLostDurationMs || 0,
+        r.incompleteQuery,
+        r.rawQuery
+      ].map(escapeCsvCell).join(',');
+    });
 
     const csvContent = [headers.map(escapeCsvCell).join(','), ...rows].join('\n');
     const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });

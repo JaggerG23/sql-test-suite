@@ -27,6 +27,8 @@ class HumanResolver {
       lastBlurTime: null
     };
 
+    this.intakeCompleted = false;
+
     // Attach global keyboard shortcuts & focus tracking listeners
     this.bindKeyboardShortcuts();
     this.bindFocusListeners();
@@ -95,8 +97,301 @@ class HumanResolver {
     });
   }
 
+  renderIntakeScreen() {
+    const container = document.getElementById('human-challenge-container');
+    if (!container) return;
+
+    const existingDemo = this.app.analytics ? this.app.analytics.getDemographics() || {} : {};
+    const pid = this.app.analytics ? this.app.analytics.participantId : '';
+
+    container.innerHTML = `
+      <div class="card quiz-card glow-card" style="max-width: 860px; margin: 20px auto; padding: 28px; background: rgba(18, 22, 34, 0.95); border: 1px solid rgba(99, 102, 241, 0.35); border-radius: 14px; box-shadow: 0 12px 40px rgba(0,0,0,0.5);">
+        
+        <!-- Header & Explanation Box -->
+        <div class="card-header border-bottom pb-4 mb-4" style="border-bottom: 1px solid rgba(255,255,255,0.1);">
+          <div style="display: flex; justify-content: space-between; align-items: flex-start; flex-wrap: wrap; gap: 16px; margin-bottom: 16px;">
+            <div style="display: flex; align-items: center; gap: 14px; flex: 1; min-width: 280px;">
+              <div class="logo-icon" style="width: 46px; height: 46px; font-size: 22px; background: linear-gradient(135deg, var(--color-primary), var(--color-accent)); border-radius: 10px; display: flex; align-items: center; justify-content: center; color: #fff; box-shadow: 0 0 18px rgba(99, 102, 241, 0.4); flex-shrink: 0;">
+                <i class="fa-solid fa-graduation-cap"></i>
+              </div>
+              <div>
+                <h2 style="font-family: var(--font-title); font-size: 21px; font-weight: 700; color: #fff; margin: 0; line-height: 1.25;">
+                  SQL Query & Syntax Comprehension Study
+                </h2>
+                <span class="text-accent fs-xs" style="font-size: 12px; margin-top: 3px; display: inline-block;">
+                  <i class="fa-solid fa-clipboard-list"></i> Pre-Experiment Registration & Overview
+                </span>
+              </div>
+            </div>
+            
+            <div style="background: rgba(6, 182, 212, 0.12); border: 1px solid rgba(6, 182, 212, 0.35); padding: 6px 14px; border-radius: 8px; font-size: 12px; color: var(--color-accent); white-space: nowrap; flex-shrink: 0; align-self: flex-start;">
+              <i class="fa-solid fa-fingerprint"></i> Participant User ID: <strong style="color: #fff; font-family: var(--font-mono); font-weight: 700; margin-left: 4px;">${this.escapeHTML(pid)}</strong>
+            </div>
+          </div>
+          
+          <!-- Detailed Telemetry & Explanation Box -->
+          <div style="background: rgba(99, 102, 241, 0.08); border-left: 4px solid var(--color-primary); border-radius: 8px; padding: 16px; font-size: 13px; line-height: 1.6; color: #e2e8f0;">
+            <p style="margin: 0 0 8px 0; font-weight: 700; color: var(--text-main); font-size: 13.5px;">
+              <i class="fa-solid fa-circle-info text-primary"></i> What you will be doing:
+            </p>
+            <p style="margin: 0 0 12px 0;">
+              In this study, you will evaluate <strong>60 SQL query challenge questions</strong>. For each question, you will review a code snippet formatted in a specific syntax dialect and determine the expected output dataset table from 4 candidate options using hotkeys (<strong>1, 2, 3, or 4</strong>) or by clicking an option.
+            </p>
+
+            <div style="background: rgba(0,0,0,0.3); border: 1px solid rgba(255,255,255,0.08); border-radius: 6px; padding: 12px; margin-top: 10px;">
+              <p style="margin: 0 0 8px 0; font-weight: 700; color: var(--color-accent); font-size: 12px;">
+                <i class="fa-solid fa-shield-halved"></i> Comprehensive Summary of Data Tracked & Collected During This Study:
+              </p>
+              <ul style="margin: 0; padding-left: 18px; font-size: 11.5px; color: var(--text-muted); display: grid; grid-template-columns: 1fr 1fr; gap: 6px 16px;">
+                <li><strong>Demographics:</strong> Age, Gender, Academic Standing</li>
+                <li><strong>Experience:</strong> Coding Exp, DB Exp, Query Authoring Exp</li>
+                <li><strong>Identifiers:</strong> Immutable User ID, Session Token, Timestamps</li>
+                <li><strong>Question Data:</strong> Question Tier/Category, Code Snippet, Raw SQL</li>
+                <li><strong>Syntax Telemetry:</strong> Active Dialect Format (ANSI, LINQ, Quorum, Mixed)</li>
+                <li><strong>Performance Metrics:</strong> Option Selected (1-4), Accuracy (Correct/Incorrect)</li>
+                <li><strong>Timing Data:</strong> Exact Response Duration (ms) per Question</li>
+                <li><strong>Tab Focus Telemetry:</strong> Tab Blur Count, Total Away Time (ms)</li>
+                <li><strong>Qualitative Feedback:</strong> Optional Final Thoughts & Comments</li>
+              </ul>
+            </div>
+
+            <p style="margin: 10px 0 0 0; font-size: 11.5px; color: var(--text-muted);">
+              Please complete the brief demographic questionnaire below to begin the study.
+            </p>
+          </div>
+        </div>
+
+        <!-- Form Fields Grid -->
+        <form id="intake-form" onsubmit="return false;">
+          <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 14px;">
+            
+            <!-- Age -->
+            <div class="form-group">
+              <label for="intake-age" style="font-size: 12px; font-weight: 600; margin-bottom: 5px; display: block; color: var(--text-main);">
+                <i class="fa-solid fa-cake-candles text-accent"></i> Age <span style="color: var(--color-danger)">*</span>
+              </label>
+              <input type="number" id="intake-age" class="form-control" min="15" max="100" placeholder="e.g. 24" value="${this.escapeHTML(existingDemo.age || '')}" required style="width: 100%; padding: 8px 12px; background: rgba(0,0,0,0.4); border: 1px solid rgba(255,255,255,0.15); border-radius: 6px; color: #fff; font-size: 13px;">
+            </div>
+
+            <!-- Gender -->
+            <div class="form-group">
+              <label for="intake-gender" style="font-size: 12px; font-weight: 600; margin-bottom: 5px; display: block; color: var(--text-main);">
+                <i class="fa-solid fa-venus-mars text-accent"></i> Gender <span style="color: var(--color-danger)">*</span>
+              </label>
+              <select id="intake-gender" class="form-select" required style="width: 100%; padding: 8px 12px; background: rgba(0,0,0,0.4); border: 1px solid rgba(255,255,255,0.15); border-radius: 6px; color: #fff; font-size: 13px;">
+                <option value="" disabled ${!existingDemo.gender ? 'selected' : ''}>Select Gender...</option>
+                <option value="Male" ${existingDemo.gender === 'Male' ? 'selected' : ''}>Male</option>
+                <option value="Female" ${existingDemo.gender === 'Female' ? 'selected' : ''}>Female</option>
+                <option value="Non-binary" ${existingDemo.gender === 'Non-binary' ? 'selected' : ''}>Non-binary / Third gender</option>
+                <option value="Prefer not to say" ${existingDemo.gender === 'Prefer not to say' ? 'selected' : ''}>Prefer not to say</option>
+                <option value="Other" ${existingDemo.gender === 'Other' ? 'selected' : ''}>Other</option>
+              </select>
+            </div>
+
+            <!-- Academic Standing -->
+            <div class="form-group">
+              <label for="intake-academic-standing" style="font-size: 12px; font-weight: 600; margin-bottom: 5px; display: block; color: var(--text-main);">
+                <i class="fa-solid fa-graduation-cap text-accent"></i> Academic Standing <span style="color: var(--color-danger)">*</span>
+              </label>
+              <select id="intake-academic-standing" class="form-select" required style="width: 100%; padding: 8px 12px; background: rgba(0,0,0,0.4); border: 1px solid rgba(255,255,255,0.15); border-radius: 6px; color: #fff; font-size: 13px;">
+                <option value="" disabled ${!existingDemo.academicStanding ? 'selected' : ''}>Select Academic Standing...</option>
+                <option value="Undergraduate (Freshman / Sophomore)" ${existingDemo.academicStanding === 'Undergraduate (Freshman / Sophomore)' ? 'selected' : ''}>Undergraduate (Freshman / Sophomore)</option>
+                <option value="Undergraduate (Junior / Senior)" ${existingDemo.academicStanding === 'Undergraduate (Junior / Senior)' ? 'selected' : ''}>Undergraduate (Junior / Senior)</option>
+                <option value="Master's Student" ${existingDemo.academicStanding === "Master's Student" ? 'selected' : ''}>Master's Student</option>
+                <option value="Ph.D. Student / Doctoral Candidate" ${existingDemo.academicStanding === 'Ph.D. Student / Doctoral Candidate' ? 'selected' : ''}>Ph.D. Student / Doctoral Candidate</option>
+                <option value="Postdoctoral Researcher / Faculty" ${existingDemo.academicStanding === 'Postdoctoral Researcher / Faculty' ? 'selected' : ''}>Postdoctoral Researcher / Faculty</option>
+                <option value="Industry Professional / Engineer" ${existingDemo.academicStanding === 'Industry Professional / Engineer' ? 'selected' : ''}>Industry Professional / Engineer</option>
+                <option value="Other" ${existingDemo.academicStanding === 'Other' ? 'selected' : ''}>Other</option>
+              </select>
+            </div>
+
+            <!-- Coding Experience -->
+            <div class="form-group">
+              <label for="intake-coding-exp" style="font-size: 12px; font-weight: 600; margin-bottom: 5px; display: block; color: var(--text-main);">
+                <i class="fa-solid fa-code text-accent"></i> Coding Experience <span style="color: var(--color-danger)">*</span>
+              </label>
+              <select id="intake-coding-exp" class="form-select" required style="width: 100%; padding: 8px 12px; background: rgba(0,0,0,0.4); border: 1px solid rgba(255,255,255,0.15); border-radius: 6px; color: #fff; font-size: 13px;">
+                <option value="" disabled ${!existingDemo.codingExp ? 'selected' : ''}>Select Coding Experience...</option>
+                <option value="None (< 1 year)" ${existingDemo.codingExp === 'None (< 1 year)' ? 'selected' : ''}>None (< 1 year)</option>
+                <option value="1–2 years" ${existingDemo.codingExp === '1–2 years' ? 'selected' : ''}>1–2 years</option>
+                <option value="3–5 years" ${existingDemo.codingExp === '3–5 years' ? 'selected' : ''}>3–5 years</option>
+                <option value="5+ years" ${existingDemo.codingExp === '5+ years' ? 'selected' : ''}>5+ years</option>
+              </select>
+            </div>
+
+            <!-- Database Experience -->
+            <div class="form-group" style="grid-column: span 2;">
+              <label for="intake-db-exp" style="font-size: 12px; font-weight: 600; margin-bottom: 5px; display: block; color: var(--text-main);">
+                <i class="fa-solid fa-database text-accent"></i> Database Experience <span style="color: var(--color-danger)">*</span>
+              </label>
+              <select id="intake-db-exp" class="form-select" required style="width: 100%; padding: 8px 12px; background: rgba(0,0,0,0.4); border: 1px solid rgba(255,255,255,0.15); border-radius: 6px; color: #fff; font-size: 13px;">
+                <option value="" disabled ${!existingDemo.dbExp ? 'selected' : ''}>Select Database Experience...</option>
+                <option value="No database experience" ${existingDemo.dbExp === 'No database experience' ? 'selected' : ''}>No database experience</option>
+                <option value="Beginner (< 1 year)" ${existingDemo.dbExp === 'Beginner (< 1 year)' ? 'selected' : ''}>Beginner (< 1 year)</option>
+                <option value="Intermediate (1–3 years)" ${existingDemo.dbExp === 'Intermediate (1–3 years)' ? 'selected' : ''}>Intermediate (1–3 years)</option>
+                <option value="Advanced (3+ years)" ${existingDemo.dbExp === 'Advanced (3+ years)' ? 'selected' : ''}>Advanced (3+ years)</option>
+              </select>
+            </div>
+
+            <!-- Do they have experience writing queries? -->
+            <div class="form-group" style="grid-column: span 2;">
+              <label for="intake-query-exp" style="font-size: 12px; font-weight: 600; margin-bottom: 5px; display: block; color: var(--text-main);">
+                <i class="fa-solid fa-terminal text-accent"></i> Do you have experience with writing queries? <span style="color: var(--color-danger)">*</span>
+              </label>
+              <select id="intake-query-exp" class="form-select" required style="width: 100%; padding: 8px 12px; background: rgba(0,0,0,0.4); border: 1px solid rgba(255,255,255,0.15); border-radius: 6px; color: #fff; font-size: 13px;">
+                <option value="" disabled ${!existingDemo.queryExp ? 'selected' : ''}>Select Query Writing Experience...</option>
+                <option value="Yes - Frequently write SQL / database queries" ${existingDemo.queryExp && existingDemo.queryExp.includes('Frequently') ? 'selected' : ''}>Yes — Frequently write SQL / database queries</option>
+                <option value="Yes - Occasionally write queries" ${existingDemo.queryExp && existingDemo.queryExp.includes('Occasionally') ? 'selected' : ''}>Yes — Occasionally write queries</option>
+                <option value="Basic classroom / coursework knowledge only" ${existingDemo.queryExp && existingDemo.queryExp.includes('classroom') ? 'selected' : ''}>Basic classroom / coursework knowledge only</option>
+                <option value="No - Never written queries before" ${existingDemo.queryExp && existingDemo.queryExp.includes('Never') ? 'selected' : ''}>No — Never written queries before</option>
+              </select>
+            </div>
+
+          </div>
+
+          <!-- Submit Action Button -->
+          <div class="mt-4 pt-3 border-top d-flex justify-between align-center" style="border-top: 1px solid rgba(255,255,255,0.1); display: flex; justify-content: space-between; align-items: center;">
+            <span class="text-muted fs-xs" style="font-size: 11px;"><i class="fa-solid fa-shield-halved text-success"></i> Demographic telemetry stored anonymously for User <strong>${this.escapeHTML(pid)}</strong>.</span>
+            <button type="submit" id="btn-start-experiment" class="btn btn-primary" style="padding: 9px 24px; font-weight: 700; font-size: 13.5px; border-radius: 8px; box-shadow: 0 4px 15px rgba(99, 102, 241, 0.4); cursor: pointer;">
+              Begin Experiment <i class="fa-solid fa-arrow-right" style="margin-left: 4px;"></i>
+            </button>
+          </div>
+        </form>
+      </div>
+    `;
+
+    const form = document.getElementById('intake-form');
+    if (form) {
+      form.addEventListener('submit', (e) => {
+        e.preventDefault();
+        const ageVal = document.getElementById('intake-age').value.trim();
+        const genderVal = document.getElementById('intake-gender').value;
+        const academicVal = document.getElementById('intake-academic-standing').value;
+        const codingVal = document.getElementById('intake-coding-exp').value;
+        const dbVal = document.getElementById('intake-db-exp').value;
+        const queryVal = document.getElementById('intake-query-exp').value;
+
+        if (!ageVal || !genderVal || !academicVal || !codingVal || !dbVal || !queryVal) {
+          alert('Please fill in all required demographic fields to begin the experiment.');
+          return;
+        }
+
+        const data = {
+          age: ageVal,
+          gender: genderVal,
+          academicStanding: academicVal,
+          codingExp: codingVal,
+          dbExp: dbVal,
+          queryExp: queryVal
+        };
+
+        if (this.app.analytics) {
+          this.app.analytics.saveDemographics(data, pid);
+        }
+
+        this.intakeCompleted = true;
+        this.app.loadIncrementalQuestion(1);
+      });
+    }
+  }
+
+  renderFinalThoughtsScreen() {
+    const container = document.getElementById('human-challenge-container');
+    if (!container) return;
+
+    const existingThoughtsObj = this.app.analytics ? this.app.analytics.getFinalThoughts() || {} : {};
+
+    container.innerHTML = `
+      <div class="card quiz-card glow-card" style="max-width: 820px; margin: 15px auto; padding: 24px; background: rgba(18, 22, 34, 0.95); border: 1px solid rgba(16, 185, 129, 0.4); border-radius: 12px; box-shadow: 0 12px 40px rgba(0,0,0,0.5);">
+        
+        <!-- Header -->
+        <div class="card-header border-bottom pb-3 mb-3 text-center" style="border-bottom: 1px solid rgba(255,255,255,0.1); text-align: center;">
+          <div class="logo-icon mb-2" style="width: 50px; height: 50px; font-size: 24px; margin: 0 auto; background: linear-gradient(135deg, #10b981, #06b6d4); box-shadow: 0 0 20px rgba(16, 185, 129, 0.5); display: flex; align-items: center; justify-content: center; border-radius: 12px; color: #fff;">
+            <i class="fa-solid fa-award"></i>
+          </div>
+          <h2 style="font-family: var(--font-title); font-size: 24px; color: #fff; margin: 8px 0 2px 0;">Experiment Completed!</h2>
+          <p class="text-muted fs-sm" style="font-size: 13px; margin: 0;">Thank you for participating in the SQL query comprehension study.</p>
+        </div>
+
+        <!-- Final Thoughts Form -->
+        <form id="final-thoughts-form" onsubmit="return false;">
+          <div class="form-group mb-3">
+            <label for="final-thoughts-input" style="font-size: 13px; font-weight: 700; margin-bottom: 8px; display: block; color: var(--text-main);">
+              <i class="fa-solid fa-comment-dots text-accent"></i> Final Thoughts & Feedback on the Experiment:
+            </label>
+            <textarea id="final-thoughts-input" class="form-control" rows="5" placeholder="Share your final thoughts, difficulty comments, feedback on specific syntaxes, or observations about the experiment..." style="width: 100%; padding: 12px; background: rgba(0,0,0,0.4); border: 1px solid rgba(255,255,255,0.15); border-radius: 8px; color: #fff; font-size: 13px; font-family: var(--font-sans); line-height: 1.5; resize: vertical;">${this.escapeHTML(existingThoughtsObj.thoughts || '')}</textarea>
+          </div>
+
+          <div id="final-thoughts-feedback-msg" style="display: none; padding: 10px; border-radius: 6px; font-size: 12px; margin-bottom: 12px;"></div>
+
+          <div class="d-flex justify-between align-center pt-3 border-top" style="border-top: 1px solid rgba(255,255,255,0.1); display: flex; justify-content: space-between; align-items: center;">
+            <button type="button" id="btn-review-questions" class="btn btn-secondary btn-sm" style="padding: 8px 14px; font-size: 11.5px; cursor: pointer;">
+              <i class="fa-solid fa-list-check"></i> Review Question 1
+            </button>
+            <button type="submit" id="btn-submit-final-thoughts" class="btn btn-success" style="padding: 9px 22px; font-weight: 700; font-size: 13.5px; border-radius: 8px; box-shadow: 0 4px 15px rgba(16, 185, 129, 0.4); cursor: pointer;">
+              <i class="fa-solid fa-paper-plane"></i> Submit Final Thoughts & Conclude
+            </button>
+          </div>
+        </form>
+      </div>
+    `;
+
+    const form = document.getElementById('final-thoughts-form');
+    if (form) {
+      form.addEventListener('submit', (e) => {
+        e.preventDefault();
+        const thoughtsVal = document.getElementById('final-thoughts-input').value.trim();
+        if (!thoughtsVal) {
+          alert('Please enter your final thoughts before submitting.');
+          return;
+        }
+
+        if (this.app.analytics) {
+          this.app.analytics.saveFinalThoughts(thoughtsVal);
+          this.app.renderAnalyticsDashboard();
+        }
+
+        const msgBox = document.getElementById('final-thoughts-feedback-msg');
+        if (msgBox) {
+          msgBox.style.display = 'block';
+          msgBox.style.background = 'rgba(16, 185, 129, 0.15)';
+          msgBox.style.border = '1px solid rgba(16, 185, 129, 0.4)';
+          msgBox.style.color = '#34d399';
+          msgBox.innerHTML = '<i class="fa-solid fa-circle-check"></i> Thank you! Your final thoughts and experiment telemetry have been saved successfully.';
+        }
+      });
+    }
+
+    const btnReview = document.getElementById('btn-review-questions');
+    if (btnReview) {
+      btnReview.addEventListener('click', () => {
+        this.app.loadIncrementalQuestion(1);
+      });
+    }
+  }
+
   startNewChallenge(schema, query, groundTruthResult, targetQNum) {
     if (!this.app.syntaxDialects || !this.app.quizGenerator) return;
+
+    if (targetQNum === 'intake') {
+      this.renderIntakeScreen();
+      return;
+    }
+
+    if (targetQNum === 'final_thoughts' || targetQNum > 60) {
+      this.renderFinalThoughtsScreen();
+      return;
+    }
+
+    if (!this.intakeCompleted) {
+      const demo = this.app.analytics ? this.app.analytics.getDemographics() : null;
+      if (!demo) {
+        this.renderIntakeScreen();
+        return;
+      } else {
+        this.intakeCompleted = true;
+      }
+    }
 
     const qNum = targetQNum || (this.stats ? this.stats.totalAnswered + 1 : 1);
     if (this.app.syntaxDialects.currentSelectedDialectIndex === 3) {
@@ -139,6 +434,7 @@ class HumanResolver {
     this.isAnswered = false;
     this.selectedOptionIndex = null;
     this.currentQuestion = null;
+    this.intakeCompleted = false;
     this.updateNavCounter();
   }
 
@@ -486,7 +782,7 @@ class HumanResolver {
     if (!schema || !schema.tables || schema.tables.length === 0) return '<div class="text-muted fs-xs p-1">No schema tables loaded</div>';
     
     return `
-      <div class="compact-schema-grid" style="display: grid; grid-template-columns: repeat(${Math.min(schema.tables.length, 3)}, 1fr); gap: 10px;">
+      <div class="compact-schema-grid" style="display: grid; grid-template-columns: repeat(${Math.min(schema.tables.length, 5)}, 1fr); gap: 10px;">
         ${schema.tables.map(tbl => `
           <div class="schema-tbl-card p-1 px-2" style="background: rgba(0,0,0,0.35); border: 1px solid rgba(255,255,255,0.06); border-radius: 4px;">
             <div class="d-flex justify-between align-center" style="font-size: 10.5px;">
