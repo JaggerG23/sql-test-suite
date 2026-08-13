@@ -116,7 +116,7 @@ class HumanResolver {
               </div>
               <div>
                 <h2 style="font-family: var(--font-title); font-size: 21px; font-weight: 700; color: #fff; margin: 0; line-height: 1.25;">
-                  SQL Query & Syntax Comprehension Study
+                  Database Language Study
                 </h2>
                 <span class="text-accent fs-xs" style="font-size: 12px; margin-top: 3px; display: inline-block;">
                   <i class="fa-solid fa-clipboard-list"></i> Pre-Experiment Registration & Overview
@@ -135,22 +135,21 @@ class HumanResolver {
               <i class="fa-solid fa-circle-info text-primary"></i> What you will be doing:
             </p>
             <p style="margin: 0 0 12px 0;">
-              In this study, you will evaluate <strong>60 SQL query challenge questions</strong>. For each question, you will review a code snippet formatted in a specific syntax dialect and determine the expected output dataset table from 4 candidate options using hotkeys (<strong>1, 2, 3, or 4</strong>) or by clicking an option.
+              In this study, you'll be given 60 unique SQL queries with multiple choice answers. Your task is to read the code and answer each question with the expected output using the <strong><strong>1, 2, 3, or 4</strong></strong> keys on a keyboard or by clicking using a mouse. 
             </p>
 
             <div style="background: rgba(0,0,0,0.3); border: 1px solid rgba(255,255,255,0.08); border-radius: 6px; padding: 12px; margin-top: 10px;">
               <p style="margin: 0 0 8px 0; font-weight: 700; color: var(--color-accent); font-size: 12px;">
-                <i class="fa-solid fa-shield-halved"></i> Comprehensive Summary of Data Tracked & Collected During This Study:
+                <i class="fa-solid fa-shield-halved"></i> Data That Will Be Tracked & Collected During This Study:
               </p>
               <ul style="margin: 0; padding-left: 18px; font-size: 11.5px; color: var(--text-muted); display: grid; grid-template-columns: 1fr 1fr; gap: 6px 16px;">
                 <li><strong>Demographics:</strong> Age, Gender, Academic Standing</li>
-                <li><strong>Experience:</strong> Coding Exp, DB Exp, Query Authoring Exp</li>
-                <li><strong>Identifiers:</strong> Immutable User ID, Session Token, Timestamps</li>
-                <li><strong>Question Data:</strong> Question Tier/Category, Code Snippet, Raw SQL</li>
-                <li><strong>Syntax Telemetry:</strong> Active Dialect Format (ANSI, LINQ, Quorum, Mixed)</li>
-                <li><strong>Performance Metrics:</strong> Option Selected (1-4), Accuracy (Correct/Incorrect)</li>
-                <li><strong>Timing Data:</strong> Exact Response Duration (ms) per Question</li>
-                <li><strong>Tab Focus Telemetry:</strong> Tab Blur Count, Total Away Time (ms)</li>
+                <li><strong>Experience:</strong> Coding Experience, Database Experience</li>
+                <li><strong>Identifiers:</strong> Immutable User ID</li>
+                <li><strong>Question Data:</strong> Question Category, Raw SQL Query</li>
+                <li><strong>Performance Metrics:</strong> Option Selected (1-4), Answer Accuracy</li>
+                <li><strong>Timing:</strong> Response Duration per Question</li>
+                <li><strong>Tab Focus:</strong> Number of times you tab away while taking the study and for how long</li>
                 <li><strong>Qualitative Feedback:</strong> Optional Final Thoughts & Comments</li>
               </ul>
             </div>
@@ -305,31 +304,28 @@ class HumanResolver {
       <div class="card quiz-card glow-card" style="max-width: 820px; margin: 15px auto; padding: 24px; background: rgba(18, 22, 34, 0.95); border: 1px solid rgba(16, 185, 129, 0.4); border-radius: 12px; box-shadow: 0 12px 40px rgba(0,0,0,0.5);">
         
         <!-- Header -->
-        <div class="card-header border-bottom pb-3 mb-3 text-center" style="border-bottom: 1px solid rgba(255,255,255,0.1); text-align: center;">
-          <div class="logo-icon mb-2" style="width: 50px; height: 50px; font-size: 24px; margin: 0 auto; background: linear-gradient(135deg, #10b981, #06b6d4); box-shadow: 0 0 20px rgba(16, 185, 129, 0.5); display: flex; align-items: center; justify-content: center; border-radius: 12px; color: #fff;">
+        <div class="border-bottom pb-3 mb-3" style="border-bottom: 1px solid rgba(255,255,255,0.1); display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; padding-bottom: 16px; margin-bottom: 20px;">
+          <div class="logo-icon mb-2" style="width: 50px; height: 50px; font-size: 24px; margin: 0 0 10px 0; background: linear-gradient(135deg, #10b981, #06b6d4); box-shadow: 0 0 20px rgba(16, 185, 129, 0.5); display: flex; align-items: center; justify-content: center; border-radius: 12px; color: #fff;">
             <i class="fa-solid fa-award"></i>
           </div>
-          <h2 style="font-family: var(--font-title); font-size: 24px; color: #fff; margin: 8px 0 2px 0;">Experiment Completed!</h2>
-          <p class="text-muted fs-sm" style="font-size: 13px; margin: 0;">Thank you for participating in the SQL query comprehension study.</p>
+          <h2 style="font-family: var(--font-title); font-size: 24px; color: #fff; margin: 0 0 4px 0;">Experiment Completed!</h2>
+          <p class="text-muted fs-sm" style="font-size: 13px; margin: 4px 0 0 0; color: var(--text-muted);">Thank you for participating in my study! If you have any further questions, contact your professor or email me.</p>
         </div>
 
         <!-- Final Thoughts Form -->
         <form id="final-thoughts-form" onsubmit="return false;">
           <div class="form-group mb-3">
             <label for="final-thoughts-input" style="font-size: 13px; font-weight: 700; margin-bottom: 8px; display: block; color: var(--text-main);">
-              <i class="fa-solid fa-comment-dots text-accent"></i> Final Thoughts & Feedback on the Experiment:
+              <i class="fa-solid fa-comment-dots text-accent"></i> Share any final thoughts (OPTIONAL)
             </label>
-            <textarea id="final-thoughts-input" class="form-control" rows="5" placeholder="Share your final thoughts, difficulty comments, feedback on specific syntaxes, or observations about the experiment..." style="width: 100%; padding: 12px; background: rgba(0,0,0,0.4); border: 1px solid rgba(255,255,255,0.15); border-radius: 8px; color: #fff; font-size: 13px; font-family: var(--font-sans); line-height: 1.5; resize: vertical;">${this.escapeHTML(existingThoughtsObj.thoughts || '')}</textarea>
+            <textarea id="final-thoughts-input" class="form-control" rows="5" style="width: 100%; padding: 12px; background: rgba(0,0,0,0.4); border: 1px solid rgba(255,255,255,0.15); border-radius: 8px; color: #fff; font-size: 13px; font-family: var(--font-sans); line-height: 1.5; resize: vertical;">${this.escapeHTML(existingThoughtsObj.thoughts || '')}</textarea>
           </div>
 
           <div id="final-thoughts-feedback-msg" style="display: none; padding: 10px; border-radius: 6px; font-size: 12px; margin-bottom: 12px;"></div>
 
-          <div class="d-flex justify-between align-center pt-3 border-top" style="border-top: 1px solid rgba(255,255,255,0.1); display: flex; justify-content: space-between; align-items: center;">
-            <button type="button" id="btn-review-questions" class="btn btn-secondary btn-sm" style="padding: 8px 14px; font-size: 11.5px; cursor: pointer;">
-              <i class="fa-solid fa-list-check"></i> Review Question 1
-            </button>
+          <div class="d-flex justify-end align-center pt-3 border-top" style="border-top: 1px solid rgba(255,255,255,0.1); display: flex; justify-content: flex-end; align-items: center;">
             <button type="submit" id="btn-submit-final-thoughts" class="btn btn-success" style="padding: 9px 22px; font-weight: 700; font-size: 13.5px; border-radius: 8px; box-shadow: 0 4px 15px rgba(16, 185, 129, 0.4); cursor: pointer;">
-              <i class="fa-solid fa-paper-plane"></i> Submit Final Thoughts & Conclude
+              <i class="fa-solid fa-paper-plane"></i> Submit
             </button>
           </div>
         </form>
@@ -341,10 +337,6 @@ class HumanResolver {
       form.addEventListener('submit', (e) => {
         e.preventDefault();
         const thoughtsVal = document.getElementById('final-thoughts-input').value.trim();
-        if (!thoughtsVal) {
-          alert('Please enter your final thoughts before submitting.');
-          return;
-        }
 
         if (this.app.analytics) {
           this.app.analytics.saveFinalThoughts(thoughtsVal);
@@ -359,13 +351,6 @@ class HumanResolver {
           msgBox.style.color = '#34d399';
           msgBox.innerHTML = '<i class="fa-solid fa-circle-check"></i> Thank you! Your final thoughts and experiment telemetry have been saved successfully.';
         }
-      });
-    }
-
-    const btnReview = document.getElementById('btn-review-questions');
-    if (btnReview) {
-      btnReview.addEventListener('click', () => {
-        this.app.loadIncrementalQuestion(1);
       });
     }
   }
@@ -405,8 +390,8 @@ class HumanResolver {
     }
 
     this.currentQuestion = this.app.quizGenerator.generateQuestion(
-      query, 
-      schema, 
+      query,
+      schema,
       this.app.syntaxDialects,
       this.currentGroundTruth
     );
@@ -731,7 +716,7 @@ class HumanResolver {
         <div class="d-flex align-center gap-2">
           <div class="fb-icon" style="font-size: 14px;">${isCorrect ? '<i class="fa-solid fa-circle-check text-success"></i>' : '<i class="fa-solid fa-circle-xmark text-danger"></i>'}</div>
           <div>
-            <h4 class="m-0" style="font-size: 11.5px;">${isCorrect ? 'Correct Table Selected! (Key [' + (index + 1) + '])' : 'Incorrect Table Selection (Key [' + (index + 1) + '])'}</h4>
+            <h4 class="m-0" style="font-size: 11.5px;">${isCorrect ? 'Correct Choice! (Key [' + (index + 1) + '])' : 'Incorrect Choice (Key [' + (index + 1) + '])'}</h4>
             <p class="m-0 fs-xs mt-1" style="font-size: 10px;">${chosenOpt.explanation}</p>
           </div>
         </div>
@@ -755,10 +740,10 @@ class HumanResolver {
             <tr>
     `;
 
-    columns.forEach(col => { 
-      html += `<th style="padding: 4px 12px; background: rgba(0,0,0,0.6); text-transform: none; font-size: 10.5px; border-bottom: 1px solid rgba(255,255,255,0.15); color: var(--color-accent); font-weight: 600; text-align: center;">${this.escapeHTML(col)}</th>`; 
+    columns.forEach(col => {
+      html += `<th style="padding: 4px 12px; background: rgba(0,0,0,0.6); text-transform: none; font-size: 10.5px; border-bottom: 1px solid rgba(255,255,255,0.15); color: var(--color-accent); font-weight: 600; text-align: center;">${this.escapeHTML(col)}</th>`;
     });
-    
+
     html += `</tr></thead><tbody>`;
 
     if (!rows || rows.length === 0) {
@@ -780,7 +765,7 @@ class HumanResolver {
 
   renderCompactSchemaHTML(schema) {
     if (!schema || !schema.tables || schema.tables.length === 0) return '<div class="text-muted fs-xs p-1">No schema tables loaded</div>';
-    
+
     return `
       <div class="compact-schema-grid" style="display: grid; grid-template-columns: repeat(${Math.min(schema.tables.length, 5)}, 1fr); gap: 10px;">
         ${schema.tables.map(tbl => `

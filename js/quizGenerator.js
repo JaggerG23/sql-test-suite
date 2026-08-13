@@ -195,7 +195,7 @@ class QuizGenerator {
       columns: correctColumns,
       rows: dist1Rows,
       isCorrect: false,
-      explanation: 'Incomplete output (missing rows due to premature filter or slice).'
+      explanation: 'Incomplete result (some rows are missing).'
     });
 
     // Distractor 2: Reversed sort order or mutated column values
@@ -204,7 +204,7 @@ class QuizGenerator {
       columns: correctColumns,
       rows: dist2Rows,
       isCorrect: false,
-      explanation: 'Incorrect row values or reversed sort order.'
+      explanation: 'Wrong row values or incorrect sorting order.'
     });
 
     // Distractor 3: Raw base table or alternative schema table preview
@@ -216,7 +216,7 @@ class QuizGenerator {
       columns: dist3Cols,
       rows: dist3Rows,
       isCorrect: false,
-      explanation: 'Base table output prior to applying SQL logic.'
+      explanation: 'Unfiltered table data (SQL query conditions were not applied).'
     });
 
     return options;
