@@ -955,9 +955,7 @@ kbd {
    ========================================================================== */
 
 body.admin-locked .app-container {
-  filter: blur(10px) brightness(0.6);
-  pointer-events: none;
-  user-select: none;
+  display: none !important;
 }
 
 .admin-modal-overlay {

@@ -10,20 +10,161 @@ class AdminAuthManager {
   }
 
   async init() {
-    // Intercept fetch to attach X-Admin-Token header if token exists in sessionStorage
+    this.injectStyles();
     this.patchFetch();
 
-    // Setup Logout listener if button exists
     document.addEventListener('DOMContentLoaded', () => {
       this.bindLogoutButton();
       this.checkAuthStatus();
     });
 
-    // Run check immediately in case DOM is already parsed
     if (document.readyState !== 'loading') {
       this.bindLogoutButton();
       this.checkAuthStatus();
     }
+  }
+
+  injectStyles() {
+    if (document.getElementById('admin-auth-styles')) return;
+    const style = document.createElement('style');
+    style.id = 'admin-auth-styles';
+    style.textContent = `
+      body.admin-locked .app-container {
+        display: none !important;
+      }
+
+      .admin-modal-overlay {
+        position: fixed !important;
+        top: 0 !important;
+        left: 0 !important;
+        width: 100vw !important;
+        height: 100vh !important;
+        background: rgba(8, 12, 24, 0.94) !important;
+        backdrop-filter: blur(16px) !important;
+        -webkit-backdrop-filter: blur(16px) !important;
+        display: flex !important;
+        align-items: center !important;
+        justify-content: center !important;
+        z-index: 999999 !important;
+        padding: 20px !important;
+        box-sizing: border-box !important;
+      }
+
+      .admin-modal-card {
+        background: rgba(15, 23, 42, 0.98) !important;
+        border: 1.5px solid rgba(56, 189, 248, 0.35) !important;
+        box-shadow: 0 25px 60px rgba(0, 0, 0, 0.8), 0 0 40px rgba(56, 189, 248, 0.25) !important;
+        border-radius: 16px !important;
+        padding: 32px 28px !important;
+        width: 100% !important;
+        max-width: 440px !important;
+        color: #f8fafc !important;
+        box-sizing: border-box !important;
+        text-align: center !important;
+        margin: 0 auto !important;
+      }
+
+      .admin-modal-header {
+        text-align: center !important;
+        margin-bottom: 24px !important;
+      }
+
+      .admin-modal-icon {
+        width: 64px !important;
+        height: 64px !important;
+        border-radius: 50% !important;
+        background: rgba(56, 189, 248, 0.12) !important;
+        border: 2px solid rgba(56, 189, 248, 0.4) !important;
+        color: #38bdf8 !important;
+        font-size: 26px !important;
+        display: inline-flex !important;
+        align-items: center !important;
+        justify-content: center !important;
+        margin: 0 auto 14px auto !important;
+        box-shadow: 0 0 20px rgba(56, 189, 248, 0.25) !important;
+      }
+
+      .admin-modal-header h2 {
+        font-family: 'Outfit', 'Inter', sans-serif !important;
+        font-size: 20px !important;
+        font-weight: 700 !important;
+        color: #f8fafc !important;
+        margin: 0 0 8px 0 !important;
+      }
+
+      .admin-modal-header p {
+        font-size: 13px !important;
+        color: #94a3b8 !important;
+        margin: 0 !important;
+        line-height: 1.5 !important;
+      }
+
+      .admin-modal-form .form-group {
+        margin-bottom: 18px !important;
+        text-align: left !important;
+      }
+
+      .admin-modal-form label {
+        display: block !important;
+        font-size: 12px !important;
+        font-weight: 600 !important;
+        color: #cbd5e1 !important;
+        margin-bottom: 6px !important;
+      }
+
+      .input-wrapper {
+        position: relative !important;
+        display: flex !important;
+        align-items: center !important;
+      }
+
+      .input-wrapper input {
+        width: 100% !important;
+        padding: 10px 42px 10px 14px !important;
+        background: rgba(0, 0, 0, 0.5) !important;
+        border: 1px solid rgba(255, 255, 255, 0.2) !important;
+        border-radius: 8px !important;
+        color: #fff !important;
+        font-size: 14px !important;
+        outline: none !important;
+        box-sizing: border-box !important;
+      }
+
+      .input-wrapper input:focus {
+        border-color: #38bdf8 !important;
+        box-shadow: 0 0 0 3px rgba(56, 189, 248, 0.25) !important;
+      }
+
+      .btn-toggle-eye {
+        position: absolute !important;
+        right: 10px !important;
+        background: none !important;
+        border: none !important;
+        color: #94a3b8 !important;
+        cursor: pointer !important;
+        padding: 6px !important;
+        font-size: 14px !important;
+      }
+
+      .admin-error-badge {
+        background: rgba(239, 68, 68, 0.15) !important;
+        border: 1px solid rgba(239, 68, 68, 0.4) !important;
+        color: #f87171 !important;
+        border-radius: 8px !important;
+        padding: 10px 14px !important;
+        font-size: 12px !important;
+        font-weight: 600 !important;
+        margin-bottom: 16px !important;
+        text-align: center !important;
+      }
+
+      .admin-modal-actions {
+        display: flex !important;
+        flex-direction: column !important;
+        gap: 8px !important;
+      }
+    `;
+    document.head.appendChild(style);
   }
 
   getToken() {
@@ -71,7 +212,6 @@ class AdminAuthManager {
       console.warn('Backend auth check skipped or offline:', e);
     }
 
-    // Check if token exists locally
     if (this.getToken()) {
       this.unlockDashboard();
     } else {
@@ -126,14 +266,12 @@ class AdminAuthManager {
       `;
       document.body.appendChild(modal);
 
-      // Bind login submit event
       const form = modal.querySelector('#admin-login-form');
       form.addEventListener('submit', (e) => {
         e.preventDefault();
         this.handleLogin();
       });
 
-      // Bind eye toggle
       const toggleBtn = modal.querySelector('#btn-toggle-pass');
       const passInput = modal.querySelector('#admin-pass-input');
       toggleBtn.addEventListener('click', () => {
@@ -185,7 +323,6 @@ class AdminAuthManager {
           this.setToken('session_active');
         }
         this.unlockDashboard();
-        // If App is initialized, refresh telemetry
         if (window.app && typeof window.app.renderAnalyticsDashboard === 'function') {
           window.app.renderAnalyticsDashboard();
         }
@@ -197,7 +334,6 @@ class AdminAuthManager {
       }
     } catch (e) {
       console.error('Login network error:', e);
-      // Fallback for static client hosting / file:// when server.py is not running
       const validOfflinePasswords = ['StefiksLabRootPassword', 'admin123'];
       if (validOfflinePasswords.includes(password)) {
         this.setToken('static_admin_token');
@@ -234,5 +370,4 @@ class AdminAuthManager {
   }
 }
 
-// Global instance
 window.adminAuth = new AdminAuthManager();
