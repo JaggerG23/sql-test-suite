@@ -4,14 +4,65 @@ import json
 import os
 import sys
 import csv
+import secrets
+import urllib.parse
+from http.cookies import SimpleCookie
 
 PORT = 8000
 DB_FILE = "participant_responses_db.json"
 CSV_FILE = "participant_responses_export.csv"
 
+ADMIN_PASSWORD = os.environ.get("ADMIN_PASSWORD", "StefiksLabRootPassword")
+ACTIVE_ADMIN_SESSIONS = set()
+
+def parse_cookies(cookie_header):
+    if not cookie_header:
+        return {}
+    cookie = SimpleCookie()
+    try:
+        cookie.load(cookie_header)
+        return {k: v.value for k, v in cookie.items()}
+    except Exception:
+        return {}
+
 class TelemetryHandler(http.server.SimpleHTTPRequestHandler):
+    def is_admin_authenticated(self):
+        cookies = parse_cookies(self.headers.get('Cookie', ''))
+        token = cookies.get('admin_session')
+        if token and token in ACTIVE_ADMIN_SESSIONS:
+            return True
+        header_token = self.headers.get('X-Admin-Token')
+        if header_token and header_token in ACTIVE_ADMIN_SESSIONS:
+            return True
+        return False
+
     def do_GET(self):
-        if self.path == '/api/load-telemetry':
+        parsed_path = urllib.parse.urlparse(self.path).path
+
+        if parsed_path == '/' or parsed_path == '':
+            self.send_response(302)
+            self.send_header('Location', '/participant.html')
+            self.end_headers()
+            return
+
+        if parsed_path == '/api/admin/check-auth':
+            self.send_response(200)
+            self.send_header('Content-Type', 'application/json')
+            self.send_header('Access-Control-Allow-Origin', '*')
+            self.end_headers()
+            is_auth = self.is_admin_authenticated()
+            self.wfile.write(json.dumps({"authenticated": is_auth}).encode('utf-8'))
+            return
+
+        if parsed_path == '/api/load-telemetry':
+            if not self.is_admin_authenticated():
+                self.send_response(401)
+                self.send_header('Content-Type', 'application/json')
+                self.send_header('Access-Control-Allow-Origin', '*')
+                self.end_headers()
+                self.wfile.write(json.dumps({"status": "error", "message": "Unauthorized: Admin access required"}).encode('utf-8'))
+                return
+
             self.send_response(200)
             self.send_header('Content-Type', 'application/json')
             self.send_header('Access-Control-Allow-Origin', '*')
@@ -31,7 +82,56 @@ class TelemetryHandler(http.server.SimpleHTTPRequestHandler):
         return super().do_GET()
 
     def do_POST(self):
-        if self.path == '/api/save-telemetry':
+        parsed_path = urllib.parse.urlparse(self.path).path
+
+        if parsed_path == '/api/admin/login':
+            content_length = int(self.headers.get('Content-Length', 0))
+            body = self.rfile.read(content_length)
+            
+            try:
+                payload = json.loads(body.decode('utf-8'))
+                password = payload.get('password', '')
+                if password == ADMIN_PASSWORD:
+                    token = secrets.token_hex(16)
+                    ACTIVE_ADMIN_SESSIONS.add(token)
+                    self.send_response(200)
+                    self.send_header('Content-Type', 'application/json')
+                    self.send_header('Access-Control-Allow-Origin', '*')
+                    self.send_header('Set-Cookie', f'admin_session={token}; Path=/; HttpOnly; SameSite=Lax')
+                    self.end_headers()
+                    self.wfile.write(json.dumps({"status": "success", "token": token}).encode('utf-8'))
+                else:
+                    self.send_response(401)
+                    self.send_header('Content-Type', 'application/json')
+                    self.send_header('Access-Control-Allow-Origin', '*')
+                    self.end_headers()
+                    self.wfile.write(json.dumps({"status": "error", "message": "Invalid admin password"}).encode('utf-8'))
+            except Exception as e:
+                self.send_response(400)
+                self.send_header('Content-Type', 'application/json')
+                self.send_header('Access-Control-Allow-Origin', '*')
+                self.end_headers()
+                self.wfile.write(json.dumps({"status": "error", "message": str(e)}).encode('utf-8'))
+            return
+
+        elif parsed_path == '/api/admin/logout':
+            cookies = parse_cookies(self.headers.get('Cookie', ''))
+            token = cookies.get('admin_session')
+            if token and token in ACTIVE_ADMIN_SESSIONS:
+                ACTIVE_ADMIN_SESSIONS.remove(token)
+            header_token = self.headers.get('X-Admin-Token')
+            if header_token and header_token in ACTIVE_ADMIN_SESSIONS:
+                ACTIVE_ADMIN_SESSIONS.remove(header_token)
+
+            self.send_response(200)
+            self.send_header('Content-Type', 'application/json')
+            self.send_header('Access-Control-Allow-Origin', '*')
+            self.send_header('Set-Cookie', 'admin_session=; Path=/; Expires=Thu, 01 Jan 1970 00:00:00 GMT')
+            self.end_headers()
+            self.wfile.write(json.dumps({"status": "success"}).encode('utf-8'))
+            return
+
+        elif parsed_path == '/api/save-telemetry':
             content_length = int(self.headers.get('Content-Length', 0))
             body = self.rfile.read(content_length)
             
@@ -87,7 +187,15 @@ class TelemetryHandler(http.server.SimpleHTTPRequestHandler):
                 self.wfile.write(json.dumps({"status": "error", "message": str(e)}).encode('utf-8'))
             return
 
-        elif self.path == '/api/clear-telemetry':
+        elif parsed_path == '/api/clear-telemetry':
+            if not self.is_admin_authenticated():
+                self.send_response(401)
+                self.send_header('Content-Type', 'application/json')
+                self.send_header('Access-Control-Allow-Origin', '*')
+                self.end_headers()
+                self.wfile.write(json.dumps({"status": "error", "message": "Unauthorized: Admin access required"}).encode('utf-8'))
+                return
+
             self.send_response(200)
             self.send_header('Content-Type', 'application/json')
             self.send_header('Access-Control-Allow-Origin', '*')
