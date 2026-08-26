@@ -358,6 +358,8 @@ class HumanResolver {
   startNewChallenge(schema, query, groundTruthResult, targetQNum) {
     if (!this.app.syntaxDialects || !this.app.quizGenerator) return;
 
+    const isParticipantPage = window.location && window.location.pathname ? window.location.pathname.includes('participant.html') : false;
+
     if (targetQNum === 'intake') {
       this.renderIntakeScreen();
       return;
@@ -368,7 +370,7 @@ class HumanResolver {
       return;
     }
 
-    if (!this.intakeCompleted) {
+    if (isParticipantPage && !this.intakeCompleted) {
       const demo = this.app.analytics ? this.app.analytics.getDemographics() : null;
       if (!demo) {
         this.renderIntakeScreen();
@@ -379,9 +381,6 @@ class HumanResolver {
     }
 
     const qNum = targetQNum || (this.stats ? this.stats.totalAnswered + 1 : 1);
-    if (this.app.syntaxDialects.currentSelectedDialectIndex === 3) {
-      this.app.syntaxDialects.pickMixedDialectForQuestion(qNum, this.app.seed || 42);
-    }
 
     this.currentSchema = schema;
     this.currentRawQuery = query;
@@ -482,7 +481,7 @@ class HumanResolver {
                   <div class="dialect-tabs d-flex align-center gap-1">
                     <span class="text-muted" style="font-size: 10px; margin-right: 2px;"><i class="fa-solid fa-sliders"></i> Dialect:</span>
                     ${activeDialects.map((d, idx) => `
-                      <button class="btn btn-sm dialect-tab ${idx === currentDialectIdx ? 'active' : ''}" data-idx="${idx}" style="padding: 1px 7px; font-size: 10px; border-radius: 4px;">
+                      <button class="btn btn-sm dialect-tab ${(currentDialectIdx === idx || (currentDialectIdx === null && q.dialect && d.id === q.dialect.id)) ? 'active' : ''}" data-idx="${idx}" style="padding: 1px 7px; font-size: 10px; border-radius: 4px;">
                         ${d.name}
                       </button>
                     `).join('')}
@@ -615,7 +614,7 @@ class HumanResolver {
     const all = this.app.syntaxDialects.availableDialects;
     const activeKeys = this.app.syntaxDialects.activeDialectKeys;
 
-    [1, 2, 3].forEach((num, i) => {
+    [1, 2].forEach((num, i) => {
       const select = document.getElementById(`sel-syntax-${num}`);
       if (select) {
         select.innerHTML = Object.values(all).map(d => `
@@ -627,10 +626,11 @@ class HumanResolver {
     const btnSave = document.getElementById('btn-save-syntaxes');
     if (btnSave) {
       btnSave.onclick = () => {
-        const s1 = document.getElementById('sel-syntax-1').value;
-        const s2 = document.getElementById('sel-syntax-2').value;
-        const s3 = document.getElementById('sel-syntax-3').value;
-        this.app.syntaxDialects.setActiveDialects(s1, s2, s3);
+        const s1Elem = document.getElementById('sel-syntax-1');
+        const s2Elem = document.getElementById('sel-syntax-2');
+        const s1 = s1Elem ? s1Elem.value : 'pipe';
+        const s2 = s2Elem ? s2Elem.value : 'quorum';
+        this.app.syntaxDialects.setActiveDialects(s1, s2);
         const cfgPanel = document.getElementById('syntax-config-panel');
         if (cfgPanel) cfgPanel.style.display = 'none';
         this.switchDialect(0);

@@ -16,6 +16,7 @@ class ParticipantAnalytics {
     this.updateCallbacks = [];
 
     this.initRealtimeSync();
+    this.syncWithDiskStorage();
   }
 
   initRealtimeSync() {
@@ -39,6 +40,86 @@ class ParticipantAnalytics {
         this.notifyCallbacks({ type: 'STORAGE_UPDATE' });
       }
     });
+  }
+
+  async syncWithDiskStorage() {
+    try {
+      const resp = await fetch('/api/load-telemetry');
+      if (resp.ok) {
+        const diskData = await resp.json();
+        let updated = false;
+
+        if (diskData.responses && Array.isArray(diskData.responses)) {
+          const existingIds = new Set(this.responses.map(r => r.id));
+          diskData.responses.forEach(r => {
+            if (r.id && !existingIds.has(r.id)) {
+              this.responses.push(r);
+              existingIds.add(r.id);
+              updated = true;
+            }
+          });
+        }
+
+        if (diskData.demographics && typeof diskData.demographics === 'object') {
+          Object.keys(diskData.demographics).forEach(pid => {
+            if (!localStorage.getItem(this.demographicsKeyPrefix + pid)) {
+              localStorage.setItem(this.demographicsKeyPrefix + pid, JSON.stringify(diskData.demographics[pid]));
+            }
+          });
+        }
+
+        if (diskData.finalThoughts && typeof diskData.finalThoughts === 'object') {
+          Object.keys(diskData.finalThoughts).forEach(pid => {
+            if (!localStorage.getItem(this.finalThoughtsKeyPrefix + pid)) {
+              localStorage.setItem(this.finalThoughtsKeyPrefix + pid, JSON.stringify(diskData.finalThoughts[pid]));
+            }
+          });
+        }
+
+        if (updated) {
+          this.saveResponses();
+          this.notifyCallbacks({ type: 'DISK_SYNC' });
+        }
+
+        this.pushToDiskStorage();
+      }
+    } catch (e) {
+      console.log('Disk telemetry server sync unavailable, using localStorage fallback.');
+    }
+  }
+
+  async pushToDiskStorage(newDemographicsData = null, newFinalThoughtsData = null) {
+    try {
+      const allDemos = {};
+      const allThoughts = {};
+
+      for (let i = 0; i < localStorage.length; i++) {
+        const key = localStorage.key(i);
+        if (key && key.startsWith(this.demographicsKeyPrefix)) {
+          const pid = key.replace(this.demographicsKeyPrefix, '');
+          try { allDemos[pid] = JSON.parse(localStorage.getItem(key)); } catch(e){}
+        } else if (key && key.startsWith(this.finalThoughtsKeyPrefix)) {
+          const pid = key.replace(this.finalThoughtsKeyPrefix, '');
+          try { allThoughts[pid] = JSON.parse(localStorage.getItem(key)); } catch(e){}
+        }
+      }
+
+      const payload = {
+        responses: this.responses,
+        demographics: allDemos,
+        finalThoughts: allThoughts,
+        newDemographic: newDemographicsData ? { ...newDemographicsData, participantId: this.participantId } : null,
+        newFinalThought: newFinalThoughtsData ? { thoughts: newFinalThoughtsData, participantId: this.participantId } : null
+      };
+
+      await fetch('/api/save-telemetry', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
+    } catch (e) {
+      // Offline mode
+    }
   }
 
   subscribe(callback) {
@@ -84,6 +165,7 @@ class ParticipantAnalytics {
     } catch (e) {
       console.error('Failed to save demographics:', e);
     }
+    this.pushToDiskStorage(record);
     return record;
   }
 
@@ -108,6 +190,7 @@ class ParticipantAnalytics {
     } catch (e) {
       console.error('Failed to save final thoughts:', e);
     }
+    this.pushToDiskStorage(null, thoughtsText);
     return record;
   }
 
@@ -168,6 +251,7 @@ class ParticipantAnalytics {
 
     this.responses.push(fullRecord);
     this.saveResponses();
+    this.pushToDiskStorage();
 
     if (this.channel) {
       this.channel.postMessage({ type: 'NEW_RESPONSE', record: fullRecord });
@@ -485,9 +569,12 @@ class ParticipantAnalytics {
     URL.revokeObjectURL(url);
   }
 
-  clearAllResponsesWithoutConfirm() {
+  async clearAllResponsesWithoutConfirm() {
     this.responses = [];
     localStorage.removeItem(this.storageKey);
+    try {
+      await fetch('/api/clear-telemetry', { method: 'POST' });
+    } catch (e) {}
     if (this.channel) {
       this.channel.postMessage({ type: 'CLEAR_LOGS' });
     }

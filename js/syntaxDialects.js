@@ -1,25 +1,13 @@
 /**
  * Syntax Dialect Manager
  * Handles translation, formatting, and dialect-specific rules for SQL syntaxes.
- * Dialects configured:
- * 1. Dialect 1: Standard MySQL Syntax
- * 2. Dialect 2: Google SQL (Pipe Syntax)
- * 3. Dialect 3: PostgreSQL Syntax
+ * Configured Dialects:
+ * 1. Google SQL (Pipe Syntax)
+ * 2. Quorum Syntax
  */
 class SyntaxDialectManager {
   constructor() {
     this.availableDialects = {
-      mysql: {
-        id: 'mysql',
-        name: 'MySQL Syntax',
-        badge: 'MySQL',
-        identifierQuote: '`',
-        limitStyle: 'LIMIT',
-        castStyle: 'CAST',
-        concatStyle: 'CONCAT',
-        nullCheck: 'IFNULL',
-        description: 'Standard MySQL dialect using backticks `table`.`column`, CONCAT(), and IFNULL().'
-      },
       pipe: {
         id: 'pipe',
         name: 'Google SQL (Pipe Syntax)',
@@ -41,59 +29,20 @@ class SyntaxDialectManager {
         concatStyle: 'CONCAT',
         nullCheck: 'COALESCE',
         description: 'Quorum object-oriented syntax using action calls (query:SetTable, query:Filter, query:AddColumn) and colon table:column mapping.'
-      },
-      ansi: {
-        id: 'ansi',
-        name: 'ANSI Standard SQL',
-        badge: 'ANSI SQL',
-        identifierQuote: '"',
-        limitStyle: 'LIMIT',
-        castStyle: 'CAST',
-        concatStyle: 'CONCAT',
-        nullCheck: 'COALESCE',
-        description: 'Standard ANSI/ISO SQL syntax with double quotes and standard CAST expressions.'
-      },
-      sqlite: {
-        id: 'sqlite',
-        name: 'SQLite / T-SQL',
-        badge: 'SQLite',
-        identifierQuote: '[',
-        limitStyle: 'LIMIT',
-        castStyle: 'CAST',
-        concatStyle: 'PIPE',
-        nullCheck: 'IFNULL',
-        description: 'SQLite & T-SQL flavor using brackets [table].[col] and IFNULL/COALESCE.'
-      },
-      mixed: {
-        id: 'mixed',
-        name: 'Mixed',
-        badge: 'Mixed',
-        identifierQuote: '',
-        limitStyle: 'LIMIT',
-        castStyle: 'CAST',
-        concatStyle: 'CONCAT',
-        nullCheck: 'COALESCE',
-        description: 'Randomly selects one of the three active base dialects for each question.'
       }
     };
 
-    // Defaults requested by user:
-    // Dialect 1: MySQL
-    // Dialect 2: Google SQL Pipe Syntax
-    // Dialect 3: Quorum Syntax
-    // Dialect 4: Mixed (Random selection among Dialects 1-3)
-    this.activeDialectKeys = ['mysql', 'pipe', 'quorum'];
-    this.currentSelectedDialectIndex = 3; // Default to 3 (Mixed) for random shuffling across questions
-    this.currentMixedResolvedKey = null;
+    // Active base dialects: Google SQL (Pipe) & Quorum Syntax
+    this.activeDialectKeys = ['pipe', 'quorum'];
+    this.currentSelectedDialectIndex = null; // null = automatic question assignment (30 Google SQL, 30 Quorum)
     this.balancedSequence = null;
     this.initBalancedSequence(42);
   }
 
   initBalancedSequence(seed = 42) {
     const list = [];
-    for (let i = 0; i < 20; i++) list.push('mysql');
-    for (let i = 0; i < 20; i++) list.push('pipe');
-    for (let i = 0; i < 20; i++) list.push('quorum');
+    for (let i = 0; i < 30; i++) list.push('pipe');
+    for (let i = 0; i < 30; i++) list.push('quorum');
 
     // Deterministic Fisher-Yates Shuffle using pseudo-RNG
     let currentSeed = seed * 10007 + 1337;
@@ -112,54 +61,36 @@ class SyntaxDialectManager {
   }
 
   getActiveDialects() {
-    const list = this.activeDialectKeys.map(key => this.availableDialects[key] || this.availableDialects.mysql);
-    list.push(this.availableDialects.mixed);
-    return list;
+    return this.activeDialectKeys.map(key => this.availableDialects[key] || this.availableDialects.pipe);
   }
 
-  pickMixedDialectForQuestion(qNumber = 1, seed = 42) {
+  getDialectForQuestion(qNumber = 1, seed = 42) {
     if (!this.balancedSequence || this.balancedSequence.length !== 60) {
       this.initBalancedSequence(seed);
     }
     const qIdx = Math.max(0, Math.min(59, (parseInt(qNumber, 10) || 1) - 1));
-    this.currentMixedResolvedKey = this.balancedSequence[qIdx];
-    return this.currentMixedResolvedKey;
+    const key = this.balancedSequence[qIdx] || 'pipe';
+    return this.availableDialects[key] || this.availableDialects.pipe;
   }
 
-  pickRandomMixedDialect(qNumber = 1) {
-    return this.pickMixedDialectForQuestion(qNumber);
-  }
-
-  getCurrentDialect() {
-    if (this.currentSelectedDialectIndex === 3) {
-      if (!this.currentMixedResolvedKey) {
-        this.pickRandomMixedDialect();
-      }
-      const resolved = this.availableDialects[this.currentMixedResolvedKey] || this.availableDialects.mysql;
-      return {
-        ...resolved,
-        isMixed: true,
-        name: `Mixed (${resolved.name})`,
-        badge: `Mixed: ${resolved.badge || resolved.name}`
-      };
+  getCurrentDialect(qNumber = null, seed = 42) {
+    if (this.currentSelectedDialectIndex !== null && this.currentSelectedDialectIndex !== undefined) {
+      const key = this.activeDialectKeys[this.currentSelectedDialectIndex] || 'pipe';
+      return this.availableDialects[key] || this.availableDialects.pipe;
     }
-    const key = this.activeDialectKeys[this.currentSelectedDialectIndex] || 'mysql';
-    return this.availableDialects[key];
+    const targetQ = qNumber || (window.app ? window.app.currentQuestionNumber : 1);
+    return this.getDialectForQuestion(targetQ, seed);
   }
 
-  setActiveDialects(d1Key, d2Key, d3Key) {
-    this.activeDialectKeys = [d1Key, d2Key, d3Key];
-    if (this.currentSelectedDialectIndex === 3) {
-      this.pickRandomMixedDialect();
-    }
+  setActiveDialects(d1Key, d2Key) {
+    this.activeDialectKeys = [d1Key, d2Key];
   }
 
   setCurrentDialectIndex(idx) {
-    if (idx >= 0 && idx <= 3) {
+    if (idx === null || idx === undefined || idx < 0 || idx >= this.activeDialectKeys.length) {
+      this.currentSelectedDialectIndex = null;
+    } else {
       this.currentSelectedDialectIndex = idx;
-      if (idx === 3) {
-        this.pickRandomMixedDialect();
-      }
     }
   }
 
@@ -168,7 +99,7 @@ class SyntaxDialectManager {
    */
   formatQueryToDialect(sqlQuery, dialectKey) {
     let keyToUse = dialectKey;
-    if (!keyToUse || keyToUse === 'mixed') {
+    if (!keyToUse) {
       keyToUse = this.getCurrentDialect().id;
     }
     const dialect = this.availableDialects[keyToUse] || this.getCurrentDialect();

@@ -68,16 +68,38 @@ class QueryExperimentApp {
     const btnPrevQ = document.getElementById('btn-prev-q');
     if (btnPrevQ) {
       btnPrevQ.addEventListener('click', () => {
-        const cur = this.currentQuestionNumber || 1;
-        if (cur > 1) this.loadIncrementalQuestion(cur - 1);
+        const cur = this.currentQuestionNumber;
+        if (cur === 'final_thoughts') {
+          this.loadIncrementalQuestion(60);
+        } else if (cur === 'intake') {
+          this.loadIncrementalQuestion('intake');
+        } else {
+          const num = parseInt(cur, 10) || 1;
+          if (num <= 1) {
+            this.loadIncrementalQuestion('intake');
+          } else {
+            this.loadIncrementalQuestion(num - 1);
+          }
+        }
       });
     }
 
     const btnNextQ = document.getElementById('btn-next-q');
     if (btnNextQ) {
       btnNextQ.addEventListener('click', () => {
-        const cur = this.currentQuestionNumber || 1;
-        if (cur < 60) this.loadIncrementalQuestion(cur + 1);
+        const cur = this.currentQuestionNumber;
+        if (cur === 'intake') {
+          this.loadIncrementalQuestion(1);
+        } else if (cur === 'final_thoughts') {
+          this.loadIncrementalQuestion('final_thoughts');
+        } else {
+          const num = parseInt(cur, 10) || 1;
+          if (num >= 60) {
+            this.loadIncrementalQuestion('final_thoughts');
+          } else {
+            this.loadIncrementalQuestion(num + 1);
+          }
+        }
       });
     }
 
@@ -293,7 +315,10 @@ class QueryExperimentApp {
   }
 
   async loadIncrementalQuestion(targetQNum) {
+    const isParticipantPage = window.location && window.location.pathname ? window.location.pathname.includes('participant.html') : false;
+
     if (targetQNum === 'intake') {
+      this.currentQuestionNumber = 'intake';
       const select = document.getElementById('question-jump-select');
       if (select) select.value = 'intake';
       if (this.humanResolver) this.humanResolver.renderIntakeScreen();
@@ -301,16 +326,18 @@ class QueryExperimentApp {
     }
 
     if (targetQNum === 'final_thoughts' || (typeof targetQNum === 'number' && targetQNum > 60)) {
+      this.currentQuestionNumber = 'final_thoughts';
       const select = document.getElementById('question-jump-select');
       if (select) select.value = 'final_thoughts';
       if (this.humanResolver) this.humanResolver.renderFinalThoughtsScreen();
       return;
     }
 
-    // Check if intake form has been completed
-    if (this.humanResolver && !this.humanResolver.intakeCompleted) {
+    // Check if intake form has been completed (ONLY enforce mandatory redirect on participant.html)
+    if (isParticipantPage && this.humanResolver && !this.humanResolver.intakeCompleted) {
       const demo = this.analytics ? this.analytics.getDemographics() : null;
       if (!demo) {
+        this.currentQuestionNumber = 'intake';
         const select = document.getElementById('question-jump-select');
         if (select) select.value = 'intake';
         this.humanResolver.renderIntakeScreen();
@@ -361,7 +388,19 @@ class QueryExperimentApp {
   }
 
   async generateNextIncrementalQuestion() {
-    await this.loadIncrementalQuestion(this.humanResolver.stats.totalAnswered + 1);
+    const cur = this.currentQuestionNumber;
+    if (cur === 'intake') {
+      await this.loadIncrementalQuestion(1);
+    } else if (cur === 'final_thoughts') {
+      await this.loadIncrementalQuestion('final_thoughts');
+    } else {
+      const num = parseInt(cur, 10) || 1;
+      if (num >= 60) {
+        await this.loadIncrementalQuestion('final_thoughts');
+      } else {
+        await this.loadIncrementalQuestion(num + 1);
+      }
+    }
   }
 
   async executeAcrossEngines() {
@@ -645,12 +684,42 @@ class QueryExperimentApp {
 
   initParticipantUI() {
     const input = document.getElementById('participant-id-input');
+    const btnCopy = document.getElementById('btn-copy-user-id');
+    const copyText = document.getElementById('copy-btn-text');
+
+    const handleCopy = () => {
+      if (!input || !input.value) return;
+      input.select();
+      input.setSelectionRange(0, 99999);
+      navigator.clipboard.writeText(input.value).then(() => {
+        if (copyText) copyText.innerHTML = '<i class="fa-solid fa-check text-emerald-400"></i> Copied!';
+        if (btnCopy) btnCopy.style.background = 'rgba(16, 185, 129, 0.3)';
+        setTimeout(() => {
+          if (copyText) copyText.textContent = 'Copy';
+          if (btnCopy) btnCopy.style.background = 'rgba(56, 189, 248, 0.25)';
+        }, 1500);
+      }).catch(() => {
+        try {
+          document.execCommand('copy');
+          if (copyText) copyText.innerHTML = '<i class="fa-solid fa-check text-emerald-400"></i> Copied!';
+          setTimeout(() => {
+            if (copyText) copyText.textContent = 'Copy';
+          }, 1500);
+        } catch(e){}
+      });
+    };
+
     if (input) {
       input.value = this.analytics.participantId;
       input.setAttribute('readonly', 'readonly');
-      input.setAttribute('disabled', 'disabled');
-      input.setAttribute('title', 'Participant ID is automatically assigned and cannot be modified');
-      input.style.cursor = 'not-allowed';
+      input.removeAttribute('disabled');
+      input.setAttribute('title', 'Click to copy User ID to clipboard');
+      input.style.cursor = 'pointer';
+      input.addEventListener('click', handleCopy);
+    }
+
+    if (btnCopy) {
+      btnCopy.addEventListener('click', handleCopy);
     }
 
     // Dev Reset Test button binding (controlled by window.ENABLE_DEV_RESET)
