@@ -33,7 +33,7 @@
           </button>
           <span style="color: rgba(255,255,255,0.25); margin: 0 4px;">|</span>
           <span style="font-size: 11px; color: var(--text-main); font-weight: 600; white-space: nowrap;">
-            <i class="fa-solid fa-list-check text-primary"></i> Answered: <strong id="nav-questions-counter" style="color: var(--color-primary); font-size: 12px; margin-left: 2px;">0/60</strong>
+            <i class="fa-solid fa-list-check text-primary"></i> Answered: <strong id="nav-questions-counter" style="color: var(--color-primary); font-size: 12px; margin-left: 2px;">0 / 60</strong>
           </span>
         </div>
         <div class="seed-control" style="padding: 3px 8px; white-space: nowrap;">
@@ -130,7 +130,9 @@
                 <h3><i class="fa-solid fa-chart-line text-accent"></i> Participant Answer Logs & Telemetry Storage</h3>
                 <span id="analytics-total-badge" class="badge badge-info">0 Responses Stored</span>
               </div>
-              <div class="d-flex gap-2" style="display:flex; gap:8px;">
+              <div class="d-flex gap-2 flex-wrap" style="display:flex; gap:8px; flex-wrap: wrap;">
+                <button id="btn-import-telemetry" class="btn btn-sm btn-primary"><i class="fa-solid fa-file-import"></i> Import Data</button>
+                <button id="btn-cloud-sync" class="btn btn-sm btn-outline" title="Cloud Sync & Webhook Settings"><i class="fa-solid fa-cloud"></i> Cloud Sync</button>
                 <button id="btn-export-csv" class="btn btn-sm btn-success"><i class="fa-solid fa-file-csv"></i> Export CSV Data</button>
                 <button id="btn-export-json" class="btn btn-sm btn-outline"><i class="fa-solid fa-file-code"></i> Export JSON Data</button>
                 <button id="btn-clear-logs" class="btn btn-sm btn-danger"><i class="fa-solid fa-trash"></i> Clear Logs</button>
@@ -148,19 +150,19 @@
                   <span class="stat-value" id="astat-users">0</span>
                 </div>
                 <div class="stat-card stat-success">
-                  <span class="stat-label">Overall Accuracy Rate</span>
+                  <span class="stat-label">Overall Study Accuracy</span>
                   <span class="stat-value" id="astat-accuracy">0%</span>
                 </div>
-                <div class="stat-card">
+                <div class="stat-card stat-warning">
                   <span class="stat-label">Avg Response Time</span>
                   <span class="stat-value" id="astat-avgtime">0 ms</span>
                 </div>
               </div>
 
-              <!-- Dialect & Category Breakdown -->
-              <div class="syntax-select-grid mb-4" style="display:grid; grid-template-columns: 1fr 1fr; gap: 14px;">
+              <!-- Dialect and Question Category Breakdown Grid -->
+              <div class="grid grid-2 mb-4" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 16px;">
                 <div class="card p-3" style="background: rgba(0,0,0,0.3); border: 1px solid rgba(255,255,255,0.08);">
-                  <h4 class="mb-2 text-accent fs-sm"><i class="fa-solid fa-sliders"></i> Performance by Syntax Dialect</h4>
+                  <h4 class="mb-2 text-accent fs-sm"><i class="fa-solid fa-code-branch"></i> Performance by Syntax Dialect</h4>
                   <div id="analytics-dialect-breakdown" class="fs-xs text-muted">No answer events recorded yet</div>
                 </div>
                 <div class="card p-3" style="background: rgba(0,0,0,0.3); border: 1px solid rgba(255,255,255,0.08);">
@@ -197,17 +199,80 @@
     </main>
   </div>
 
+  <!-- Modal: Import Telemetry & Cloud Sync Settings -->
+  <div id="modal-import-telemetry" class="modal-overlay hidden" style="display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.75); backdrop-filter: blur(6px); z-index: 9999; justify-content: center; align-items: center; padding: 20px;">
+    <div class="card glow-card" style="max-width: 680px; width: 100%; max-height: 90vh; overflow-y: auto; background: rgba(18, 22, 34, 0.98); border: 1px solid rgba(99, 102, 241, 0.4); border-radius: 12px; box-shadow: 0 16px 48px rgba(0,0,0,0.6);">
+      <div class="card-header d-flex justify-between align-center border-bottom pb-3" style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid rgba(255,255,255,0.1);">
+        <h3 style="margin: 0; font-size: 16px; color: #fff;"><i class="fa-solid fa-cloud-arrow-down text-accent"></i> Import Telemetry & Cloud Sync</h3>
+        <button id="btn-close-import-modal" class="btn btn-sm btn-ghost" style="color: var(--text-muted); font-size: 16px; cursor: pointer;"><i class="fa-solid fa-xmark"></i></button>
+      </div>
+      <div class="card-body p-4" style="display: flex; flex-direction: column; gap: 18px;">
+        
+        <!-- Section 1: Upload JSON/CSV Files -->
+        <div class="card p-3" style="background: rgba(14, 18, 28, 0.8); border: 1px solid rgba(255,255,255,0.1); border-radius: 8px;">
+          <h4 class="fs-sm text-primary mb-1"><i class="fa-solid fa-file-arrow-up"></i> Upload Participant Files (JSON / CSV)</h4>
+          <p class="fs-xs text-muted mb-2">Select one or multiple student response files (downloaded by participants or exported from Canvas/email) to merge into the dashboard.</p>
+          <input type="file" id="import-file-input" accept=".json,.csv" multiple style="display: none;">
+          <button type="button" id="btn-trigger-file-import" class="btn btn-sm btn-outline btn-block" style="border: 2px dashed rgba(99, 102, 241, 0.5); padding: 12px; font-weight: 600; width: 100%;">
+            <i class="fa-solid fa-folder-open text-accent"></i> Choose JSON or CSV Files to Import
+          </button>
+          <div id="import-file-status" class="fs-xs mt-2" style="display: none; padding: 8px; border-radius: 6px;"></div>
+        </div>
+
+        <!-- Section 2: Paste Submission Code -->
+        <div class="card p-3" style="background: rgba(14, 18, 28, 0.8); border: 1px solid rgba(255,255,255,0.1); border-radius: 8px;">
+          <h4 class="fs-sm text-accent mb-1"><i class="fa-solid fa-paste"></i> Paste Student Submission Code</h4>
+          <p class="fs-xs text-muted mb-2">Paste a student's encoded submission token string to load their responses directly.</p>
+          <textarea id="import-token-input" class="form-control mb-2" rows="2" placeholder="Paste base64 submission code here..." style="width: 100%; font-size: 11px; font-family: monospace; padding: 8px; background: rgba(0,0,0,0.4); border: 1px solid rgba(255,255,255,0.15); border-radius: 6px; color: #fff;"></textarea>
+          <button type="button" id="btn-submit-token-import" class="btn btn-sm btn-primary">
+            <i class="fa-solid fa-arrow-down-to-bracket"></i> Import Submission Code
+          </button>
+          <div id="import-token-status" class="fs-xs mt-2" style="display: none; padding: 8px; border-radius: 6px;"></div>
+        </div>
+
+        <!-- Section 3: Cloud Webhook Sync (Google Sheets / Free Backend) -->
+        <div class="card p-3" style="background: rgba(14, 18, 28, 0.8); border: 1px solid rgba(16, 185, 129, 0.3); border-radius: 8px;">
+          <div class="d-flex justify-between align-center mb-1" style="display: flex; justify-content: space-between; align-items: center;">
+            <h4 class="fs-sm text-success" style="margin: 0;"><i class="fa-solid fa-cloud"></i> Google Sheets / Cloud Webhook Sync</h4>
+            <span class="badge badge-success fs-xs" style="font-size: 10px; background: rgba(16, 185, 129, 0.2); color: #34d399; padding: 2px 6px; border-radius: 4px;">Free 100% Uptime</span>
+          </div>
+          <p class="fs-xs text-muted mb-2">For static sites (GitHub Pages), connect a Google Sheet via Apps Script Webhook to automatically collect study responses worldwide.</p>
+          
+          <div class="form-group mb-2">
+            <label for="input-cloud-webhook-url" class="fs-xs text-muted" style="display: block; margin-bottom: 4px;">Google Apps Script Web App URL (or Cloud Webhook):</label>
+            <div class="d-flex gap-2" style="display: flex; gap: 8px;">
+              <input type="url" id="input-cloud-webhook-url" class="form-control" placeholder="https://script.google.com/macros/s/.../exec" style="font-size: 12px; flex: 1; padding: 6px 10px; background: rgba(0,0,0,0.4); border: 1px solid rgba(255,255,255,0.15); border-radius: 6px; color: #fff;">
+              <button type="button" id="btn-save-cloud-webhook" class="btn btn-sm btn-success">Save URL</button>
+            </div>
+          </div>
+
+          <div class="d-flex gap-2 flex-wrap" style="display: flex; gap: 8px; flex-wrap: wrap;">
+            <button type="button" id="btn-sync-cloud-now" class="btn btn-sm btn-outline">
+              <i class="fa-solid fa-arrows-rotate text-accent"></i> Sync Data From Cloud
+            </button>
+            <button type="button" id="btn-test-cloud-webhook" class="btn btn-sm btn-ghost" style="border: 1px solid rgba(255,255,255,0.15);">
+              <i class="fa-solid fa-plug"></i> Test Connection
+            </button>
+          </div>
+          <div id="cloud-webhook-status" class="fs-xs mt-2" style="display: none; padding: 8px; border-radius: 6px;"></div>
+        </div>
+
+      </div>
+    </div>
+  </div>
+
   <!-- JS Module Scripts -->
-  <script src="js/adminAuth.js?v=10"></script>
-  <script src="js/schemaGenerator.js?v=10"></script>
-  <script src="js/queryGenerator.js?v=10"></script>
-  <script src="js/syntaxDialects.js?v=10"></script>
-  <script src="js/quizGenerator.js?v=10"></script>
-  <script src="js/participantAnalytics.js?v=10"></script>
-  <script src="js/engines/sqliteEngine.js?v=10"></script>
-  <script src="js/engines/customJsEngine.js?v=10"></script>
-  <script src="js/engines/optimizerEngine.js?v=10"></script>
-  <script src="js/humanResolver.js?v=10"></script>
-  <script src="js/app.js?v=10"></script>
+  <script src="js/config.js?v=11"></script>
+  <script src="js/adminAuth.js?v=11"></script>
+  <script src="js/schemaGenerator.js?v=11"></script>
+  <script src="js/queryGenerator.js?v=11"></script>
+  <script src="js/syntaxDialects.js?v=11"></script>
+  <script src="js/quizGenerator.js?v=11"></script>
+  <script src="js/participantAnalytics.js?v=11"></script>
+  <script src="js/engines/sqliteEngine.js?v=11"></script>
+  <script src="js/engines/customJsEngine.js?v=11"></script>
+  <script src="js/engines/optimizerEngine.js?v=11"></script>
+  <script src="js/humanResolver.js?v=11"></script>
+  <script src="js/app.js?v=11"></script>
 </body>
 </html>

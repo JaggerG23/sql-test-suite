@@ -384,7 +384,8 @@ class QueryExperimentApp {
     this.updateEngineCardUI(3, r3, this.formatCostAnalysis(r3.costAnalysis));
     this.renderDifferentialComparison(r1, r2, r3);
 
-    this.humanResolver.startNewChallenge(this.currentSchema, this.currentQuery, r1, qNum);
+    const groundTruth = (r1 && r1.success && r1.columns && r1.columns.length > 0) ? r1 : ((r2 && r2.success) ? r2 : r3);
+    this.humanResolver.startNewChallenge(this.currentSchema, this.currentQuery, groundTruth, qNum);
   }
 
   async generateNextIncrementalQuestion() {
@@ -426,7 +427,8 @@ class QueryExperimentApp {
     this.renderDifferentialComparison(r1, r2, r3);
 
     // Start / Update Human Challenge Mode
-    this.humanResolver.startNewChallenge(this.currentSchema, sqlText, r1);
+    const groundTruth = (r1 && r1.success && r1.columns && r1.columns.length > 0) ? r1 : ((r2 && r2.success) ? r2 : r3);
+    this.humanResolver.startNewChallenge(this.currentSchema, sqlText, groundTruth);
   }
 
   updateEngineCardUI(engineNum, res, detailText) {
@@ -462,6 +464,25 @@ class QueryExperimentApp {
 
     const e3Cost = document.getElementById('container-e3-cost');
     if (e3Cost && engineNum === 3) e3Cost.innerHTML = detailText || 'No cost analysis available';
+  }
+
+  formatCostAnalysis(costAnalysis) {
+    if (!costAnalysis || !costAnalysis.planSteps) {
+      return '<div class="p-2 text-muted fs-xs">No cost metrics available.</div>';
+    }
+    return `
+      <div class="cost-summary mb-2 p-1" style="background: rgba(0,0,0,0.2); border-radius: 4px; font-size: 11px;">
+        <strong>Total Cost Score:</strong> <span class="badge badge-accent">${costAnalysis.costScore || 0}</span>
+      </div>
+      <div class="cost-steps" style="font-size: 10.5px;">
+        ${(costAnalysis.planSteps || []).map(step => `
+          <div class="cost-step-item mb-1 p-1" style="border-bottom: 1px solid rgba(255,255,255,0.05);">
+            <div class="d-flex justify-between"><strong>${step.phase}</strong> <span class="text-accent">${step.strategy}</span></div>
+            <div class="text-muted fs-xs">${step.desc || ''}</div>
+          </div>
+        `).join('')}
+      </div>
+    `;
   }
 
   renderDifferentialComparison(r1, r2, r3) {
@@ -757,6 +778,225 @@ class QueryExperimentApp {
         this.renderAnalyticsDashboard();
       });
     }
+
+    // Modal: Import & Cloud Sync
+    this.bindImportAndCloudSyncUI();
+  }
+
+  bindImportAndCloudSyncUI() {
+    const modal = document.getElementById('modal-import-telemetry');
+    const btnImport = document.getElementById('btn-import-telemetry');
+    const btnCloud = document.getElementById('btn-cloud-sync');
+    const btnClose = document.getElementById('btn-close-import-modal');
+
+    const openModal = () => {
+      if (modal) {
+        modal.classList.remove('hidden');
+        modal.style.display = 'flex';
+        const urlInput = document.getElementById('input-cloud-webhook-url');
+        if (urlInput && window.studyConfig) {
+          urlInput.value = window.studyConfig.getCloudWebhookUrl();
+        }
+      }
+    };
+
+    const closeModal = () => {
+      if (modal) {
+        modal.classList.add('hidden');
+        modal.style.display = 'none';
+      }
+    };
+
+    if (btnImport) btnImport.addEventListener('click', openModal);
+    if (btnCloud) btnCloud.addEventListener('click', openModal);
+    if (btnClose) btnClose.addEventListener('click', closeModal);
+    if (modal) {
+      modal.addEventListener('click', (e) => {
+        if (e.target === modal) closeModal();
+      });
+    }
+
+    // 1. File Upload Import (JSON & CSV)
+    const btnTriggerFile = document.getElementById('btn-trigger-file-import');
+    const fileInput = document.getElementById('import-file-input');
+    const fileStatus = document.getElementById('import-file-status');
+
+    if (btnTriggerFile && fileInput) {
+      btnTriggerFile.addEventListener('click', () => fileInput.click());
+      fileInput.addEventListener('change', async (e) => {
+        const files = Array.from(e.target.files || []);
+        if (files.length === 0) return;
+
+        let totalImported = 0;
+        let totalNewUsers = 0;
+        let errors = [];
+
+        for (const file of files) {
+          try {
+            const text = await file.text();
+            let res = null;
+            if (file.name.endsWith('.json') || text.trim().startsWith('{') || text.trim().startsWith('[')) {
+              res = this.analytics.importFromJSON(text);
+            } else {
+              res = this.analytics.importFromCSV(text);
+            }
+            if (res) {
+              totalImported += (res.importedCount || 0);
+              totalNewUsers += (res.newUsers || 0);
+            }
+          } catch (err) {
+            errors.push(`${file.name}: ${err.message}`);
+          }
+        }
+
+        if (fileStatus) {
+          fileStatus.style.display = 'block';
+          if (errors.length > 0) {
+            fileStatus.style.background = 'rgba(239, 68, 68, 0.15)';
+            fileStatus.style.border = '1px solid rgba(239, 68, 68, 0.4)';
+            fileStatus.style.color = '#f87171';
+            fileStatus.innerHTML = `<i class="fa-solid fa-circle-exclamation"></i> Imported ${totalImported} records from ${files.length - errors.length} files. Errors: ${errors.join(', ')}`;
+          } else {
+            fileStatus.style.background = 'rgba(16, 185, 129, 0.15)';
+            fileStatus.style.border = '1px solid rgba(16, 185, 129, 0.4)';
+            fileStatus.style.color = '#34d399';
+            fileStatus.innerHTML = `<i class="fa-solid fa-circle-check"></i> Successfully imported <strong>${totalImported}</strong> response records across <strong>${totalNewUsers}</strong> new participant(s)!`;
+          }
+        }
+
+        fileInput.value = '';
+        this.renderAnalyticsDashboard();
+      });
+    }
+
+    // 2. Paste Submission Code Import
+    const btnSubmitToken = document.getElementById('btn-submit-token-import');
+    const tokenInput = document.getElementById('import-token-input');
+    const tokenStatus = document.getElementById('import-token-status');
+
+    if (btnSubmitToken && tokenInput) {
+      btnSubmitToken.addEventListener('click', () => {
+        const val = tokenInput.value.trim();
+        if (!val) return;
+
+        if (tokenStatus) tokenStatus.style.display = 'none';
+
+        try {
+          const res = this.analytics.importFromToken(val);
+          if (tokenStatus) {
+            tokenStatus.style.display = 'block';
+            tokenStatus.style.background = 'rgba(16, 185, 129, 0.15)';
+            tokenStatus.style.border = '1px solid rgba(16, 185, 129, 0.4)';
+            tokenStatus.style.color = '#34d399';
+            tokenStatus.innerHTML = `<i class="fa-solid fa-circle-check"></i> Successfully imported <strong>${res.importedCount}</strong> records for participant!`;
+          }
+          tokenInput.value = '';
+          this.renderAnalyticsDashboard();
+        } catch (err) {
+          if (tokenStatus) {
+            tokenStatus.style.display = 'block';
+            tokenStatus.style.background = 'rgba(239, 68, 68, 0.15)';
+            tokenStatus.style.border = '1px solid rgba(239, 68, 68, 0.4)';
+            tokenStatus.style.color = '#f87171';
+            tokenStatus.innerHTML = `<i class="fa-solid fa-circle-exclamation"></i> ${err.message}`;
+          }
+        }
+      });
+    }
+
+    // 3. Cloud Webhook Settings & Sync
+    const btnSaveCloud = document.getElementById('btn-save-cloud-webhook');
+    const inputCloud = document.getElementById('input-cloud-webhook-url');
+    const btnSyncCloud = document.getElementById('btn-sync-cloud-now');
+    const btnTestCloud = document.getElementById('btn-test-cloud-webhook');
+    const cloudStatus = document.getElementById('cloud-webhook-status');
+
+    if (btnSaveCloud && inputCloud) {
+      btnSaveCloud.addEventListener('click', () => {
+        const url = inputCloud.value.trim();
+        if (window.studyConfig) {
+          window.studyConfig.setCloudWebhookUrl(url);
+          if (cloudStatus) {
+            cloudStatus.style.display = 'block';
+            cloudStatus.style.background = 'rgba(16, 185, 129, 0.15)';
+            cloudStatus.style.border = '1px solid rgba(16, 185, 129, 0.4)';
+            cloudStatus.style.color = '#34d399';
+            cloudStatus.innerHTML = '<i class="fa-solid fa-circle-check"></i> Cloud Webhook URL saved successfully!';
+            setTimeout(() => { cloudStatus.style.display = 'none'; }, 3500);
+          }
+        }
+      });
+    }
+
+    if (btnSyncCloud) {
+      btnSyncCloud.addEventListener('click', async () => {
+        if (cloudStatus) {
+          cloudStatus.style.display = 'block';
+          cloudStatus.style.background = 'rgba(99, 102, 241, 0.15)';
+          cloudStatus.style.border = '1px solid rgba(99, 102, 241, 0.4)';
+          cloudStatus.style.color = '#a5b4fc';
+          cloudStatus.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Syncing telemetry from cloud webhook...';
+        }
+
+        const res = await this.analytics.syncWithCloudWebhook();
+        if (cloudStatus) {
+          if (res.success) {
+            cloudStatus.style.background = 'rgba(16, 185, 129, 0.15)';
+            cloudStatus.style.border = '1px solid rgba(16, 185, 129, 0.4)';
+            cloudStatus.style.color = '#34d399';
+            cloudStatus.innerHTML = `<i class="fa-solid fa-circle-check"></i> Cloud sync completed! Imported ${res.importedCount} new response records.`;
+            this.renderAnalyticsDashboard();
+          } else {
+            cloudStatus.style.background = 'rgba(239, 68, 68, 0.15)';
+            cloudStatus.style.border = '1px solid rgba(239, 68, 68, 0.4)';
+            cloudStatus.style.color = '#f87171';
+            cloudStatus.innerHTML = `<i class="fa-solid fa-circle-exclamation"></i> ${res.message}`;
+          }
+        }
+      });
+    }
+
+    if (btnTestCloud && inputCloud) {
+      btnTestCloud.addEventListener('click', async () => {
+        const url = inputCloud.value.trim() || (window.studyConfig ? window.studyConfig.getCloudWebhookUrl() : '');
+        if (!url) {
+          alert('Please enter a Cloud Webhook URL first.');
+          return;
+        }
+
+        if (cloudStatus) {
+          cloudStatus.style.display = 'block';
+          cloudStatus.style.background = 'rgba(99, 102, 241, 0.15)';
+          cloudStatus.style.border = '1px solid rgba(99, 102, 241, 0.4)';
+          cloudStatus.style.color = '#a5b4fc';
+          cloudStatus.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Testing connection to cloud webhook...';
+        }
+
+        try {
+          const resp = await fetch(url);
+          if (cloudStatus) {
+            if (resp.ok) {
+              cloudStatus.style.background = 'rgba(16, 185, 129, 0.15)';
+              cloudStatus.style.border = '1px solid rgba(16, 185, 129, 0.4)';
+              cloudStatus.style.color = '#34d399';
+              cloudStatus.innerHTML = '<i class="fa-solid fa-circle-check"></i> Connection successful! Cloud Webhook is active and responding.';
+            } else {
+              cloudStatus.style.background = 'rgba(239, 68, 68, 0.15)';
+              cloudStatus.style.border = '1px solid rgba(239, 68, 68, 0.4)';
+              cloudStatus.style.color = '#f87171';
+              cloudStatus.innerHTML = `<i class="fa-solid fa-circle-exclamation"></i> Endpoint responded with HTTP status ${resp.status}.`;
+            }
+          }
+        } catch (err) {
+          if (cloudStatus) {
+            cloudStatus.style.background = 'rgba(239, 68, 68, 0.15)';
+            cloudStatus.style.border = '1px solid rgba(239, 68, 68, 0.4)';
+            cloudStatus.style.color = '#f87171';
+            cloudStatus.innerHTML = `<i class="fa-solid fa-circle-exclamation"></i> Could not connect: ${err.message}`;
+          }
+        }
+      });
+    }
   }
 
   async resetParticipantTest() {
@@ -1014,6 +1254,10 @@ class QueryExperimentApp {
 window.QueryExperimentApp = QueryExperimentApp;
 window.SQLMatrixApp = QueryExperimentApp;
 
-document.addEventListener('DOMContentLoaded', () => {
-  window.app = new QueryExperimentApp();
-});
+if (document.readyState === 'loading') {
+  document.addEventListener('DOMContentLoaded', () => {
+    if (!window.app) window.app = new QueryExperimentApp();
+  });
+} else {
+  if (!window.app) window.app = new QueryExperimentApp();
+}

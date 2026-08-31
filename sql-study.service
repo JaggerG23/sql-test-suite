@@ -1,0 +1,17 @@
+[Unit]
+Description=SQL Randomized Test Suite Telemetry Server
+After=network.target
+
+[Service]
+Type=simple
+User=ubuntu
+WorkingDirectory=/home/ubuntu/sql-randomized-test-suite
+ExecStart=/usr/bin/python3 server.py 8000
+Restart=always
+RestartSec=5
+Environment=PYTHONUNBUFFERED=1
+Environment=PORT=8000
+Environment=ADMIN_PASSWORD=StefiksLabRootPassword
+
+[Install]
+WantedBy=multi-user.target

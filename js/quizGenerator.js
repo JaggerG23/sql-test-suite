@@ -173,7 +173,7 @@ class QuizGenerator {
   }
 
   generateTableOptions(groundTruthResult, schema, rawSql) {
-    if (!groundTruthResult || !groundTruthResult.columns) {
+    if (!groundTruthResult || !groundTruthResult.columns || groundTruthResult.columns.length === 0 || !groundTruthResult.rows || groundTruthResult.rows.length === 0) {
       return this.generateFallbackOptions(schema);
     }
 
@@ -199,7 +199,7 @@ class QuizGenerator {
     });
 
     // Distractor 2: Reversed sort order or mutated column values
-    const dist2Rows = correctRows.slice().reverse().map(r => r.map(val => (typeof val === 'number' ? val + 1 : val)));
+    const dist2Rows = correctRows.slice().reverse().map(r => Array.isArray(r) ? r.map(val => (typeof val === 'number' ? val + 1 : val)) : r);
     options.push({
       columns: correctColumns,
       rows: dist2Rows,
@@ -210,7 +210,7 @@ class QuizGenerator {
     // Distractor 3: Raw base table or alternative schema table preview
     const baseTable = schema && schema.tables ? schema.tables[0] : null;
     const dist3Cols = baseTable ? baseTable.columns.map(c => c.name) : correctColumns;
-    const dist3Rows = baseTable ? baseTable.rows.slice(0, Math.min(5, baseTable.rows.length)).map(r => Object.values(r)) : correctRows.map(r => [r[0], 0]);
+    const dist3Rows = baseTable ? baseTable.rows.slice(0, Math.min(5, baseTable.rows.length)).map(r => Object.values(r)) : correctRows.map(r => Array.isArray(r) ? [r[0], 0] : [0, 0]);
     
     options.push({
       columns: dist3Cols,

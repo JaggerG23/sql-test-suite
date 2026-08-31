@@ -162,7 +162,7 @@ class HumanResolver {
         </div>
 
         <!-- Form Fields Grid -->
-        <form id="intake-form" onsubmit="return false;">
+        <div id="intake-form">
           <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 14px;">
             
             <!-- Age -->
@@ -249,49 +249,66 @@ class HumanResolver {
 
           </div>
 
+          <div id="intake-validation-msg" style="display: none; margin-top: 12px; padding: 10px; border-radius: 6px; font-size: 12px; background: rgba(239, 68, 68, 0.15); border: 1px solid rgba(239, 68, 68, 0.4); color: #f87171;"></div>
+
           <!-- Submit Action Button -->
           <div class="mt-4 pt-3 border-top d-flex justify-between align-center" style="border-top: 1px solid rgba(255,255,255,0.1); display: flex; justify-content: space-between; align-items: center;">
             <span class="text-muted fs-xs" style="font-size: 11px;"><i class="fa-solid fa-shield-halved text-success"></i> Demographic telemetry stored anonymously for User <strong>${this.escapeHTML(pid)}</strong>.</span>
-            <button type="submit" id="btn-start-experiment" class="btn btn-primary" style="padding: 9px 24px; font-weight: 700; font-size: 13.5px; border-radius: 8px; box-shadow: 0 4px 15px rgba(99, 102, 241, 0.4); cursor: pointer;">
+            <button type="button" id="btn-start-experiment" class="btn btn-primary" style="padding: 9px 24px; font-weight: 700; font-size: 13.5px; border-radius: 8px; box-shadow: 0 4px 15px rgba(99, 102, 241, 0.4); cursor: pointer;">
               Begin Experiment <i class="fa-solid fa-arrow-right" style="margin-left: 4px;"></i>
             </button>
           </div>
-        </form>
+        </div>
       </div>
     `;
 
-    const form = document.getElementById('intake-form');
-    if (form) {
-      form.addEventListener('submit', (e) => {
-        e.preventDefault();
-        const ageVal = document.getElementById('intake-age').value.trim();
-        const genderVal = document.getElementById('intake-gender').value;
-        const academicVal = document.getElementById('intake-academic-standing').value;
-        const codingVal = document.getElementById('intake-coding-exp').value;
-        const dbVal = document.getElementById('intake-db-exp').value;
-        const queryVal = document.getElementById('intake-query-exp').value;
+    const handleIntakeSubmit = () => {
+      const ageElem = document.getElementById('intake-age');
+      const genderElem = document.getElementById('intake-gender');
+      const academicElem = document.getElementById('intake-academic-standing');
+      const codingElem = document.getElementById('intake-coding-exp');
+      const dbElem = document.getElementById('intake-db-exp');
+      const queryElem = document.getElementById('intake-query-exp');
 
-        if (!ageVal || !genderVal || !academicVal || !codingVal || !dbVal || !queryVal) {
-          alert('Please fill in all required demographic fields to begin the experiment.');
-          return;
+      const ageVal = ageElem ? ageElem.value.trim() : '';
+      const genderVal = genderElem ? genderElem.value : '';
+      const academicVal = academicElem ? academicElem.value : '';
+      const codingVal = codingElem ? codingElem.value : '';
+      const dbVal = dbElem ? dbElem.value : '';
+      const queryVal = queryElem ? queryElem.value : '';
+
+      const valMsg = document.getElementById('intake-validation-msg');
+
+      if (!ageVal || !genderVal || !academicVal || !codingVal || !dbVal || !queryVal) {
+        if (valMsg) {
+          valMsg.style.display = 'block';
+          valMsg.innerHTML = '<i class="fa-solid fa-circle-exclamation"></i> Please complete all required demographic fields to begin the experiment.';
         }
+        return;
+      }
 
-        const data = {
-          age: ageVal,
-          gender: genderVal,
-          academicStanding: academicVal,
-          codingExp: codingVal,
-          dbExp: dbVal,
-          queryExp: queryVal
-        };
+      if (valMsg) valMsg.style.display = 'none';
 
-        if (this.app.analytics) {
-          this.app.analytics.saveDemographics(data, pid);
-        }
+      const data = {
+        age: ageVal,
+        gender: genderVal,
+        academicStanding: academicVal,
+        codingExp: codingVal,
+        dbExp: dbVal,
+        queryExp: queryVal
+      };
 
-        this.intakeCompleted = true;
-        this.app.loadIncrementalQuestion(1);
-      });
+      if (this.app.analytics) {
+        this.app.analytics.saveDemographics(data, pid);
+      }
+
+      this.intakeCompleted = true;
+      this.app.loadIncrementalQuestion(1);
+    };
+
+    const btnStart = document.getElementById('btn-start-experiment');
+    if (btnStart) {
+      btnStart.addEventListener('click', handleIntakeSubmit);
     }
   }
 
@@ -302,8 +319,10 @@ class HumanResolver {
 
     const existingThoughtsObj = this.app.analytics ? this.app.analytics.getFinalThoughts() || {} : {};
 
+    const pid = this.app.analytics ? this.app.analytics.participantId : 'user';
+
     container.innerHTML = `
-      <div class="card quiz-card glow-card" style="max-width: 820px; margin: 15px auto; padding: 24px; background: rgba(18, 22, 34, 0.95); border: 1px solid rgba(16, 185, 129, 0.4); border-radius: 12px; box-shadow: 0 12px 40px rgba(0,0,0,0.5);">
+      <div class="card quiz-card glow-card" style="max-width: 840px; margin: 15px auto; padding: 24px; background: rgba(18, 22, 34, 0.95); border: 1px solid rgba(16, 185, 129, 0.4); border-radius: 12px; box-shadow: 0 12px 40px rgba(0,0,0,0.5);">
         
         <!-- Header -->
         <div class="border-bottom pb-3 mb-3" style="border-bottom: 1px solid rgba(255,255,255,0.1); display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; padding-bottom: 16px; margin-bottom: 20px;">
@@ -311,49 +330,96 @@ class HumanResolver {
             <i class="fa-solid fa-award"></i>
           </div>
           <h2 style="font-family: var(--font-title); font-size: 24px; color: #fff; margin: 0 0 4px 0;">Experiment Completed!</h2>
-          <p class="text-muted fs-sm" style="font-size: 13px; margin: 4px 0 0 0; color: var(--text-muted);">Thank you for participating in my study! If you have any further questions, contact your professor or email me.</p>
+          <p class="text-muted fs-sm" style="font-size: 13px; margin: 4px 0 0 0; color: var(--text-muted);">Thank you for participating in this study! Your answers have been recorded for User ID: <code style="color: var(--color-accent); font-weight: bold;">${pid}</code>.</p>
+        </div>
+
+        <!-- Student Submission Proof & Backup Box -->
+        <div class="card p-3 mb-3" style="background: rgba(14, 18, 28, 0.8); border: 1px solid rgba(99, 102, 241, 0.3); border-radius: 8px; margin-bottom: 18px;">
+          <div class="d-flex justify-between align-center flex-wrap gap-2" style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px;">
+            <div>
+              <strong style="color: var(--color-primary); font-size: 13px;"><i class="fa-solid fa-shield-halved"></i> Submission Backup & LMS Proof</strong>
+              <p class="text-muted fs-xs mb-0" style="margin: 2px 0 0 0; font-size: 12px;">If requested by your instructor, download your response file or copy your submission token code.</p>
+            </div>
+            <div class="d-flex gap-2" style="display: flex; gap: 8px;">
+              <button type="button" id="btn-download-my-json" class="btn btn-sm btn-outline" style="font-size: 12px; padding: 6px 12px;">
+                <i class="fa-solid fa-file-arrow-down text-accent"></i> Download Proof (.json)
+              </button>
+              <button type="button" id="btn-copy-my-token" class="btn btn-sm btn-outline" style="font-size: 12px; padding: 6px 12px;">
+                <i class="fa-solid fa-copy text-primary"></i> Copy Submission Code
+              </button>
+            </div>
+          </div>
+          <div id="token-copy-notice" style="display: none; font-size: 11px; color: #34d399; margin-top: 8px;"><i class="fa-solid fa-circle-check"></i> Submission code copied to clipboard!</div>
         </div>
 
         <!-- Final Thoughts Form -->
-        <form id="final-thoughts-form" onsubmit="return false;">
+        <div id="final-thoughts-form">
           <div class="form-group mb-3">
             <label for="final-thoughts-input" style="font-size: 13px; font-weight: 700; margin-bottom: 8px; display: block; color: var(--text-main);">
               <i class="fa-solid fa-comment-dots text-accent"></i> Share any final thoughts (OPTIONAL)
             </label>
-            <textarea id="final-thoughts-input" class="form-control" rows="5" style="width: 100%; padding: 12px; background: rgba(0,0,0,0.4); border: 1px solid rgba(255,255,255,0.15); border-radius: 8px; color: #fff; font-size: 13px; font-family: var(--font-sans); line-height: 1.5; resize: vertical;">${this.escapeHTML(existingThoughtsObj.thoughts || '')}</textarea>
+            <textarea id="final-thoughts-input" class="form-control" rows="4" style="width: 100%; padding: 12px; background: rgba(0,0,0,0.4); border: 1px solid rgba(255,255,255,0.15); border-radius: 8px; color: #fff; font-size: 13px; font-family: var(--font-sans); line-height: 1.5; resize: vertical;" placeholder="Add any feedback, observations, or reflections on the queries...">${this.escapeHTML(existingThoughtsObj.thoughts || '')}</textarea>
           </div>
 
           <div id="final-thoughts-feedback-msg" style="display: none; padding: 10px; border-radius: 6px; font-size: 12px; margin-bottom: 12px;"></div>
 
           <div class="d-flex justify-end align-center pt-3 border-top" style="border-top: 1px solid rgba(255,255,255,0.1); display: flex; justify-content: flex-end; align-items: center;">
-            <button type="submit" id="btn-submit-final-thoughts" class="btn btn-success" style="padding: 9px 22px; font-weight: 700; font-size: 13.5px; border-radius: 8px; box-shadow: 0 4px 15px rgba(16, 185, 129, 0.4); cursor: pointer;">
-              <i class="fa-solid fa-paper-plane"></i> Submit
+            <button type="button" id="btn-submit-final-thoughts" class="btn btn-success" style="padding: 9px 22px; font-weight: 700; font-size: 13.5px; border-radius: 8px; box-shadow: 0 4px 15px rgba(16, 185, 129, 0.4); cursor: pointer;">
+              <i class="fa-solid fa-paper-plane"></i> Save Thoughts
             </button>
           </div>
-        </form>
+        </div>
       </div>
     `;
 
-    const form = document.getElementById('final-thoughts-form');
-    if (form) {
-      form.addEventListener('submit', (e) => {
-        e.preventDefault();
-        const thoughtsVal = document.getElementById('final-thoughts-input').value.trim();
+    // Bind Proof Buttons
+    const btnDl = document.getElementById('btn-download-my-json');
+    if (btnDl && this.app.analytics) {
+      btnDl.addEventListener('click', () => {
+        this.app.analytics.downloadParticipantJSON(pid);
+      });
+    }
 
-        if (this.app.analytics) {
-          this.app.analytics.saveFinalThoughts(thoughtsVal);
+    const btnToken = document.getElementById('btn-copy-my-token');
+    if (btnToken && this.app.analytics) {
+      btnToken.addEventListener('click', () => {
+        const token = this.app.analytics.getParticipantToken(pid);
+        navigator.clipboard.writeText(token).then(() => {
+          const notice = document.getElementById('token-copy-notice');
+          if (notice) {
+            notice.style.display = 'block';
+            setTimeout(() => { notice.style.display = 'none'; }, 3000);
+          }
+        }).catch(() => {
+          prompt('Copy your submission code below:', token);
+        });
+      });
+    }
+
+    const handleFinalThoughtsSave = () => {
+      const inputElem = document.getElementById('final-thoughts-input');
+      const thoughtsVal = inputElem ? inputElem.value.trim() : '';
+
+      if (this.app.analytics) {
+        this.app.analytics.saveFinalThoughts(thoughtsVal);
+        if (typeof this.app.renderAnalyticsDashboard === 'function') {
           this.app.renderAnalyticsDashboard();
         }
+      }
 
-        const msgBox = document.getElementById('final-thoughts-feedback-msg');
-        if (msgBox) {
-          msgBox.style.display = 'block';
-          msgBox.style.background = 'rgba(16, 185, 129, 0.15)';
-          msgBox.style.border = '1px solid rgba(16, 185, 129, 0.4)';
-          msgBox.style.color = '#34d399';
-          msgBox.innerHTML = '<i class="fa-solid fa-circle-check"></i> Thank you! Your final thoughts and experiment telemetry have been saved successfully.';
-        }
-      });
+      const msgBox = document.getElementById('final-thoughts-feedback-msg');
+      if (msgBox) {
+        msgBox.style.display = 'block';
+        msgBox.style.background = 'rgba(16, 185, 129, 0.15)';
+        msgBox.style.border = '1px solid rgba(16, 185, 129, 0.4)';
+        msgBox.style.color = '#34d399';
+        msgBox.innerHTML = '<i class="fa-solid fa-circle-check"></i> Thank you! Your final thoughts have been saved successfully.';
+      }
+    };
+
+    const btnSaveThoughts = document.getElementById('btn-submit-final-thoughts');
+    if (btnSaveThoughts) {
+      btnSaveThoughts.addEventListener('click', handleFinalThoughtsSave);
     }
   }
 
@@ -761,8 +827,9 @@ class HumanResolver {
     } else {
       rows.forEach(row => {
         html += `<tr>`;
-        row.forEach(val => {
-          const dispVal = val === null ? '<span class="text-muted">NULL</span>' : this.escapeHTML(val);
+        const rowVals = Array.isArray(row) ? row : columns.map(c => (row && row[c] !== undefined ? row[c] : null));
+        rowVals.forEach(val => {
+          const dispVal = (val === null || val === undefined) ? '<span class="text-muted">NULL</span>' : this.escapeHTML(val);
           html += `<td style="padding: 3px 12px; border-bottom: 1px solid rgba(255,255,255,0.05); white-space: nowrap; font-family: var(--font-mono); text-align: center;">${dispVal}</td>`;
         });
         html += `</tr>`;

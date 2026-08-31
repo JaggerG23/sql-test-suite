@@ -6,6 +6,7 @@ import sys
 import csv
 import secrets
 import urllib.parse
+import threading
 from http.cookies import SimpleCookie
 
 PORT = 8000
@@ -14,6 +15,9 @@ CSV_FILE = "participant_responses_export.csv"
 
 ADMIN_PASSWORD = os.environ.get("ADMIN_PASSWORD", "StefiksLabRootPassword")
 ACTIVE_ADMIN_SESSIONS = set()
+
+# Global lock to ensure thread safety for concurrent file I/O
+db_lock = threading.Lock()
 
 CSV_HEADERS = [
     'Response ID',
@@ -55,7 +59,24 @@ def parse_cookies(cookie_header):
     except Exception:
         return {}
 
+def load_db_data():
+    """Loads database data. Assumes caller holds db_lock if necessary."""
+    if os.path.exists(DB_FILE):
+        try:
+            with open(DB_FILE, 'r', encoding='utf-8') as f:
+                return json.load(f)
+        except Exception as e:
+            print(f"Error loading DB: {e}")
+    return {"responses": [], "demographics": {}, "finalThoughts": {}}
+
+def save_db_data(db_data):
+    """Saves database data to JSON and exports CSV. Assumes caller holds db_lock."""
+    with open(DB_FILE, 'w', encoding='utf-8') as f:
+        json.dump(db_data, f, indent=2)
+    export_csv(db_data)
+
 def export_csv(db_data):
+    """Exports DB data to CSV. Assumes caller holds db_lock."""
     responses = db_data.get('responses', [])
     demographics = db_data.get('demographics', {})
     final_thoughts = db_data.get('finalThoughts', {})
@@ -118,13 +139,25 @@ class TelemetryHandler(http.server.SimpleHTTPRequestHandler):
 
     def send_json(self, status_code, data, extra_headers=None):
         self.send_response(status_code)
-        self.send_header('Content-Type', 'application/json')
+        self.send_header('Content-Type', 'application/json; charset=utf-8')
         self.send_header('Access-Control-Allow-Origin', '*')
+        self.send_header('Access-Control-Allow-Methods', 'GET, POST, OPTIONS, PUT, DELETE')
+        self.send_header('Access-Control-Allow-Headers', 'Content-Type, X-Admin-Token, Authorization, Cookie')
+        self.send_header('Access-Control-Allow-Credentials', 'true')
         if extra_headers:
             for k, v in extra_headers.items():
                 self.send_header(k, v)
         self.end_headers()
         self.wfile.write(json.dumps(data).encode('utf-8'))
+
+    def do_OPTIONS(self):
+        self.send_response(200)
+        self.send_header('Access-Control-Allow-Origin', '*')
+        self.send_header('Access-Control-Allow-Methods', 'GET, POST, OPTIONS, PUT, DELETE')
+        self.send_header('Access-Control-Allow-Headers', 'Content-Type, X-Admin-Token, Authorization, Cookie')
+        self.send_header('Access-Control-Allow-Credentials', 'true')
+        self.send_header('Content-Length', '0')
+        self.end_headers()
 
     def do_GET(self):
         parsed_path = urllib.parse.urlparse(self.path).path
@@ -145,13 +178,8 @@ class TelemetryHandler(http.server.SimpleHTTPRequestHandler):
                 self.send_json(401, {"status": "error", "message": "Unauthorized: Admin access required"})
                 return
 
-            data = {"responses": [], "demographics": {}, "finalThoughts": {}}
-            if os.path.exists(DB_FILE):
-                try:
-                    with open(DB_FILE, 'r', encoding='utf-8') as f:
-                        data = json.load(f)
-                except Exception as e:
-                    print("Error loading DB file:", e)
+            with db_lock:
+                data = load_db_data()
 
             self.send_json(200, data)
             return
@@ -196,42 +224,34 @@ class TelemetryHandler(http.server.SimpleHTTPRequestHandler):
         elif parsed_path == '/api/save-telemetry':
             try:
                 payload = json.loads(body.decode('utf-8'))
-                db_data = {"responses": [], "demographics": {}, "finalThoughts": {}}
-                if os.path.exists(DB_FILE):
-                    try:
-                        with open(DB_FILE, 'r', encoding='utf-8') as f:
-                            db_data = json.load(f)
-                    except Exception:
-                        pass
+                
+                with db_lock:
+                    db_data = load_db_data()
 
-                # Merge responses deduplicated by unique ID
-                existing_map = {r.get('id'): r for r in db_data.get('responses', []) if r.get('id')}
-                for r in payload.get('responses', []):
-                    if r.get('id'):
-                        existing_map[r['id']] = r
-                if payload.get('newResponse') and payload['newResponse'].get('id'):
-                    existing_map[payload['newResponse']['id']] = payload['newResponse']
+                    # Merge responses deduplicated by unique ID
+                    existing_map = {r.get('id'): r for r in db_data.get('responses', []) if r.get('id')}
+                    for r in payload.get('responses', []):
+                        if r.get('id'):
+                            existing_map[r['id']] = r
+                    if payload.get('newResponse') and payload['newResponse'].get('id'):
+                        existing_map[payload['newResponse']['id']] = payload['newResponse']
 
-                db_data['responses'] = list(existing_map.values())
+                    db_data['responses'] = list(existing_map.values())
 
-                # Merge demographics
-                if payload.get('demographics'):
-                    db_data['demographics'].update(payload['demographics'])
-                if payload.get('newDemographic') and payload['newDemographic'].get('participantId'):
-                    db_data['demographics'][payload['newDemographic']['participantId']] = payload['newDemographic']
+                    # Merge demographics
+                    if payload.get('demographics'):
+                        db_data['demographics'].update(payload['demographics'])
+                    if payload.get('newDemographic') and payload['newDemographic'].get('participantId'):
+                        db_data['demographics'][payload['newDemographic']['participantId']] = payload['newDemographic']
 
-                # Merge final thoughts
-                if payload.get('finalThoughts'):
-                    db_data['finalThoughts'].update(payload['finalThoughts'])
-                if payload.get('newFinalThought') and payload['newFinalThought'].get('participantId'):
-                    db_data['finalThoughts'][payload['newFinalThought']['participantId']] = payload['newFinalThought']
+                    # Merge final thoughts
+                    if payload.get('finalThoughts'):
+                        db_data['finalThoughts'].update(payload['finalThoughts'])
+                    if payload.get('newFinalThought') and payload['newFinalThought'].get('participantId'):
+                        db_data['finalThoughts'][payload['newFinalThought']['participantId']] = payload['newFinalThought']
 
-                # Write to DB file
-                with open(DB_FILE, 'w', encoding='utf-8') as f:
-                    json.dump(db_data, f, indent=2)
-
-                # Export CSV
-                export_csv(db_data)
+                    # Write to DB file and Export CSV
+                    save_db_data(db_data)
 
                 self.send_json(200, {"status": "success", "count": len(db_data['responses'])})
             except Exception as e:
@@ -251,24 +271,17 @@ class TelemetryHandler(http.server.SimpleHTTPRequestHandler):
                     self.send_json(400, {"status": "error", "message": "Missing participantId"})
                     return
 
-                db_data = {"responses": [], "demographics": {}, "finalThoughts": {}}
-                if os.path.exists(DB_FILE):
-                    try:
-                        with open(DB_FILE, 'r', encoding='utf-8') as f:
-                            db_data = json.load(f)
-                    except Exception:
-                        pass
+                with db_lock:
+                    db_data = load_db_data()
 
-                db_data['responses'] = [r for r in db_data.get('responses', []) if r.get('participantId') != pid]
-                if pid in db_data.get('demographics', {}):
-                    del db_data['demographics'][pid]
-                if pid in db_data.get('finalThoughts', {}):
-                    del db_data['finalThoughts'][pid]
+                    db_data['responses'] = [r for r in db_data.get('responses', []) if r.get('participantId') != pid]
+                    if pid in db_data.get('demographics', {}):
+                        del db_data['demographics'][pid]
+                    if pid in db_data.get('finalThoughts', {}):
+                        del db_data['finalThoughts'][pid]
 
-                with open(DB_FILE, 'w', encoding='utf-8') as f:
-                    json.dump(db_data, f, indent=2)
+                    save_db_data(db_data)
 
-                export_csv(db_data)
                 self.send_json(200, {"status": "success", "deletedParticipantId": pid})
             except Exception as e:
                 self.send_json(400, {"status": "error", "message": str(e)})
@@ -280,10 +293,11 @@ class TelemetryHandler(http.server.SimpleHTTPRequestHandler):
                 return
 
             try:
-                if os.path.exists(DB_FILE):
-                    os.remove(DB_FILE)
-                if os.path.exists(CSV_FILE):
-                    os.remove(CSV_FILE)
+                with db_lock:
+                    if os.path.exists(DB_FILE):
+                        os.remove(DB_FILE)
+                    if os.path.exists(CSV_FILE):
+                        os.remove(CSV_FILE)
                 print("All telemetry data wiped successfully.")
                 self.send_json(200, {"status": "success"})
             except Exception as e:
@@ -295,10 +309,19 @@ class TelemetryHandler(http.server.SimpleHTTPRequestHandler):
 if __name__ == '__main__':
     port = int(sys.argv[1]) if len(sys.argv) > 1 else PORT
     server_address = ('', port)
-    httpd = http.server.HTTPServer(server_address, TelemetryHandler)
+    
+    # Use ThreadingHTTPServer for concurrent requests support
+    if hasattr(http.server, 'ThreadingHTTPServer'):
+        ServerClass = http.server.ThreadingHTTPServer
+    else:
+        class ThreadingHTTPServer(socketserver.ThreadingMixIn, http.server.HTTPServer):
+            pass
+        ServerClass = ThreadingHTTPServer
+
+    httpd = ServerClass(server_address, TelemetryHandler)
     print(f"=========================================================")
     print(f"   SQL Test Suite Telemetry Server Started at:")
-    print(f"   http://localhost:{port}")
+    print(f"   http://localhost:{port} (Threaded)")
     print(f"   All logs will be saved to disk at:")
     print(f"   - {os.path.abspath(DB_FILE)}")
     print(f"   - {os.path.abspath(CSV_FILE)}")
@@ -307,3 +330,4 @@ if __name__ == '__main__':
         httpd.serve_forever()
     except KeyboardInterrupt:
         print("Server stopped.")
+

@@ -1,7 +1,8 @@
 /**
  * Participant Analytics & Telemetry Manager
  * Handles persistent storage, server synchronization, real-time cross-tab updates,
- * demographic profiling, accuracy & timing telemetry, and unified CSV/JSON exports.
+ * demographic profiling, accuracy & timing telemetry, cloud webhook sync (Google Sheets),
+ * file/token import, and unified CSV/JSON exports.
  */
 
 class ParticipantAnalytics {
@@ -162,47 +163,60 @@ class ParticipantAnalytics {
     }
   }
 
+  getApiUrl(path) {
+    if (window.studyConfig && typeof window.studyConfig.getEndpoint === 'function') {
+      return window.studyConfig.getEndpoint(path);
+    }
+    return path.startsWith('/') ? path : `/${path}`;
+  }
+
   async syncWithDiskStorage() {
     try {
-      const res = await fetch('/api/load-telemetry');
+      const endpoint = this.getApiUrl('/api/load-telemetry');
+      const res = await fetch(endpoint);
       if (res.ok) {
-        const diskData = await res.json();
-        let changed = false;
+        const text = await res.text();
+        let diskData = null;
+        try { diskData = JSON.parse(text); } catch (e) {}
 
-        if (diskData.responses && Array.isArray(diskData.responses)) {
-          const map = new Map();
-          // Keep newer or deduplicate by ID
-          this.responses.forEach(r => { if (r.id) map.set(r.id, r); });
-          diskData.responses.forEach(r => {
-            if (r.id && !map.has(r.id)) {
-              map.set(r.id, r);
-              changed = true;
-            }
-          });
-          this.responses = Array.from(map.values());
-        }
+        if (diskData && typeof diskData === 'object') {
+          let changed = false;
 
-        if (diskData.demographics && typeof diskData.demographics === 'object') {
-          Object.assign(this.demographics, diskData.demographics);
-          localStorage.setItem(this.demographicsKey, JSON.stringify(this.demographics));
-        }
+          if (diskData.responses && Array.isArray(diskData.responses)) {
+            const map = new Map();
+            this.responses.forEach(r => { if (r.id) map.set(r.id, r); });
+            diskData.responses.forEach(r => {
+              if (r.id && !map.has(r.id)) {
+                map.set(r.id, r);
+                changed = true;
+              }
+            });
+            this.responses = Array.from(map.values());
+          }
 
-        if (diskData.finalThoughts && typeof diskData.finalThoughts === 'object') {
-          Object.assign(this.finalThoughts, diskData.finalThoughts);
-          localStorage.setItem(this.finalThoughtsKey, JSON.stringify(this.finalThoughts));
-        }
+          if (diskData.demographics && typeof diskData.demographics === 'object') {
+            Object.assign(this.demographics, diskData.demographics);
+            localStorage.setItem(this.demographicsKey, JSON.stringify(this.demographics));
+          }
 
-        if (changed) {
-          this.saveResponsesLocally();
-          this.notify({ type: 'DISK_SYNC' });
+          if (diskData.finalThoughts && typeof diskData.finalThoughts === 'object') {
+            Object.assign(this.finalThoughts, diskData.finalThoughts);
+            localStorage.setItem(this.finalThoughtsKey, JSON.stringify(this.finalThoughts));
+          }
+
+          if (changed) {
+            this.saveResponsesLocally();
+            this.notify({ type: 'DISK_SYNC' });
+          }
         }
       }
     } catch (e) {
-      // Backend offline or non-admin mode
+      // Backend offline or static hosting
     }
 
-    // Always push current local data to server
+    // Push local data to server or cloud webhook
     this.pushToDiskStorage();
+    this.pushToCloudWebhook();
   }
 
   async pushToDiskStorage(incrementalData = null) {
@@ -214,13 +228,57 @@ class ParticipantAnalytics {
         ...incrementalData
       };
 
-      await fetch('/api/save-telemetry', {
+      const endpoint = this.getApiUrl('/api/save-telemetry');
+      await fetch(endpoint, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload)
       });
     } catch (e) {
       // Server offline fallback
+    }
+  }
+
+  async pushToCloudWebhook(incrementalData = null) {
+    const webhookUrl = window.studyConfig ? window.studyConfig.getCloudWebhookUrl() : '';
+    if (!webhookUrl) return;
+
+    try {
+      const payload = {
+        responses: this.responses,
+        demographics: this.demographics,
+        finalThoughts: this.finalThoughts,
+        ...incrementalData
+      };
+
+      await fetch(webhookUrl, {
+        method: 'POST',
+        mode: 'no-cors',
+        headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+        body: JSON.stringify(payload)
+      });
+    } catch (e) {
+      console.warn('Cloud webhook push:', e);
+    }
+  }
+
+  async syncWithCloudWebhook() {
+    const webhookUrl = window.studyConfig ? window.studyConfig.getCloudWebhookUrl() : '';
+    if (!webhookUrl) return { success: false, message: 'No Cloud Webhook URL configured.' };
+
+    try {
+      const res = await fetch(webhookUrl);
+      if (res.ok) {
+        const text = await res.text();
+        const data = JSON.parse(text);
+        if (data && (data.responses || data.status === 'success')) {
+          const importResult = this.importTelemetryData(data);
+          return { success: true, ...importResult };
+        }
+      }
+      return { success: false, message: 'Cloud webhook returned invalid format.' };
+    } catch (e) {
+      return { success: false, message: e.message || 'Error connecting to cloud webhook.' };
     }
   }
 
@@ -241,34 +299,32 @@ class ParticipantAnalytics {
       selectedOptionText: entry.selectedOptionText || '',
       correctOptionText: entry.correctOptionText || '',
       isCorrect: Boolean(entry.isCorrect),
-      responseTimeMs: entry.responseTimeMs || 0,
-      seed: entry.seed || 42,
+      responseTimeMs: Math.max(0, Math.round(entry.responseTimeMs || 0)),
+      seed: entry.seed || 0,
       tabFocusLost: Boolean(entry.tabFocusLost),
       tabSwitchCount: entry.tabSwitchCount || 0,
-      focusLostDurationMs: entry.focusLostDurationMs || 0
+      focusLostDurationMs: Math.max(0, Math.round(entry.focusLostDurationMs || 0))
     };
 
     this.responses.push(record);
     this.saveResponsesLocally();
-    this.pushToDiskStorage({ newResponse: record });
+
+    this.pushToDiskStorage({ record });
+    this.pushToCloudWebhook({ record });
 
     if (this.channel) {
-      this.channel.postMessage({ type: 'NEW_RESPONSE', record: record });
+      this.channel.postMessage({ type: 'NEW_RESPONSE', record });
     }
-    this.notify({ type: 'NEW_RESPONSE', record: record });
+    this.notify({ type: 'NEW_RESPONSE', record });
+
     return record;
   }
 
-  saveDemographics(data, pid = this.participantId) {
+  saveDemographics(demographicsData, pid = this.participantId) {
     if (!pid) return null;
     const record = {
       participantId: pid,
-      age: data.age || '',
-      gender: data.gender || '',
-      academicStanding: data.academicStanding || '',
-      codingExp: data.codingExp || '',
-      dbExp: data.dbExp || '',
-      queryExp: data.queryExp || '',
+      ...demographicsData,
       timestamp: new Date().toISOString()
     };
 
@@ -277,11 +333,13 @@ class ParticipantAnalytics {
       localStorage.setItem(this.demographicsKey, JSON.stringify(this.demographics));
     } catch (e) {}
 
-    this.pushToDiskStorage({ newDemographic: record });
+    this.pushToDiskStorage({ newDemographics: record });
+    this.pushToCloudWebhook({ newDemographics: record });
+
     if (this.channel) {
-      this.channel.postMessage({ type: 'DEMOGRAPHICS_UPDATE', demographic: record });
+      this.channel.postMessage({ type: 'DEMOGRAPHICS_UPDATE', demographics: record });
     }
-    this.notify({ type: 'DEMOGRAPHICS_UPDATE', demographic: record });
+    this.notify({ type: 'DEMOGRAPHICS_UPDATE', demographics: record });
     return record;
   }
 
@@ -303,6 +361,8 @@ class ParticipantAnalytics {
     } catch (e) {}
 
     this.pushToDiskStorage({ newFinalThought: record });
+    this.pushToCloudWebhook({ newFinalThought: record });
+
     if (this.channel) {
       this.channel.postMessage({ type: 'FINAL_THOUGHTS_UPDATE', finalThought: record });
     }
@@ -440,6 +500,199 @@ class ParticipantAnalytics {
 
     return groups;
   }
+
+  // --- Telemetry Import Pipeline ---
+
+  importTelemetryData(data) {
+    if (!data) return { importedCount: 0, newUsers: 0 };
+    let importedCount = 0;
+    const initialUsers = new Set(this.responses.map(r => r.participantId)).size;
+
+    const incomingResponses = data.responses || (Array.isArray(data) ? data : []);
+    const incomingDemos = data.demographics || {};
+    const incomingThoughts = data.finalThoughts || {};
+
+    const map = new Map();
+    this.responses.forEach(r => { if (r.id) map.set(r.id, r); });
+
+    incomingResponses.forEach(r => {
+      if (r && typeof r === 'object') {
+        const id = r.id || ('resp_' + Date.now() + '_' + Math.random().toString(36).substring(2, 7));
+        if (!map.has(id)) {
+          r.id = id;
+          map.set(id, r);
+          importedCount++;
+        }
+      }
+    });
+
+    this.responses = Array.from(map.values());
+    Object.assign(this.demographics, incomingDemos);
+    Object.assign(this.finalThoughts, incomingThoughts);
+
+    this.saveResponsesLocally();
+    try {
+      localStorage.setItem(this.demographicsKey, JSON.stringify(this.demographics));
+      localStorage.setItem(this.finalThoughtsKey, JSON.stringify(this.finalThoughts));
+    } catch (e) {}
+
+    const finalUsers = new Set(this.responses.map(r => r.participantId)).size;
+    const newUsers = Math.max(0, finalUsers - initialUsers);
+
+    this.pushToDiskStorage();
+    if (this.channel) {
+      this.channel.postMessage({ type: 'IMPORT_SYNC', importedCount, newUsers });
+    }
+    this.notify({ type: 'IMPORT_SYNC', importedCount, newUsers });
+
+    return { importedCount, newUsers };
+  }
+
+  importFromJSON(jsonText) {
+    try {
+      const data = JSON.parse(jsonText);
+      return this.importTelemetryData(data);
+    } catch (e) {
+      throw new Error('Invalid JSON: ' + e.message);
+    }
+  }
+
+  importFromCSV(csvText) {
+    try {
+      const lines = csvText.trim().split(/\r?\n/);
+      if (lines.length <= 1) return { importedCount: 0, newUsers: 0 };
+
+      // Helper to parse standard CSV line with quotes
+      const parseCSVLine = (line) => {
+        const result = [];
+        let cur = '';
+        let inQuotes = false;
+        for (let i = 0; i < line.length; i++) {
+          const c = line[i];
+          if (c === '"') {
+            if (inQuotes && line[i + 1] === '"') {
+              cur += '"';
+              i++;
+            } else {
+              inQuotes = !inQuotes;
+            }
+          } else if (c === ',' && !inQuotes) {
+            result.push(cur);
+            cur = '';
+          } else {
+            cur += c;
+          }
+        }
+        result.push(cur);
+        return result;
+      };
+
+      const headers = parseCSVLine(lines[0]);
+      const responses = [];
+      const demographics = {};
+      const finalThoughts = {};
+
+      for (let i = 1; i < lines.length; i++) {
+        if (!lines[i].trim()) continue;
+        const row = parseCSVLine(lines[i]);
+        if (row.length < 5) continue;
+
+        const pid = row[1] || 'user_imported';
+        const resp = {
+          id: row[0] || ('resp_' + Date.now() + '_' + Math.random().toString(36).substring(2, 7)),
+          participantId: pid,
+          sessionId: row[2] || '',
+          timestamp: row[3] || new Date().toISOString(),
+          questionNumber: parseInt(row[4], 10) || 1,
+          questionCategory: row[5] || 'General',
+          activeDialect: row[6] || 'ansi',
+          activeDialectName: row[7] || 'ANSI SQL',
+          selectedKey: row[8] ? parseInt(row[8], 10) : null,
+          selectedOptionText: row[9] || '',
+          correctOptionText: row[10] || '',
+          isCorrect: String(row[11]).toUpperCase() === 'TRUE',
+          responseTimeMs: parseInt(row[12], 10) || 0,
+          seed: row[13] || '',
+          tabFocusLost: String(row[14]).toUpperCase() === 'TRUE',
+          tabSwitchCount: parseInt(row[15], 10) || 0,
+          focusLostDurationMs: parseInt(row[16], 10) || 0,
+          rawQuery: row[24] || '',
+          dialectSql: row[25] || '',
+          jsCode: row[26] || ''
+        };
+        responses.push(resp);
+
+        if (!demographics[pid] && (row[17] || row[18] || row[19])) {
+          demographics[pid] = {
+            participantId: pid,
+            age: row[17] || '',
+            gender: row[18] || '',
+            academicStanding: row[19] || '',
+            codingExp: row[20] || '',
+            dbExp: row[21] || '',
+            queryExp: row[22] || '',
+            timestamp: row[3] || new Date().toISOString()
+          };
+        }
+
+        if (!finalThoughts[pid] && row[23]) {
+          finalThoughts[pid] = {
+            participantId: pid,
+            thoughts: row[23],
+            timestamp: row[3] || new Date().toISOString()
+          };
+        }
+      }
+
+      return this.importTelemetryData({ responses, demographics, finalThoughts });
+    } catch (e) {
+      throw new Error('Invalid CSV: ' + e.message);
+    }
+  }
+
+  importFromToken(tokenText) {
+    try {
+      const clean = tokenText.trim();
+      const decoded = decodeURIComponent(escape(atob(clean)));
+      const data = JSON.parse(decoded);
+      return this.importTelemetryData(data);
+    } catch (e) {
+      throw new Error('Invalid submission token code: ' + e.message);
+    }
+  }
+
+  getParticipantToken(participantId = this.participantId) {
+    const userResponses = this.getParticipantResponses(participantId);
+    const demo = this.getDemographics(participantId);
+    const thoughts = this.getFinalThoughts(participantId);
+
+    const payload = {
+      participantId,
+      responses: userResponses,
+      demographics: demo ? { [participantId]: demo } : {},
+      finalThoughts: thoughts ? { [participantId]: thoughts } : {}
+    };
+
+    return btoa(unescape(encodeURIComponent(JSON.stringify(payload))));
+  }
+
+  downloadParticipantJSON(participantId = this.participantId) {
+    const userResponses = this.getParticipantResponses(participantId);
+    const demo = this.getDemographics(participantId);
+    const thoughts = this.getFinalThoughts(participantId);
+
+    const payload = {
+      participantId,
+      exportedAt: new Date().toISOString(),
+      responses: userResponses,
+      demographics: demo ? { [participantId]: demo } : {},
+      finalThoughts: thoughts ? { [participantId]: thoughts } : {}
+    };
+
+    this.downloadBlob(JSON.stringify(payload, null, 2), `study_submission_${participantId}.json`, 'application/json');
+  }
+
+  // --- Export Routines ---
 
   getCSVHeaders() {
     return [
@@ -583,7 +836,8 @@ class ParticipantAnalytics {
       } catch (e) {}
 
       try {
-        await fetch('/api/delete-user-telemetry', {
+        const endpoint = this.getApiUrl('/api/delete-user-telemetry');
+        await fetch(endpoint, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ participantId })
@@ -609,7 +863,8 @@ class ParticipantAnalytics {
     } catch (e) {}
 
     try {
-      await fetch('/api/clear-telemetry', { method: 'POST' });
+      const endpoint = this.getApiUrl('/api/clear-telemetry');
+      await fetch(endpoint, { method: 'POST' });
     } catch (e) {}
 
     if (this.channel) {

@@ -12,15 +12,19 @@ class SQLiteEngine {
     if (this.initialized) return;
     try {
       if (typeof window.initSqlJs === 'function') {
-        this.SQL = await window.initSqlJs({
+        const initPromise = window.initSqlJs({
           locateFile: file => `https://cdnjs.cloudflare.com/ajax/libs/sql.js/1.8.0/${file}`
         });
+        const timeoutPromise = new Promise((_, reject) =>
+          setTimeout(() => reject(new Error('SQLite WASM init timed out')), 2500)
+        );
+        this.SQL = await Promise.race([initPromise, timeoutPromise]);
         this.initialized = true;
       } else {
-        console.error('sql.js library not loaded');
+        console.warn('sql.js library not loaded');
       }
     } catch (err) {
-      console.error('Failed to initialize SQLite WASM:', err);
+      console.warn('SQLite WASM initialization fallback:', err);
     }
   }
 

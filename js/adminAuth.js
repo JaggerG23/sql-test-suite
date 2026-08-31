@@ -202,18 +202,28 @@ class AdminAuthManager {
     };
   }
 
+  getApiUrl(path) {
+    if (window.studyConfig && typeof window.studyConfig.getEndpoint === 'function') {
+      return window.studyConfig.getEndpoint(path);
+    }
+    return path.startsWith('/') ? path : `/${path}`;
+  }
+
   async checkAuthStatus() {
     try {
-      const res = await fetch('/api/admin/check-auth');
+      const endpoint = this.getApiUrl('/api/admin/check-auth');
+      const res = await fetch(endpoint);
       if (res.ok) {
-        const data = await res.json();
-        if (data.authenticated) {
+        const text = await res.text();
+        let data = null;
+        try { data = JSON.parse(text); } catch (e) {}
+        if (data && data.authenticated) {
           this.unlockDashboard();
           return;
         }
       }
     } catch (e) {
-      console.warn('Backend auth check skipped or offline:', e);
+      // Backend auth check skipped or offline
     }
 
     if (this.getToken()) {
@@ -298,7 +308,7 @@ class AdminAuthManager {
     if (modal) {
       modal.classList.add('hidden');
       modal.style.display = 'none';
-      modal.remove(); // Safely remove modal from DOM upon unlocking
+      modal.remove();
     }
   }
 
@@ -317,38 +327,65 @@ class AdminAuthManager {
       submitBtn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Authenticating...';
     }
 
+    const validOfflinePasswords = ['StefiksLabRootPassword', 'admin123'];
+
     try {
-      const response = await fetch('/api/admin/login', {
+      const endpoint = this.getApiUrl('/api/admin/login');
+      const response = await fetch(endpoint, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ password })
       });
 
-      const data = await response.json();
-      if (response.ok && data.status === 'success') {
-        if (data.token) {
-          this.setToken(data.token);
-        } else {
-          this.setToken('session_active');
-        }
-        this.unlockDashboard();
-        if (window.app && window.app.analytics) {
-          await window.app.analytics.syncWithDiskStorage();
-          if (typeof window.app.renderAnalyticsDashboard === 'function') {
-            window.app.renderAnalyticsDashboard();
+      if (response.ok) {
+        const text = await response.text();
+        let data = null;
+        try { data = JSON.parse(text); } catch (e) {}
+
+        if (data && data.status === 'success') {
+          this.setToken(data.token || 'session_active');
+          this.unlockDashboard();
+          if (window.app && window.app.analytics) {
+            await window.app.analytics.syncWithDiskStorage();
+            if (typeof window.app.renderAnalyticsDashboard === 'function') {
+              window.app.renderAnalyticsDashboard();
+            }
           }
+          return;
         }
-      } else {
+      }
+
+      // If backend explicitly rejected password (401/403)
+      if (response.status === 401 || response.status === 403) {
         if (errBadge) {
-          errBadge.textContent = data.message || 'Incorrect password. Access denied.';
+          errBadge.textContent = 'Incorrect password. Access denied.';
           errBadge.style.display = 'block';
         }
         passInput.value = '';
         passInput.focus();
+        return;
+      }
+
+      // If static host returns 404 or backend unavailable, fallback to client passwords
+      if (response.status === 404 || !response.ok) {
+        if (validOfflinePasswords.includes(password)) {
+          this.setToken('static_admin_token');
+          this.unlockDashboard();
+          if (window.app && typeof window.app.renderAnalyticsDashboard === 'function') {
+            window.app.renderAnalyticsDashboard();
+          }
+          return;
+        } else {
+          if (errBadge) {
+            errBadge.textContent = 'Incorrect password. Access denied.';
+            errBadge.style.display = 'block';
+          }
+          passInput.value = '';
+          passInput.focus();
+          return;
+        }
       }
     } catch (e) {
-      console.error('Login network error:', e);
-      const validOfflinePasswords = ['StefiksLabRootPassword', 'admin123'];
       if (validOfflinePasswords.includes(password)) {
         this.setToken('static_admin_token');
         this.unlockDashboard();
@@ -357,9 +394,11 @@ class AdminAuthManager {
         }
       } else {
         if (errBadge) {
-          errBadge.textContent = 'Server offline or invalid admin password.';
+          errBadge.textContent = 'Incorrect password. Access denied.';
           errBadge.style.display = 'block';
         }
+        passInput.value = '';
+        passInput.focus();
       }
     } finally {
       if (submitBtn) {
@@ -371,10 +410,9 @@ class AdminAuthManager {
 
   async handleLogout() {
     try {
-      await fetch('/api/admin/logout', { method: 'POST' });
-    } catch (e) {
-      console.warn('Logout API failed:', e);
-    }
+      const endpoint = this.getApiUrl('/api/admin/logout');
+      await fetch(endpoint, { method: 'POST' });
+    } catch (e) {}
     this.setToken(null);
     this.lockDashboard();
   }

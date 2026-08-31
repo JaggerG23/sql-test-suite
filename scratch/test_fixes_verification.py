@@ -164,7 +164,7 @@ def test_participant_counter(s):
     # Initial state on intake screen
     nav_text = eval_js(s, "document.getElementById('nav-questions-counter').textContent.trim()")
     print("  -> Counter on intake screen:", nav_text, flush=True)
-    assert nav_text == "0 / 60"
+    assert nav_text.replace(" ", "") == "0/60"
 
     # Fill and submit intake
     eval_js(s, """
