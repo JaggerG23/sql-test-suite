@@ -195,8 +195,10 @@ class HumanResolver {
               </label>
               <select id="intake-academic-standing" class="form-select" required style="width: 100%; padding: 8px 12px; background: rgba(0,0,0,0.4); border: 1px solid rgba(255,255,255,0.15); border-radius: 6px; color: #fff; font-size: 13px;">
                 <option value="" disabled ${!existingDemo.academicStanding ? 'selected' : ''}>Select Academic Standing...</option>
-                <option value="Undergraduate (Freshman / Sophomore)" ${existingDemo.academicStanding === 'Undergraduate (Freshman / Sophomore)' ? 'selected' : ''}>Undergraduate (Freshman / Sophomore)</option>
-                <option value="Undergraduate (Junior / Senior)" ${existingDemo.academicStanding === 'Undergraduate (Junior / Senior)' ? 'selected' : ''}>Undergraduate (Junior / Senior)</option>
+                <option value="Undergraduate (Freshman)" ${existingDemo.academicStanding === 'Undergraduate (Freshman)' ? 'selected' : ''}>Undergraduate (Freshman)</option>
+                <option value="Undergraduate (Sophomore)" ${existingDemo.academicStanding === 'Undergraduate (Sophomore)' ? 'selected' : ''}>Undergraduate (Sophomore)</option>
+                <option value="Undergraduate (Junior)" ${existingDemo.academicStanding === 'Undergraduate (Junior)' ? 'selected' : ''}>Undergraduate (Junior)</option>
+                <option value="Undergraduate (Senior)" ${existingDemo.academicStanding === 'Undergraduate (Senior)' ? 'selected' : ''}>Undergraduate (Senior)</option>
                 <option value="Master's Student" ${existingDemo.academicStanding === "Master's Student" ? 'selected' : ''}>Master's Student</option>
                 <option value="Ph.D. Student / Doctoral Candidate" ${existingDemo.academicStanding === 'Ph.D. Student / Doctoral Candidate' ? 'selected' : ''}>Ph.D. Student / Doctoral Candidate</option>
                 <option value="Postdoctoral Researcher / Faculty" ${existingDemo.academicStanding === 'Postdoctoral Researcher / Faculty' ? 'selected' : ''}>Postdoctoral Researcher / Faculty</option>
@@ -213,8 +215,10 @@ class HumanResolver {
               <select id="intake-coding-exp" class="form-select" required style="width: 100%; padding: 8px 12px; background: rgba(0,0,0,0.4); border: 1px solid rgba(255,255,255,0.15); border-radius: 6px; color: #fff; font-size: 13px;">
                 <option value="" disabled ${!existingDemo.codingExp ? 'selected' : ''}>Select Coding Experience...</option>
                 <option value="None (< 1 year)" ${existingDemo.codingExp === 'None (< 1 year)' ? 'selected' : ''}>None (< 1 year)</option>
-                <option value="1–2 years" ${existingDemo.codingExp === '1–2 years' ? 'selected' : ''}>1–2 years</option>
-                <option value="3–5 years" ${existingDemo.codingExp === '3–5 years' ? 'selected' : ''}>3–5 years</option>
+                <option value="1 year" ${existingDemo.codingExp === '1 year' ? 'selected' : ''}>1 year</option>
+                <option value="2 years" ${existingDemo.codingExp === '2 years' ? 'selected' : ''}>2 years</option>
+                <option value="3 years" ${existingDemo.codingExp === '3 years' ? 'selected' : ''}>3 years</option>
+                <option value="4 years" ${existingDemo.codingExp === '4 years' ? 'selected' : ''}>4 years</option>
                 <option value="5+ years" ${existingDemo.codingExp === '5+ years' ? 'selected' : ''}>5+ years</option>
               </select>
             </div>
@@ -333,24 +337,6 @@ class HumanResolver {
           <p class="text-muted fs-sm" style="font-size: 13px; margin: 4px 0 0 0; color: var(--text-muted);">Thank you for participating in this study! Your answers have been recorded for User ID: <code style="color: var(--color-accent); font-weight: bold;">${pid}</code>.</p>
         </div>
 
-        <!-- Student Submission Proof & Backup Box -->
-        <div class="card p-3 mb-3" style="background: rgba(14, 18, 28, 0.8); border: 1px solid rgba(99, 102, 241, 0.3); border-radius: 8px; margin-bottom: 18px;">
-          <div class="d-flex justify-between align-center flex-wrap gap-2" style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px;">
-            <div>
-              <strong style="color: var(--color-primary); font-size: 13px;"><i class="fa-solid fa-shield-halved"></i> Submission Backup & LMS Proof</strong>
-              <p class="text-muted fs-xs mb-0" style="margin: 2px 0 0 0; font-size: 12px;">If requested by your instructor, download your response file or copy your submission token code.</p>
-            </div>
-            <div class="d-flex gap-2" style="display: flex; gap: 8px;">
-              <button type="button" id="btn-download-my-json" class="btn btn-sm btn-outline" style="font-size: 12px; padding: 6px 12px;">
-                <i class="fa-solid fa-file-arrow-down text-accent"></i> Download Proof (.json)
-              </button>
-              <button type="button" id="btn-copy-my-token" class="btn btn-sm btn-outline" style="font-size: 12px; padding: 6px 12px;">
-                <i class="fa-solid fa-copy text-primary"></i> Copy Submission Code
-              </button>
-            </div>
-          </div>
-          <div id="token-copy-notice" style="display: none; font-size: 11px; color: #34d399; margin-top: 8px;"><i class="fa-solid fa-circle-check"></i> Submission code copied to clipboard!</div>
-        </div>
 
         <!-- Final Thoughts Form -->
         <div id="final-thoughts-form">
@@ -372,29 +358,6 @@ class HumanResolver {
       </div>
     `;
 
-    // Bind Proof Buttons
-    const btnDl = document.getElementById('btn-download-my-json');
-    if (btnDl && this.app.analytics) {
-      btnDl.addEventListener('click', () => {
-        this.app.analytics.downloadParticipantJSON(pid);
-      });
-    }
-
-    const btnToken = document.getElementById('btn-copy-my-token');
-    if (btnToken && this.app.analytics) {
-      btnToken.addEventListener('click', () => {
-        const token = this.app.analytics.getParticipantToken(pid);
-        navigator.clipboard.writeText(token).then(() => {
-          const notice = document.getElementById('token-copy-notice');
-          if (notice) {
-            notice.style.display = 'block';
-            setTimeout(() => { notice.style.display = 'none'; }, 3000);
-          }
-        }).catch(() => {
-          prompt('Copy your submission code below:', token);
-        });
-      });
-    }
 
     const handleFinalThoughtsSave = () => {
       const inputElem = document.getElementById('final-thoughts-input');
@@ -471,11 +434,12 @@ class HumanResolver {
     this.currentQuestion.startTime = Date.now();
     this.isAnswered = false;
     this.selectedOptionIndex = null;
+    const isFocused = document.hasFocus() && document.visibilityState !== 'hidden';
     this.focusMetrics = {
-      tabFocusLost: false,
-      tabSwitchCount: 0,
+      tabFocusLost: !isFocused,
+      tabSwitchCount: isFocused ? 0 : 1,
       totalFocusLostTimeMs: 0,
-      lastBlurTime: null
+      lastBlurTime: isFocused ? null : Date.now()
     };
 
     this.renderQuizUI();
@@ -508,7 +472,14 @@ class HumanResolver {
   updateNavCounter() {
     const navElem = document.getElementById('nav-questions-counter');
     if (navElem) {
-      navElem.textContent = `${this.totalAnswered} / 60`;
+      const qNum = this.app.currentQuestionNumber;
+      if (qNum === 'intake') {
+        navElem.textContent = 'Intake';
+      } else if (qNum === 'final_thoughts') {
+        navElem.textContent = 'Completed (60 / 60)';
+      } else {
+        navElem.textContent = `${qNum || 1} / 60`;
+      }
     }
   }
 
@@ -765,14 +736,10 @@ class HumanResolver {
       const icon = document.getElementById(`opt-icon-${idx}`);
       if (!card) return;
 
-      if (idx === q.correctIndex) {
-        card.style.border = '2px solid var(--color-success)';
-        card.style.background = 'rgba(16, 185, 129, 0.15)';
-        if (icon) icon.innerHTML = '<i class="fa-solid fa-circle-check text-success"></i>';
-      } else if (idx === index) {
-        card.style.border = '2px solid var(--color-danger)';
-        card.style.background = 'rgba(239, 68, 68, 0.15)';
-        if (icon) icon.innerHTML = '<i class="fa-solid fa-circle-xmark text-danger"></i>';
+      if (idx === index) {
+        card.style.border = '2px solid #94a3b8';
+        card.style.background = 'rgba(255, 255, 255, 0.1)';
+        if (icon) icon.innerHTML = '<i class="fa-solid fa-circle-info" style="color: #94a3b8;"></i>';
       } else {
         card.style.opacity = '0.5';
       }
@@ -787,13 +754,15 @@ class HumanResolver {
     if (feedbackBox) {
       feedbackBox.style.display = 'block';
 
-      feedbackBox.className = `quiz-feedback-box p-1 px-2 ${isCorrect ? 'fb-correct' : 'fb-incorrect'}`;
+      feedbackBox.className = `quiz-feedback-box p-1 px-2`;
+      feedbackBox.style.background = 'rgba(255, 255, 255, 0.1)';
+      feedbackBox.style.border = '1px solid rgba(255, 255, 255, 0.2)';
+      feedbackBox.style.color = '#cbd5e1';
       feedbackBox.innerHTML = `
         <div class="d-flex align-center gap-2">
-          <div class="fb-icon" style="font-size: 14px;">${isCorrect ? '<i class="fa-solid fa-circle-check text-success"></i>' : '<i class="fa-solid fa-circle-xmark text-danger"></i>'}</div>
+          <div class="fb-icon" style="font-size: 14px; color: #94a3b8;"><i class="fa-solid fa-circle-info"></i></div>
           <div>
-            <h4 class="m-0" style="font-size: 11.5px;">${isCorrect ? 'Correct Choice! (Key [' + (index + 1) + '])' : 'Incorrect Choice (Key [' + (index + 1) + '])'}</h4>
-            <p class="m-0 fs-xs mt-1" style="font-size: 10px;">${chosenOpt.explanation}</p>
+            <h4 class="m-0" style="font-size: 11.5px; color: #cbd5e1;">Answer Recorded</h4>
           </div>
         </div>
       `;

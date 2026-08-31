@@ -118,12 +118,7 @@ class QueryExperimentApp {
       btnRandSeed.setAttribute('title', 'Seed randomization disabled');
     }
 
-    const btnGenAll = document.getElementById('btn-generate-all');
-    if (btnGenAll) {
-      btnGenAll.addEventListener('click', () => {
-        this.generateAll();
-      });
-    }
+
 
     // User Folders Expand / Collapse All Buttons
     const btnExpandAll = document.getElementById('btn-expand-all-folders');
@@ -155,12 +150,7 @@ class QueryExperimentApp {
       });
     }
 
-    const btnRegenQuery = document.getElementById('btn-regen-query');
-    if (btnRegenQuery) {
-      btnRegenQuery.addEventListener('click', () => {
-        this.generateQueryOnly();
-      });
-    }
+
 
     const btnExecQuery = document.getElementById('btn-execute-query');
     if (btnExecQuery) {
@@ -786,7 +776,6 @@ class QueryExperimentApp {
   bindImportAndCloudSyncUI() {
     const modal = document.getElementById('modal-import-telemetry');
     const btnImport = document.getElementById('btn-import-telemetry');
-    const btnCloud = document.getElementById('btn-cloud-sync');
     const btnClose = document.getElementById('btn-close-import-modal');
 
     const openModal = () => {
@@ -808,7 +797,6 @@ class QueryExperimentApp {
     };
 
     if (btnImport) btnImport.addEventListener('click', openModal);
-    if (btnCloud) btnCloud.addEventListener('click', openModal);
     if (btnClose) btnClose.addEventListener('click', closeModal);
     if (modal) {
       modal.addEventListener('click', (e) => {
@@ -904,99 +892,7 @@ class QueryExperimentApp {
       });
     }
 
-    // 3. Cloud Webhook Settings & Sync
-    const btnSaveCloud = document.getElementById('btn-save-cloud-webhook');
-    const inputCloud = document.getElementById('input-cloud-webhook-url');
-    const btnSyncCloud = document.getElementById('btn-sync-cloud-now');
-    const btnTestCloud = document.getElementById('btn-test-cloud-webhook');
-    const cloudStatus = document.getElementById('cloud-webhook-status');
 
-    if (btnSaveCloud && inputCloud) {
-      btnSaveCloud.addEventListener('click', () => {
-        const url = inputCloud.value.trim();
-        if (window.studyConfig) {
-          window.studyConfig.setCloudWebhookUrl(url);
-          if (cloudStatus) {
-            cloudStatus.style.display = 'block';
-            cloudStatus.style.background = 'rgba(16, 185, 129, 0.15)';
-            cloudStatus.style.border = '1px solid rgba(16, 185, 129, 0.4)';
-            cloudStatus.style.color = '#34d399';
-            cloudStatus.innerHTML = '<i class="fa-solid fa-circle-check"></i> Cloud Webhook URL saved successfully!';
-            setTimeout(() => { cloudStatus.style.display = 'none'; }, 3500);
-          }
-        }
-      });
-    }
-
-    if (btnSyncCloud) {
-      btnSyncCloud.addEventListener('click', async () => {
-        if (cloudStatus) {
-          cloudStatus.style.display = 'block';
-          cloudStatus.style.background = 'rgba(99, 102, 241, 0.15)';
-          cloudStatus.style.border = '1px solid rgba(99, 102, 241, 0.4)';
-          cloudStatus.style.color = '#a5b4fc';
-          cloudStatus.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Syncing telemetry from cloud webhook...';
-        }
-
-        const res = await this.analytics.syncWithCloudWebhook();
-        if (cloudStatus) {
-          if (res.success) {
-            cloudStatus.style.background = 'rgba(16, 185, 129, 0.15)';
-            cloudStatus.style.border = '1px solid rgba(16, 185, 129, 0.4)';
-            cloudStatus.style.color = '#34d399';
-            cloudStatus.innerHTML = `<i class="fa-solid fa-circle-check"></i> Cloud sync completed! Imported ${res.importedCount} new response records.`;
-            this.renderAnalyticsDashboard();
-          } else {
-            cloudStatus.style.background = 'rgba(239, 68, 68, 0.15)';
-            cloudStatus.style.border = '1px solid rgba(239, 68, 68, 0.4)';
-            cloudStatus.style.color = '#f87171';
-            cloudStatus.innerHTML = `<i class="fa-solid fa-circle-exclamation"></i> ${res.message}`;
-          }
-        }
-      });
-    }
-
-    if (btnTestCloud && inputCloud) {
-      btnTestCloud.addEventListener('click', async () => {
-        const url = inputCloud.value.trim() || (window.studyConfig ? window.studyConfig.getCloudWebhookUrl() : '');
-        if (!url) {
-          alert('Please enter a Cloud Webhook URL first.');
-          return;
-        }
-
-        if (cloudStatus) {
-          cloudStatus.style.display = 'block';
-          cloudStatus.style.background = 'rgba(99, 102, 241, 0.15)';
-          cloudStatus.style.border = '1px solid rgba(99, 102, 241, 0.4)';
-          cloudStatus.style.color = '#a5b4fc';
-          cloudStatus.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Testing connection to cloud webhook...';
-        }
-
-        try {
-          const resp = await fetch(url);
-          if (cloudStatus) {
-            if (resp.ok) {
-              cloudStatus.style.background = 'rgba(16, 185, 129, 0.15)';
-              cloudStatus.style.border = '1px solid rgba(16, 185, 129, 0.4)';
-              cloudStatus.style.color = '#34d399';
-              cloudStatus.innerHTML = '<i class="fa-solid fa-circle-check"></i> Connection successful! Cloud Webhook is active and responding.';
-            } else {
-              cloudStatus.style.background = 'rgba(239, 68, 68, 0.15)';
-              cloudStatus.style.border = '1px solid rgba(239, 68, 68, 0.4)';
-              cloudStatus.style.color = '#f87171';
-              cloudStatus.innerHTML = `<i class="fa-solid fa-circle-exclamation"></i> Endpoint responded with HTTP status ${resp.status}.`;
-            }
-          }
-        } catch (err) {
-          if (cloudStatus) {
-            cloudStatus.style.background = 'rgba(239, 68, 68, 0.15)';
-            cloudStatus.style.border = '1px solid rgba(239, 68, 68, 0.4)';
-            cloudStatus.style.color = '#f87171';
-            cloudStatus.innerHTML = `<i class="fa-solid fa-circle-exclamation"></i> Could not connect: ${err.message}`;
-          }
-        }
-      });
-    }
   }
 
   async resetParticipantTest() {
@@ -1054,28 +950,19 @@ class QueryExperimentApp {
       }
     }
 
-    // Category Breakdown
-    const categoryContainer = document.getElementById('analytics-category-breakdown');
-    if (categoryContainer) {
-      const keys = Object.keys(summary.categoryStats);
-      if (keys.length === 0) {
-        categoryContainer.innerHTML = '<p class="text-muted">No data logged yet.</p>';
-      } else {
-        categoryContainer.innerHTML = keys.map(k => {
-          const s = summary.categoryStats[k];
-          return `
-            <div class="d-flex justify-between align-center mb-1 pb-1" style="display:flex; justify-content:space-between; border-bottom: 1px solid rgba(255,255,255,0.05);">
-              <span><strong>${k}</strong> (${s.total} answers)</span>
-              <span>Accuracy: <strong class="${s.accuracy >= 70 ? 'text-success' : 'text-warning'}">${s.accuracy}%</strong> | Avg Time: <strong>${s.avgTimeMs}ms</strong></span>
-            </div>
-          `;
-        }).join('');
-      }
-    }
+
 
     // Raw Event Logs Grouped by User ID Folders
     const foldersContainer = document.getElementById('analytics-user-folders-container');
     if (foldersContainer) {
+      // Capture currently open folders to preserve state across re-renders
+      const openFolders = new Set();
+      foldersContainer.querySelectorAll('.user-folder-body').forEach(body => {
+        if (body.style.display === 'block') {
+          openFolders.add(body.id.replace('folder-body-', ''));
+        }
+      });
+
       const userGroups = this.analytics.getResponsesGroupedByParticipant();
       const uids = Object.keys(userGroups);
 
@@ -1091,13 +978,18 @@ class QueryExperimentApp {
           const group = userGroups[uid];
           const safeUidId = uid.replace(/[^a-zA-Z0-9_-]/g, '_');
           const isLatestUser = payload && payload.type === 'NEW_RESPONSE' && (payload.record || payload.response) && (payload.record || payload.response).participantId === uid;
+          
+          const isOpen = openFolders.has(safeUidId);
+          const displayStyle = isOpen ? 'block' : 'none';
+          const folderIcon = isOpen ? 'fa-folder-open' : 'fa-folder-closed';
+          const chevronIcon = isOpen ? 'fa-chevron-up' : 'fa-chevron-down';
 
           return `
             <div class="user-folder-card mb-2" style="border: 1px solid ${isLatestUser ? 'var(--color-accent)' : 'rgba(255,255,255,0.1)'}; border-radius: 8px; background: rgba(14, 18, 28, 0.85); overflow: hidden; box-shadow: 0 4px 12px rgba(0,0,0,0.25);">
               <!-- Folder Header Bar -->
               <div class="user-folder-header p-2 px-3 d-flex justify-between align-center" style="background: rgba(0,0,0,0.4); cursor: pointer; border-bottom: 1px solid rgba(255,255,255,0.08); display: flex; justify-content: space-between; align-items: center;" onclick="window.app.toggleUserFolder('${safeUidId}')">
                 <div class="d-flex align-center gap-2" style="display: flex; align-items: center; gap: 8px;">
-                  <i class="fa-solid fa-folder-closed text-warning" id="folder-icon-${safeUidId}" style="font-size: 16px;"></i>
+                  <i class="fa-solid ${folderIcon} text-warning" id="folder-icon-${safeUidId}" style="font-size: 16px;"></i>
                   <strong style="color: var(--color-primary); font-size: 13px;">User ID: ${this.escapeHTML(uid)}</strong>
                   <span class="badge badge-accent" style="font-size: 10.5px;">${group.totalAnswers} / 60 Questions</span>
                   <span class="badge ${group.accuracy >= 70 ? 'badge-success' : 'badge-warning'}" style="font-size: 10.5px;">${group.accuracy}% Accuracy</span>
@@ -1111,12 +1003,12 @@ class QueryExperimentApp {
                   <button class="btn btn-sm btn-danger" style="padding: 2px 8px; font-size: 10.5px; background: rgba(239,68,68,0.2); border-color: rgba(239,68,68,0.4); color: #f87171;" onclick="window.app.deleteUserResponses('${this.escapeHTML(uid)}')" title="Delete data for ${this.escapeHTML(uid)}">
                     <i class="fa-solid fa-trash-can"></i>
                   </button>
-                  <i class="fa-solid fa-chevron-down text-muted" id="folder-chevron-${safeUidId}" style="font-size: 12px; transition: transform 0.2s;"></i>
+                  <i class="fa-solid ${chevronIcon} text-muted" id="folder-chevron-${safeUidId}" style="font-size: 12px; transition: transform 0.2s;"></i>
                 </div>
               </div>
 
               <!-- Folder Body (Table of Event Logs for this User) -->
-              <div class="user-folder-body p-2" id="folder-body-${safeUidId}" style="display: none; background: rgba(10, 14, 26, 0.95);">
+              <div class="user-folder-body p-2" id="folder-body-${safeUidId}" style="display: ${displayStyle}; background: rgba(10, 14, 26, 0.95);">
                 ${group.demographics || group.finalThoughts ? `
                   <div class="user-demo-bar p-2 mb-2" style="background: rgba(99, 102, 241, 0.08); border: 1px solid rgba(99, 102, 241, 0.2); border-radius: 6px; font-size: 11px;">
                     ${group.demographics ? `
@@ -1161,7 +1053,7 @@ class QueryExperimentApp {
                         const timeFormatted = new Date(r.timestamp).toLocaleTimeString();
                         return `
                           <tr>
-                            <td><strong>Q${r.questionNumber || (group.responses.length - idx)}</strong></td>
+                            <td><strong>Q${group.responses.length - idx}</strong></td>
                             <td class="fs-xs text-muted">${timeFormatted}</td>
                             <td class="fs-xs text-dim">${r.sessionId ? r.sessionId.slice(-8) : '-'}</td>
                             <td><span class="badge badge-outline">${r.activeDialectName || r.activeDialect}</span></td>

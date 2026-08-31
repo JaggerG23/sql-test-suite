@@ -66,9 +66,6 @@
         <button id="btn-admin-logout" class="btn btn-sm" style="font-size: 11px; padding: 4px 8px; border-radius: 6px; border: 1px solid rgba(255, 255, 255, 0.2); background: rgba(255, 255, 255, 0.08); color: #cbd5e1; cursor: pointer; display: inline-flex; align-items: center; gap: 4px; white-space: nowrap;" title="Lock Admin Dashboard & Logout">
           <i class="fa-solid fa-right-from-bracket"></i> Logout
         </button>
-        <button id="btn-generate-all" class="btn btn-primary btn-sm" style="font-size: 11px; padding: 4px 8px; white-space: nowrap;">
-          <i class="fa-solid fa-wand-magic-sparkles"></i> Generate Query
-        </button>
       </div>
     </header>
 
@@ -77,29 +74,7 @@
       <!-- Sidebar Control Panel -->
       <aside class="sidebar-panel">
 
-        <!-- Query Generator Controls -->
-        <div class="card control-card">
-          <div class="card-header">
-            <h3><i class="fa-solid fa-code"></i> Query Generator</h3>
-          </div>
-          <div class="card-body">
-            <div class="form-group">
-              <label for="cfg-complexity">Complexity Tier:</label>
-              <select id="cfg-complexity" class="form-select">
-                <option value="simple">Tier 1: Simple (SELECT, WHERE, ORDER)</option>
-                <option value="medium" selected>Tier 2: Medium (JOIN, GROUP BY, AGG)</option>
-                <option value="complex">Tier 3: Complex (Multi-JOIN, Subqueries, HAVING)</option>
-              </select>
-            </div>
-            <div class="form-checkbox">
-              <input type="checkbox" id="cfg-allow-nulls" checked>
-              <label for="cfg-allow-nulls">Allow NULL comparisons in WHERE</label>
-            </div>
-            <button id="btn-regen-query" class="btn btn-secondary btn-block">
-              <i class="fa-solid fa-terminal"></i> Synthesize New Query
-            </button>
-          </div>
-        </div>
+
 
       </aside>
 
@@ -132,7 +107,7 @@
               </div>
               <div class="d-flex gap-2 flex-wrap" style="display:flex; gap:8px; flex-wrap: wrap;">
                 <button id="btn-import-telemetry" class="btn btn-sm btn-primary"><i class="fa-solid fa-file-import"></i> Import Data</button>
-                <button id="btn-cloud-sync" class="btn btn-sm btn-outline" title="Cloud Sync & Webhook Settings"><i class="fa-solid fa-cloud"></i> Cloud Sync</button>
+
                 <button id="btn-export-csv" class="btn btn-sm btn-success"><i class="fa-solid fa-file-csv"></i> Export CSV Data</button>
                 <button id="btn-export-json" class="btn btn-sm btn-outline"><i class="fa-solid fa-file-code"></i> Export JSON Data</button>
                 <button id="btn-clear-logs" class="btn btn-sm btn-danger"><i class="fa-solid fa-trash"></i> Clear Logs</button>
@@ -161,13 +136,9 @@
 
               <!-- Dialect and Question Category Breakdown Grid -->
               <div class="grid grid-2 mb-4" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 16px;">
-                <div class="card p-3" style="background: rgba(0,0,0,0.3); border: 1px solid rgba(255,255,255,0.08);">
+                <div class="card" style="padding: 20px; background: rgba(0,0,0,0.3); border: 1px solid rgba(255,255,255,0.08);">
                   <h4 class="mb-2 text-accent fs-sm"><i class="fa-solid fa-code-branch"></i> Performance by Syntax Dialect</h4>
                   <div id="analytics-dialect-breakdown" class="fs-xs text-muted">No answer events recorded yet</div>
-                </div>
-                <div class="card p-3" style="background: rgba(0,0,0,0.3); border: 1px solid rgba(255,255,255,0.08);">
-                  <h4 class="mb-2 text-primary fs-sm"><i class="fa-solid fa-layer-group"></i> Performance by Question Category</h4>
-                  <div id="analytics-category-breakdown" class="fs-xs text-muted">No answer events recorded yet</div>
                 </div>
               </div>
 
@@ -230,32 +201,6 @@
           <div id="import-token-status" class="fs-xs mt-2" style="display: none; padding: 8px; border-radius: 6px;"></div>
         </div>
 
-        <!-- Section 3: Cloud Webhook Sync (Google Sheets / Free Backend) -->
-        <div class="card p-3" style="background: rgba(14, 18, 28, 0.8); border: 1px solid rgba(16, 185, 129, 0.3); border-radius: 8px;">
-          <div class="d-flex justify-between align-center mb-1" style="display: flex; justify-content: space-between; align-items: center;">
-            <h4 class="fs-sm text-success" style="margin: 0;"><i class="fa-solid fa-cloud"></i> Google Sheets / Cloud Webhook Sync</h4>
-            <span class="badge badge-success fs-xs" style="font-size: 10px; background: rgba(16, 185, 129, 0.2); color: #34d399; padding: 2px 6px; border-radius: 4px;">Free 100% Uptime</span>
-          </div>
-          <p class="fs-xs text-muted mb-2">For static sites (GitHub Pages), connect a Google Sheet via Apps Script Webhook to automatically collect study responses worldwide.</p>
-          
-          <div class="form-group mb-2">
-            <label for="input-cloud-webhook-url" class="fs-xs text-muted" style="display: block; margin-bottom: 4px;">Google Apps Script Web App URL (or Cloud Webhook):</label>
-            <div class="d-flex gap-2" style="display: flex; gap: 8px;">
-              <input type="url" id="input-cloud-webhook-url" class="form-control" placeholder="https://script.google.com/macros/s/.../exec" style="font-size: 12px; flex: 1; padding: 6px 10px; background: rgba(0,0,0,0.4); border: 1px solid rgba(255,255,255,0.15); border-radius: 6px; color: #fff;">
-              <button type="button" id="btn-save-cloud-webhook" class="btn btn-sm btn-success">Save URL</button>
-            </div>
-          </div>
-
-          <div class="d-flex gap-2 flex-wrap" style="display: flex; gap: 8px; flex-wrap: wrap;">
-            <button type="button" id="btn-sync-cloud-now" class="btn btn-sm btn-outline">
-              <i class="fa-solid fa-arrows-rotate text-accent"></i> Sync Data From Cloud
-            </button>
-            <button type="button" id="btn-test-cloud-webhook" class="btn btn-sm btn-ghost" style="border: 1px solid rgba(255,255,255,0.15);">
-              <i class="fa-solid fa-plug"></i> Test Connection
-            </button>
-          </div>
-          <div id="cloud-webhook-status" class="fs-xs mt-2" style="display: none; padding: 8px; border-radius: 6px;"></div>
-        </div>
 
       </div>
     </div>

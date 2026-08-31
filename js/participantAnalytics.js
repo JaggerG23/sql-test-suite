@@ -67,7 +67,7 @@ class ParticipantAnalytics {
   initParticipantId() {
     let pid = localStorage.getItem(this.participantIdKey) || localStorage.getItem('sql_test_suite_participant_id');
     if (!pid) {
-      pid = 'user_' + Math.random().toString(36).substring(2, 9);
+      pid = 'user_' + Math.random().toString(36).substring(2, 9) + Math.random().toString(36).substring(2, 5);
       localStorage.setItem(this.participantIdKey, pid);
     }
     return pid;
