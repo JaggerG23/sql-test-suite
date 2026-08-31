@@ -36,7 +36,7 @@ class HumanResolver {
 
   get totalAnswered() {
     if (this.app && this.app.analytics) {
-      return this.app.analytics.getAllResponses().length;
+      return this.app.analytics.getParticipantResponses(this.app.analytics.participantId).length;
     }
     return this.stats.totalAnswered;
   }
@@ -98,6 +98,7 @@ class HumanResolver {
   }
 
   renderIntakeScreen() {
+    this.updateNavCounter();
     const container = document.getElementById('human-challenge-container');
     if (!container) return;
 
@@ -295,6 +296,7 @@ class HumanResolver {
   }
 
   renderFinalThoughtsScreen() {
+    this.updateNavCounter();
     const container = document.getElementById('human-challenge-container');
     if (!container) return;
 
@@ -649,10 +651,6 @@ class HumanResolver {
     const chosenOpt = q.options[index];
     const correctOpt = q.options[q.correctIndex];
 
-    // Stats update: Only track questions answered counter
-    this.stats.totalAnswered++;
-    this.updateNavCounter();
-
     // Finalize focus loss duration
     if (this.focusMetrics.lastBlurTime) {
       const awayMs = Date.now() - this.focusMetrics.lastBlurTime;
@@ -663,12 +661,18 @@ class HumanResolver {
     // Log telemetry to analytics storage (stored persistently in localStorage)
     if (this.app.analytics) {
       const responseTimeMs = q.startTime ? (Date.now() - q.startTime) : 0;
+      const currentQNum = (this.app.currentQuestionNumber && typeof this.app.currentQuestionNumber === 'number') 
+        ? this.app.currentQuestionNumber 
+        : (this.totalAnswered + 1);
+
       this.app.analytics.logResponse({
+        questionNumber: currentQNum,
         questionCategory: q.type,
         activeDialect: q.dialect ? q.dialect.id : 'javascript',
         activeDialectName: q.dialect ? q.dialect.name : 'JavaScript with Embedded SQL',
-        incompleteQuery: q.jsCode,
-        rawQuery: q.rawQuery,
+        jsCode: q.jsCode || '',
+        dialectSql: q.dialectSql || q.rawQuery || '',
+        rawQuery: q.rawQuery || '',
         selectedKey: index + 1,
         selectedOptionText: `Option ${String.fromCharCode(65 + index)} (${chosenOpt.rows.length} rows)`,
         correctOptionText: `Option ${String.fromCharCode(65 + q.correctIndex)} (${correctOpt.rows.length} rows)`,
@@ -680,8 +684,14 @@ class HumanResolver {
         focusLostDurationMs: Math.round(this.focusMetrics.totalFocusLostTimeMs)
       });
 
-      this.app.renderAnalyticsDashboard();
+      if (typeof this.app.renderAnalyticsDashboard === 'function') {
+        this.app.renderAnalyticsDashboard();
+      }
     }
+
+    // Update stats counter & navbar counter AFTER logging response
+    this.stats.totalAnswered++;
+    this.updateNavCounter();
 
     // Update Option UI cards
     q.options.forEach((opt, idx) => {

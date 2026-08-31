@@ -13,12 +13,12 @@ class AdminAuthManager {
     this.injectStyles();
     this.patchFetch();
 
-    document.addEventListener('DOMContentLoaded', () => {
-      this.bindLogoutButton();
-      this.checkAuthStatus();
-    });
-
-    if (document.readyState !== 'loading') {
+    if (document.readyState === 'loading') {
+      document.addEventListener('DOMContentLoaded', () => {
+        this.bindLogoutButton();
+        this.checkAuthStatus();
+      });
+    } else {
       this.bindLogoutButton();
       this.checkAuthStatus();
     }
@@ -34,134 +34,138 @@ class AdminAuthManager {
       }
 
       .admin-modal-overlay {
-        position: fixed !important;
-        top: 0 !important;
-        left: 0 !important;
-        width: 100vw !important;
-        height: 100vh !important;
-        background: rgba(8, 12, 24, 0.94) !important;
-        backdrop-filter: blur(16px) !important;
-        -webkit-backdrop-filter: blur(16px) !important;
-        display: flex !important;
-        align-items: center !important;
-        justify-content: center !important;
-        z-index: 999999 !important;
-        padding: 20px !important;
-        box-sizing: border-box !important;
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 100vw;
+        height: 100vh;
+        background: rgba(8, 12, 24, 0.94);
+        backdrop-filter: blur(16px);
+        -webkit-backdrop-filter: blur(16px);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        z-index: 999999;
+        padding: 20px;
+        box-sizing: border-box;
+      }
+
+      .admin-modal-overlay.hidden {
+        display: none !important;
       }
 
       .admin-modal-card {
-        background: rgba(15, 23, 42, 0.98) !important;
-        border: 1.5px solid rgba(56, 189, 248, 0.35) !important;
-        box-shadow: 0 25px 60px rgba(0, 0, 0, 0.8), 0 0 40px rgba(56, 189, 248, 0.25) !important;
-        border-radius: 16px !important;
-        padding: 32px 28px !important;
-        width: 100% !important;
-        max-width: 440px !important;
-        color: #f8fafc !important;
-        box-sizing: border-box !important;
-        text-align: center !important;
-        margin: 0 auto !important;
+        background: rgba(15, 23, 42, 0.98);
+        border: 1.5px solid rgba(56, 189, 248, 0.35);
+        box-shadow: 0 25px 60px rgba(0, 0, 0, 0.8), 0 0 40px rgba(56, 189, 248, 0.25);
+        border-radius: 16px;
+        padding: 32px 28px;
+        width: 100%;
+        max-width: 440px;
+        color: #f8fafc;
+        box-sizing: border-box;
+        text-align: center;
+        margin: 0 auto;
       }
 
       .admin-modal-header {
-        text-align: center !important;
-        margin-bottom: 24px !important;
+        text-align: center;
+        margin-bottom: 24px;
       }
 
       .admin-modal-icon {
-        width: 64px !important;
-        height: 64px !important;
-        border-radius: 50% !important;
-        background: rgba(56, 189, 248, 0.12) !important;
-        border: 2px solid rgba(56, 189, 248, 0.4) !important;
-        color: #38bdf8 !important;
-        font-size: 26px !important;
-        display: inline-flex !important;
-        align-items: center !important;
-        justify-content: center !important;
-        margin: 0 auto 14px auto !important;
-        box-shadow: 0 0 20px rgba(56, 189, 248, 0.25) !important;
+        width: 64px;
+        height: 64px;
+        border-radius: 50%;
+        background: rgba(56, 189, 248, 0.12);
+        border: 2px solid rgba(56, 189, 248, 0.4);
+        color: #38bdf8;
+        font-size: 26px;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        margin: 0 auto 14px auto;
+        box-shadow: 0 0 20px rgba(56, 189, 248, 0.25);
       }
 
       .admin-modal-header h2 {
-        font-family: 'Outfit', 'Inter', sans-serif !important;
-        font-size: 20px !important;
-        font-weight: 700 !important;
-        color: #f8fafc !important;
-        margin: 0 0 8px 0 !important;
+        font-family: 'Outfit', 'Inter', sans-serif;
+        font-size: 20px;
+        font-weight: 700;
+        color: #f8fafc;
+        margin: 0 0 8px 0;
       }
 
       .admin-modal-header p {
-        font-size: 13px !important;
-        color: #94a3b8 !important;
-        margin: 0 !important;
-        line-height: 1.5 !important;
+        font-size: 13px;
+        color: #94a3b8;
+        margin: 0;
+        line-height: 1.5;
       }
 
       .admin-modal-form .form-group {
-        margin-bottom: 18px !important;
-        text-align: left !important;
+        margin-bottom: 18px;
+        text-align: left;
       }
 
       .admin-modal-form label {
-        display: block !important;
-        font-size: 12px !important;
-        font-weight: 600 !important;
-        color: #cbd5e1 !important;
-        margin-bottom: 6px !important;
+        display: block;
+        font-size: 12px;
+        font-weight: 600;
+        color: #cbd5e1;
+        margin-bottom: 6px;
       }
 
       .input-wrapper {
-        position: relative !important;
-        display: flex !important;
-        align-items: center !important;
+        position: relative;
+        display: flex;
+        align-items: center;
       }
 
       .input-wrapper input {
-        width: 100% !important;
-        padding: 10px 42px 10px 14px !important;
-        background: rgba(0, 0, 0, 0.5) !important;
-        border: 1px solid rgba(255, 255, 255, 0.2) !important;
-        border-radius: 8px !important;
-        color: #fff !important;
-        font-size: 14px !important;
-        outline: none !important;
-        box-sizing: border-box !important;
+        width: 100%;
+        padding: 10px 42px 10px 14px;
+        background: rgba(0, 0, 0, 0.5);
+        border: 1px solid rgba(255, 255, 255, 0.2);
+        border-radius: 8px;
+        color: #fff;
+        font-size: 14px;
+        outline: none;
+        box-sizing: border-box;
       }
 
       .input-wrapper input:focus {
-        border-color: #38bdf8 !important;
-        box-shadow: 0 0 0 3px rgba(56, 189, 248, 0.25) !important;
+        border-color: #38bdf8;
+        box-shadow: 0 0 0 3px rgba(56, 189, 248, 0.25);
       }
 
       .btn-toggle-eye {
-        position: absolute !important;
-        right: 10px !important;
-        background: none !important;
-        border: none !important;
-        color: #94a3b8 !important;
-        cursor: pointer !important;
-        padding: 6px !important;
-        font-size: 14px !important;
+        position: absolute;
+        right: 10px;
+        background: none;
+        border: none;
+        color: #94a3b8;
+        cursor: pointer;
+        padding: 6px;
+        font-size: 14px;
       }
 
       .admin-error-badge {
-        background: rgba(239, 68, 68, 0.15) !important;
-        border: 1px solid rgba(239, 68, 68, 0.4) !important;
-        color: #f87171 !important;
-        border-radius: 8px !important;
-        padding: 10px 14px !important;
-        font-size: 12px !important;
-        font-weight: 600 !important;
-        margin-bottom: 16px !important;
-        text-align: center !important;
+        background: rgba(239, 68, 68, 0.15);
+        border: 1px solid rgba(239, 68, 68, 0.4);
+        color: #f87171;
+        border-radius: 8px;
+        padding: 10px 14px;
+        font-size: 12px;
+        font-weight: 600;
+        margin-bottom: 16px;
+        text-align: center;
       }
 
       .admin-modal-actions {
-        display: flex !important;
-        flex-direction: column !important;
-        gap: 8px !important;
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
       }
     `;
     document.head.appendChild(style);
@@ -281,6 +285,7 @@ class AdminAuthManager {
       });
     }
 
+    modal.classList.remove('hidden');
     modal.style.display = 'flex';
     setTimeout(() => {
       const passInput = document.getElementById('admin-pass-input');
@@ -291,7 +296,9 @@ class AdminAuthManager {
   hideLoginModal() {
     const modal = document.getElementById('admin-login-overlay');
     if (modal) {
+      modal.classList.add('hidden');
       modal.style.display = 'none';
+      modal.remove(); // Safely remove modal from DOM upon unlocking
     }
   }
 
@@ -304,9 +311,11 @@ class AdminAuthManager {
     const password = passInput.value.trim();
     if (!password) return;
 
-    errBadge.style.display = 'none';
-    submitBtn.disabled = true;
-    submitBtn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Authenticating...';
+    if (errBadge) errBadge.style.display = 'none';
+    if (submitBtn) {
+      submitBtn.disabled = true;
+      submitBtn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Authenticating...';
+    }
 
     try {
       const response = await fetch('/api/admin/login', {
@@ -323,12 +332,17 @@ class AdminAuthManager {
           this.setToken('session_active');
         }
         this.unlockDashboard();
-        if (window.app && typeof window.app.renderAnalyticsDashboard === 'function') {
-          window.app.renderAnalyticsDashboard();
+        if (window.app && window.app.analytics) {
+          await window.app.analytics.syncWithDiskStorage();
+          if (typeof window.app.renderAnalyticsDashboard === 'function') {
+            window.app.renderAnalyticsDashboard();
+          }
         }
       } else {
-        errBadge.textContent = data.message || 'Incorrect password. Access denied.';
-        errBadge.style.display = 'block';
+        if (errBadge) {
+          errBadge.textContent = data.message || 'Incorrect password. Access denied.';
+          errBadge.style.display = 'block';
+        }
         passInput.value = '';
         passInput.focus();
       }
@@ -338,13 +352,20 @@ class AdminAuthManager {
       if (validOfflinePasswords.includes(password)) {
         this.setToken('static_admin_token');
         this.unlockDashboard();
+        if (window.app && typeof window.app.renderAnalyticsDashboard === 'function') {
+          window.app.renderAnalyticsDashboard();
+        }
       } else {
-        errBadge.textContent = 'Server offline (server.py not running) or invalid password.';
-        errBadge.style.display = 'block';
+        if (errBadge) {
+          errBadge.textContent = 'Server offline or invalid admin password.';
+          errBadge.style.display = 'block';
+        }
       }
     } finally {
-      submitBtn.disabled = false;
-      submitBtn.innerHTML = '<i class="fa-solid fa-lock-open"></i> Unlock Dashboard';
+      if (submitBtn) {
+        submitBtn.disabled = false;
+        submitBtn.innerHTML = '<i class="fa-solid fa-lock-open"></i> Unlock Dashboard';
+      }
     }
   }
 

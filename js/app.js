@@ -781,7 +781,7 @@ class QueryExperimentApp {
     if (totalBadge) totalBadge.textContent = `${summary.totalResponses} Responses Stored`;
 
     const countBadge = document.getElementById('resp-count-badge');
-    if (countBadge) countBadge.textContent = summary.totalResponses;
+    if (countBadge) countBadge.textContent = summary.uniqueParticipants;
 
     const statTotal = document.getElementById('astat-total');
     if (statTotal) statTotal.textContent = summary.totalResponses;
@@ -850,7 +850,7 @@ class QueryExperimentApp {
         foldersContainer.innerHTML = uids.map(uid => {
           const group = userGroups[uid];
           const safeUidId = uid.replace(/[^a-zA-Z0-9_-]/g, '_');
-          const isLatestUser = payload && payload.type === 'NEW_RESPONSE' && payload.response && payload.response.participantId === uid;
+          const isLatestUser = payload && payload.type === 'NEW_RESPONSE' && (payload.record || payload.response) && (payload.record || payload.response).participantId === uid;
 
           return `
             <div class="user-folder-card mb-2" style="border: 1px solid ${isLatestUser ? 'var(--color-accent)' : 'rgba(255,255,255,0.1)'}; border-radius: 8px; background: rgba(14, 18, 28, 0.85); overflow: hidden; box-shadow: 0 4px 12px rgba(0,0,0,0.25);">
@@ -921,7 +921,7 @@ class QueryExperimentApp {
                         const timeFormatted = new Date(r.timestamp).toLocaleTimeString();
                         return `
                           <tr>
-                            <td>${group.responses.length - idx}</td>
+                            <td><strong>Q${r.questionNumber || (group.responses.length - idx)}</strong></td>
                             <td class="fs-xs text-muted">${timeFormatted}</td>
                             <td class="fs-xs text-dim">${r.sessionId ? r.sessionId.slice(-8) : '-'}</td>
                             <td><span class="badge badge-outline">${r.activeDialectName || r.activeDialect}</span></td>

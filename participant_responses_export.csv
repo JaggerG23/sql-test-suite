@@ -1,0 +1,149 @@
+Response ID,Participant ID,Session ID,Timestamp (ISO),Question Number,Question Category,Syntax Dialect ID,Syntax Dialect Name,Selected Key (1-4),Selected Option,Correct Option,Is Correct,Response Time (ms),Random Seed,Tab Focus Lost,Tab Switch Count,Focus Lost Duration (ms),Age,Gender,Academic Standing,Coding Experience,Database Experience,Query Writing Experience,Final Thoughts,Raw SQL Query,Dialect SQL Query,JS Code Snippet
+resp_1788195945761_p1ilh,user_ucj0kx3,session_1788195943373_0oti0,2026-08-31T17:05:45.761Z,1,Group & Aggregate Transformation,pipe,Google SQL (Pipe Syntax),1,Option A (15 rows),Option A (15 rows),TRUE,1504,42,FALSE,0,0,24,Male,Master's Student,1–2 years,Beginner (< 1 year),Yes - Frequently write SQL / database queries,,"SELECT users.id, COUNT(products.id) AS agg_val
+FROM users
+JOIN products ON users.id = products.user_id
+WHERE users.id > 1
+GROUP BY users.id
+ORDER BY agg_val DESC
+LIMIT 15;","FROM users
+|> JOIN products ON users.id = products.user_id
+|> WHERE users.id > 1
+|> AGGREGATE COUNT(products.id) AS agg_val GROUP BY users.id
+|> ORDER BY agg_val DESC
+|> LIMIT 15","let retryCounter = 0;
+while (retryCounter < 2) {
+  retryCounter++;
+}
+
+let targetQuery = `
+FROM users
+|> JOIN products ON users.id = products.user_id
+|> WHERE users.id > 1
+|> AGGREGATE COUNT(products.id) AS agg_val GROUP BY users.id
+|> ORDER BY agg_val DESC
+|> LIMIT 15
+`;
+
+let auditTrail = [];
+auditTrail.push(`Attempt ${retryCounter} successful`);
+
+let finalData = db.execute(targetQuery);"
+resp_1788195947771_qve6j,user_ucj0kx3,session_1788195943373_0oti0,2026-08-31T17:05:47.771Z,2,Group & Aggregate Transformation,quorum,Quorum Syntax,2,Option B (14 rows),Option C (15 rows),FALSE,1505,42,FALSE,0,0,24,Male,Master's Student,1–2 years,Beginner (< 1 year),Yes - Frequently write SQL / database queries,,"SELECT users.id, COUNT(products.id) AS agg_val
+FROM users
+JOIN products ON users.id = products.user_id
+WHERE users.id >= 1
+GROUP BY users.id
+ORDER BY agg_val DESC
+LIMIT 15;","query:SetTable(""users"")
+query:AddJoin(""products"", ""users:id = products:user_id"")
+query:Filter(""users:id >= 1"")
+query:AddGroupColumn(""users:id"")
+query:AddColumn(""users:id"")
+query:AddColumn(""COUNT(products:id)"", ""agg_val"")
+query:Sort(""agg_val"", ""DESC"")
+query:SetLimit(15)","let batchNumber = 1;
+let processLogs = [""start"", ""process""];
+for (let log of processLogs) {
+  batchNumber++;
+}
+
+let fullQuery = `
+query:SetTable(""users"")
+query:AddJoin(""products"", ""users:id = products:user_id"")
+query:Filter(""users:id >= 1"")
+query:AddGroupColumn(""users:id"")
+query:AddColumn(""users:id"")
+query:AddColumn(""COUNT(products:id)"", ""agg_val"")
+query:Sort(""agg_val"", ""DESC"")
+query:SetLimit(15)
+`;
+
+let statusMsg = batchNumber > 0 ? ""OK"" : ""PENDING"";
+
+let summaryRows = db.execute(fullQuery);"
+resp_1788196075619_ckrme,user_inc5oj8,session_1788196073147_obayw,2026-08-31T17:07:55.619Z,1,Group & Aggregate Transformation,pipe,Google SQL (Pipe Syntax),1,Option A (15 rows),Option C (15 rows),FALSE,1504,42,FALSE,0,0,22,Male,Undergraduate (Junior / Senior),1–2 years,Beginner (< 1 year),Yes - Frequently write SQL / database queries,,"SELECT users.id, COUNT(products.id) AS agg_val
+FROM users
+JOIN products ON users.id = products.user_id
+WHERE users.id > 1
+GROUP BY users.id
+ORDER BY agg_val DESC
+LIMIT 15;","FROM users
+|> JOIN products ON users.id = products.user_id
+|> WHERE users.id > 1
+|> AGGREGATE COUNT(products.id) AS agg_val GROUP BY users.id
+|> ORDER BY agg_val DESC
+|> LIMIT 15","let retryCounter = 0;
+while (retryCounter < 2) {
+  retryCounter++;
+}
+
+let targetQuery = `
+FROM users
+|> JOIN products ON users.id = products.user_id
+|> WHERE users.id > 1
+|> AGGREGATE COUNT(products.id) AS agg_val GROUP BY users.id
+|> ORDER BY agg_val DESC
+|> LIMIT 15
+`;
+
+let auditTrail = [];
+auditTrail.push(`Attempt ${retryCounter} successful`);
+
+let finalData = db.execute(targetQuery);"
+resp_1788196076631_7lvz8,user_inc5oj8,session_1788196073147_obayw,2026-08-31T17:07:56.631Z,2,Group & Aggregate Transformation,quorum,Quorum Syntax,2,Option B (15 rows),Option D (15 rows),FALSE,1003,42,FALSE,0,0,22,Male,Undergraduate (Junior / Senior),1–2 years,Beginner (< 1 year),Yes - Frequently write SQL / database queries,,"SELECT users.id, COUNT(products.id) AS agg_val
+FROM users
+JOIN products ON users.id = products.user_id
+WHERE users.id >= 1
+GROUP BY users.id
+ORDER BY agg_val DESC
+LIMIT 15;","query:SetTable(""users"")
+query:AddJoin(""products"", ""users:id = products:user_id"")
+query:Filter(""users:id >= 1"")
+query:AddGroupColumn(""users:id"")
+query:AddColumn(""users:id"")
+query:AddColumn(""COUNT(products:id)"", ""agg_val"")
+query:Sort(""agg_val"", ""DESC"")
+query:SetLimit(15)","let batchNumber = 1;
+let processLogs = [""start"", ""process""];
+for (let log of processLogs) {
+  batchNumber++;
+}
+
+let fullQuery = `
+query:SetTable(""users"")
+query:AddJoin(""products"", ""users:id = products:user_id"")
+query:Filter(""users:id >= 1"")
+query:AddGroupColumn(""users:id"")
+query:AddColumn(""users:id"")
+query:AddColumn(""COUNT(products:id)"", ""agg_val"")
+query:Sort(""agg_val"", ""DESC"")
+query:SetLimit(15)
+`;
+
+let statusMsg = batchNumber > 0 ? ""OK"" : ""PENDING"";
+
+let summaryRows = db.execute(fullQuery);"
+resp_1788196076636_77obq,user_inc5oj8,session_1788196073147_obayw,2026-08-31T17:07:56.636Z,3,Filter & Projection Transformation,ansi,ANSI SQL,1,Option A (1 rows),Option A (1 rows),TRUE,1200,42,FALSE,0,0,22,Male,Undergraduate (Junior / Senior),1–2 years,Beginner (< 1 year),Yes - Frequently write SQL / database queries,,SELECT 1;,SELECT 1;,
+resp_1788196076636_gqomu,user_inc5oj8,session_1788196073147_obayw,2026-08-31T17:07:56.636Z,4,Filter & Projection Transformation,ansi,ANSI SQL,1,Option A (1 rows),Option A (1 rows),TRUE,1200,42,FALSE,0,0,22,Male,Undergraduate (Junior / Senior),1–2 years,Beginner (< 1 year),Yes - Frequently write SQL / database queries,,SELECT 1;,SELECT 1;,
+resp_1788196076637_hvxck,user_inc5oj8,session_1788196073147_obayw,2026-08-31T17:07:56.637Z,5,Filter & Projection Transformation,ansi,ANSI SQL,1,Option A (1 rows),Option A (1 rows),TRUE,1200,42,FALSE,0,0,22,Male,Undergraduate (Junior / Senior),1–2 years,Beginner (< 1 year),Yes - Frequently write SQL / database queries,,SELECT 1;,SELECT 1;,
+resp_1788196076637_mbvrh,user_inc5oj8,session_1788196073147_obayw,2026-08-31T17:07:56.637Z,6,Filter & Projection Transformation,ansi,ANSI SQL,1,Option A (1 rows),Option A (1 rows),TRUE,1200,42,FALSE,0,0,22,Male,Undergraduate (Junior / Senior),1–2 years,Beginner (< 1 year),Yes - Frequently write SQL / database queries,,SELECT 1;,SELECT 1;,
+resp_1788196076638_gj4no,user_inc5oj8,session_1788196073147_obayw,2026-08-31T17:07:56.638Z,7,Filter & Projection Transformation,ansi,ANSI SQL,1,Option A (1 rows),Option A (1 rows),TRUE,1200,42,FALSE,0,0,22,Male,Undergraduate (Junior / Senior),1–2 years,Beginner (< 1 year),Yes - Frequently write SQL / database queries,,SELECT 1;,SELECT 1;,
+resp_1788196076639_wjia2,user_inc5oj8,session_1788196073147_obayw,2026-08-31T17:07:56.639Z,8,Filter & Projection Transformation,ansi,ANSI SQL,1,Option A (1 rows),Option A (1 rows),TRUE,1200,42,FALSE,0,0,22,Male,Undergraduate (Junior / Senior),1–2 years,Beginner (< 1 year),Yes - Frequently write SQL / database queries,,SELECT 1;,SELECT 1;,
+resp_1788196076639_bkpf9,user_inc5oj8,session_1788196073147_obayw,2026-08-31T17:07:56.639Z,9,Filter & Projection Transformation,ansi,ANSI SQL,1,Option A (1 rows),Option A (1 rows),TRUE,1200,42,FALSE,0,0,22,Male,Undergraduate (Junior / Senior),1–2 years,Beginner (< 1 year),Yes - Frequently write SQL / database queries,,SELECT 1;,SELECT 1;,
+resp_1788196076640_r0nmy,user_inc5oj8,session_1788196073147_obayw,2026-08-31T17:07:56.640Z,10,Filter & Projection Transformation,ansi,ANSI SQL,1,Option A (1 rows),Option A (1 rows),TRUE,1200,42,FALSE,0,0,22,Male,Undergraduate (Junior / Senior),1–2 years,Beginner (< 1 year),Yes - Frequently write SQL / database queries,,SELECT 1;,SELECT 1;,
+resp_1788196076640_6xg95,user_inc5oj8,session_1788196073147_obayw,2026-08-31T17:07:56.640Z,11,Filter & Projection Transformation,ansi,ANSI SQL,1,Option A (1 rows),Option A (1 rows),TRUE,1200,42,FALSE,0,0,22,Male,Undergraduate (Junior / Senior),1–2 years,Beginner (< 1 year),Yes - Frequently write SQL / database queries,,SELECT 1;,SELECT 1;,
+resp_1788196076641_9i273,user_inc5oj8,session_1788196073147_obayw,2026-08-31T17:07:56.641Z,12,Filter & Projection Transformation,ansi,ANSI SQL,1,Option A (1 rows),Option A (1 rows),TRUE,1200,42,FALSE,0,0,22,Male,Undergraduate (Junior / Senior),1–2 years,Beginner (< 1 year),Yes - Frequently write SQL / database queries,,SELECT 1;,SELECT 1;,
+resp_1788196076641_n98hs,user_inc5oj8,session_1788196073147_obayw,2026-08-31T17:07:56.641Z,13,Filter & Projection Transformation,ansi,ANSI SQL,1,Option A (1 rows),Option A (1 rows),TRUE,1200,42,FALSE,0,0,22,Male,Undergraduate (Junior / Senior),1–2 years,Beginner (< 1 year),Yes - Frequently write SQL / database queries,,SELECT 1;,SELECT 1;,
+resp_1788196076642_s6s0e,user_inc5oj8,session_1788196073147_obayw,2026-08-31T17:07:56.642Z,14,Filter & Projection Transformation,ansi,ANSI SQL,1,Option A (1 rows),Option A (1 rows),TRUE,1200,42,FALSE,0,0,22,Male,Undergraduate (Junior / Senior),1–2 years,Beginner (< 1 year),Yes - Frequently write SQL / database queries,,SELECT 1;,SELECT 1;,
+resp_1788196076642_8y3ig,user_inc5oj8,session_1788196073147_obayw,2026-08-31T17:07:56.642Z,15,Filter & Projection Transformation,ansi,ANSI SQL,1,Option A (1 rows),Option A (1 rows),TRUE,1200,42,FALSE,0,0,22,Male,Undergraduate (Junior / Senior),1–2 years,Beginner (< 1 year),Yes - Frequently write SQL / database queries,,SELECT 1;,SELECT 1;,
+resp_1788196076642_593iu,user_inc5oj8,session_1788196073147_obayw,2026-08-31T17:07:56.642Z,16,Filter & Projection Transformation,ansi,ANSI SQL,1,Option A (1 rows),Option A (1 rows),TRUE,1200,42,FALSE,0,0,22,Male,Undergraduate (Junior / Senior),1–2 years,Beginner (< 1 year),Yes - Frequently write SQL / database queries,,SELECT 1;,SELECT 1;,
+resp_1788196076643_pj43j,user_inc5oj8,session_1788196073147_obayw,2026-08-31T17:07:56.643Z,17,Filter & Projection Transformation,ansi,ANSI SQL,1,Option A (1 rows),Option A (1 rows),TRUE,1200,42,FALSE,0,0,22,Male,Undergraduate (Junior / Senior),1–2 years,Beginner (< 1 year),Yes - Frequently write SQL / database queries,,SELECT 1;,SELECT 1;,
+resp_1788196076643_8nnfc,user_inc5oj8,session_1788196073147_obayw,2026-08-31T17:07:56.643Z,18,Filter & Projection Transformation,ansi,ANSI SQL,1,Option A (1 rows),Option A (1 rows),TRUE,1200,42,FALSE,0,0,22,Male,Undergraduate (Junior / Senior),1–2 years,Beginner (< 1 year),Yes - Frequently write SQL / database queries,,SELECT 1;,SELECT 1;,
+resp_1788196076644_uzzw1,user_inc5oj8,session_1788196073147_obayw,2026-08-31T17:07:56.644Z,19,Filter & Projection Transformation,ansi,ANSI SQL,1,Option A (1 rows),Option A (1 rows),TRUE,1200,42,FALSE,0,0,22,Male,Undergraduate (Junior / Senior),1–2 years,Beginner (< 1 year),Yes - Frequently write SQL / database queries,,SELECT 1;,SELECT 1;,
+resp_1788196076644_nn65g,user_inc5oj8,session_1788196073147_obayw,2026-08-31T17:07:56.644Z,20,Filter & Projection Transformation,ansi,ANSI SQL,1,Option A (1 rows),Option A (1 rows),TRUE,1200,42,FALSE,0,0,22,Male,Undergraduate (Junior / Senior),1–2 years,Beginner (< 1 year),Yes - Frequently write SQL / database queries,,SELECT 1;,SELECT 1;,
+resp_1788196076645_iepq4,user_inc5oj8,session_1788196073147_obayw,2026-08-31T17:07:56.645Z,21,Filter & Projection Transformation,ansi,ANSI SQL,1,Option A (1 rows),Option A (1 rows),TRUE,1200,42,FALSE,0,0,22,Male,Undergraduate (Junior / Senior),1–2 years,Beginner (< 1 year),Yes - Frequently write SQL / database queries,,SELECT 1;,SELECT 1;,
+resp_1788196076646_hs4hb,user_inc5oj8,session_1788196073147_obayw,2026-08-31T17:07:56.646Z,22,Filter & Projection Transformation,ansi,ANSI SQL,1,Option A (1 rows),Option A (1 rows),TRUE,1200,42,FALSE,0,0,22,Male,Undergraduate (Junior / Senior),1–2 years,Beginner (< 1 year),Yes - Frequently write SQL / database queries,,SELECT 1;,SELECT 1;,
+resp_1788196076646_uaobj,user_inc5oj8,session_1788196073147_obayw,2026-08-31T17:07:56.646Z,23,Filter & Projection Transformation,ansi,ANSI SQL,1,Option A (1 rows),Option A (1 rows),TRUE,1200,42,FALSE,0,0,22,Male,Undergraduate (Junior / Senior),1–2 years,Beginner (< 1 year),Yes - Frequently write SQL / database queries,,SELECT 1;,SELECT 1;,
+resp_1788196076647_2i1lw,user_inc5oj8,session_1788196073147_obayw,2026-08-31T17:07:56.647Z,24,Filter & Projection Transformation,ansi,ANSI SQL,1,Option A (1 rows),Option A (1 rows),TRUE,1200,42,FALSE,0,0,22,Male,Undergraduate (Junior / Senior),1–2 years,Beginner (< 1 year),Yes - Frequently write SQL / database queries,,SELECT 1;,SELECT 1;,
+resp_1788196076648_jhpn9,user_inc5oj8,session_1788196073147_obayw,2026-08-31T17:07:56.648Z,25,Filter & Projection Transformation,ansi,ANSI SQL,1,Option A (1 rows),Option A (1 rows),TRUE,1200,42,FALSE,0,0,22,Male,Undergraduate (Junior / Senior),1–2 years,Beginner (< 1 year),Yes - Frequently write SQL / database queries,,SELECT 1;,SELECT 1;,
+resp_1788196076649_vs0eq,user_inc5oj8,session_1788196073147_obayw,2026-08-31T17:07:56.649Z,26,Filter & Projection Transformation,ansi,ANSI SQL,1,Option A (1 rows),Option A (1 rows),TRUE,1200,42,FALSE,0,0,22,Male,Undergraduate (Junior / Senior),1–2 years,Beginner (< 1 year),Yes - Frequently write SQL / database queries,,SELECT 1;,SELECT 1;,
