@@ -23,10 +23,14 @@ jobs:
             # Sync files to the web root, delete old files, and ignore the .git folder and database files
             sudo rsync -av --delete --exclude='.git/' --exclude='participant_responses_db.json' --exclude='participant_responses_export.csv' --exclude='telemetry_events.jsonl' ~/sql-test-suite/ /var/www/html/
             
-            # Ensure Nginx proxies /api/ requests to the Python telemetry server on port 8000
-            # Only inject the proxy block if it doesn't already exist (preserves SSL/Certbot config)
+            # Install Nginx proxy config for /api/ routes if not already present
             if ! grep -q 'location /api/' /etc/nginx/sites-available/default 2>/dev/null; then
-              sudo sed -i '/location \/ {/i \    location /api/ {\n        proxy_pass http://127.0.0.1:8000;\n        proxy_set_header Host \$host;\n        proxy_set_header X-Real-IP \$remote_addr;\n        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;\n        proxy_set_header X-Forwarded-Proto \$scheme;\n        proxy_read_timeout 30s;\n    }\n' /etc/nginx/sites-available/default
+              # Back up the current config
+              sudo cp /etc/nginx/sites-available/default /etc/nginx/sites-available/default.bak.$(date +%s)
+              # Install our config as the base (Certbot will layer SSL on top)
+              sudo cp ~/sql-test-suite/nginx.conf /etc/nginx/sites-available/default
+              # Re-run certbot to re-add SSL config on top of the new base
+              sudo certbot --nginx -d jagger.cx -d www.jagger.cx --non-interactive --agree-tos --redirect 2>/dev/null || true
               sudo nginx -t && sudo systemctl reload nginx
             fi
             
