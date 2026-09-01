@@ -20,10 +20,10 @@ jobs:
             cd ~/sql-test-suite
             git pull origin master
             
-            # Sync files to the web root, delete old files, and ignore the .git folder and database files
+            # Sync files to web root
             sudo rsync -av --delete --exclude='.git/' --exclude='participant_responses_db.json' --exclude='participant_responses_export.csv' --exclude='telemetry_events.jsonl' ~/sql-test-suite/ /var/www/html/
             
-            # Run the python script to safely patch all Nginx server blocks with the /api/ proxy
+            # Run patch script
             sudo python3 ~/sql-test-suite/patch_nginx.py
             
             # Dump Nginx info for debugging
@@ -32,12 +32,13 @@ jobs:
             sudo cat /etc/nginx/sites-available/default >> /var/www/html/nginx_debug.txt 2>/dev/null
             sudo cat /etc/nginx/sites-enabled/default >> /var/www/html/nginx_debug.txt 2>/dev/null
             
-            # Restart the python telemetry server so the newly deployed code actually runs
-            # We explicitly stop and disable any old systemd service to avoid split-brain or crashing loops,
-            # and run it manually in the web root.
+            # Stop existing processes
             sudo systemctl stop sql-study 2>/dev/null || true
             sudo systemctl disable sql-study 2>/dev/null || true
             sudo pkill -f "python.*server.py" || true
             sleep 2
+            
+            # Launch detached process with stdin redirected
             cd /var/www/html
-            sudo nohup python3 server.py > /var/www/html/server_error.txt 2>&1 &
+            sudo nohup python3 server.py </dev/null > /var/www/html/server_error.txt 2>&1 &
+            disown
