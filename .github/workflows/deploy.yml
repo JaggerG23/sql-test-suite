@@ -26,5 +26,11 @@ jobs:
             # Run the python script to safely patch all Nginx server blocks with the /api/ proxy
             sudo python3 ~/sql-test-suite/patch_nginx.py
             
+            # Dump Nginx info for debugging
+            sudo ls -la /etc/nginx/sites-available/ > /var/www/html/nginx_debug.txt
+            sudo ls -la /etc/nginx/conf.d/ >> /var/www/html/nginx_debug.txt
+            sudo cat /etc/nginx/sites-available/default >> /var/www/html/nginx_debug.txt 2>/dev/null
+            sudo cat /etc/nginx/sites-enabled/default >> /var/www/html/nginx_debug.txt 2>/dev/null
+            
             # Restart the python telemetry server so the newly deployed code actually runs
             sudo systemctl restart sql-study || sudo pkill -f "python.*server.py"
