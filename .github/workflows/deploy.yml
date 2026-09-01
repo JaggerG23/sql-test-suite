@@ -33,10 +33,11 @@ jobs:
             sudo cat /etc/nginx/sites-enabled/default >> /var/www/html/nginx_debug.txt 2>/dev/null
             
             # Restart the python telemetry server so the newly deployed code actually runs
-            # If the sql-study service exists, restart it. If it fails or doesn't exist, kill old processes and start manually via nohup.
-            sudo systemctl restart sql-study || {
-              sudo pkill -f "python3.*server.py"
-              sleep 2
-              cd ~/sql-test-suite
-              nohup python3 server.py > telemetry_server.log 2>&1 &
-            }
+            # We explicitly stop and disable any old systemd service to avoid split-brain or crashing loops,
+            # and run it manually in the web root.
+            sudo systemctl stop sql-study 2>/dev/null || true
+            sudo systemctl disable sql-study 2>/dev/null || true
+            sudo pkill -f "python.*server.py" || true
+            sleep 2
+            cd /var/www/html
+            sudo nohup python3 server.py > /var/www/html/server_error.txt 2>&1 &
