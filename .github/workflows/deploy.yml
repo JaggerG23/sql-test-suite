@@ -23,16 +23,8 @@ jobs:
             # Sync files to the web root, delete old files, and ignore the .git folder and database files
             sudo rsync -av --delete --exclude='.git/' --exclude='participant_responses_db.json' --exclude='participant_responses_export.csv' --exclude='telemetry_events.jsonl' ~/sql-test-suite/ /var/www/html/
             
-            # Install Nginx proxy config for /api/ routes if not already present
-            if ! grep -q 'location /api/' /etc/nginx/sites-available/default 2>/dev/null; then
-              # Back up the current config
-              sudo cp /etc/nginx/sites-available/default /etc/nginx/sites-available/default.bak.$(date +%s)
-              # Install our config as the base (Certbot will layer SSL on top)
-              sudo cp ~/sql-test-suite/nginx.conf /etc/nginx/sites-available/default
-              # Re-run certbot to re-add SSL config on top of the new base
-              sudo certbot --nginx -d jagger.cx -d www.jagger.cx --non-interactive --agree-tos --redirect 2>/dev/null || true
-              sudo nginx -t && sudo systemctl reload nginx
-            fi
+            # Run the python script to safely patch all Nginx server blocks with the /api/ proxy
+            sudo python3 ~/sql-test-suite/patch_nginx.py
             
             # Restart the python telemetry server so the newly deployed code actually runs
             sudo systemctl restart sql-study || sudo pkill -f "python.*server.py"
