@@ -170,7 +170,7 @@ class HumanResolver {
               <label for="intake-age" style="font-size: 12px; font-weight: 600; margin-bottom: 5px; display: block; color: var(--text-main);">
                 <i class="fa-solid fa-cake-candles text-accent"></i> Age <span style="color: var(--color-danger)">*</span>
               </label>
-              <input type="number" id="intake-age" class="form-control" min="15" max="100" placeholder="e.g. 24" value="${this.escapeHTML(existingDemo.age || '')}" required style="width: 100%; padding: 8px 12px; background: rgba(0,0,0,0.4); border: 1px solid rgba(255,255,255,0.15); border-radius: 6px; color: #fff; font-size: 13px;">
+              <input type="number" id="intake-age" class="form-control" min="18" max="100" placeholder="e.g. 24" value="${this.escapeHTML(existingDemo.age || '')}" required style="width: 100%; padding: 8px 12px; background: rgba(0,0,0,0.4); border: 1px solid rgba(255,255,255,0.15); border-radius: 6px; color: #fff; font-size: 13px;">
             </div>
 
             <!-- Gender -->
@@ -287,6 +287,14 @@ class HumanResolver {
         if (valMsg) {
           valMsg.style.display = 'block';
           valMsg.innerHTML = '<i class="fa-solid fa-circle-exclamation"></i> Please complete all required demographic fields to begin the experiment.';
+        }
+        return;
+      }
+
+      if (parseInt(ageVal, 10) < 18) {
+        if (valMsg) {
+          valMsg.style.display = 'block';
+          valMsg.innerHTML = '<i class="fa-solid fa-circle-exclamation"></i> You must be at least 18 years old to participate in this study.';
         }
         return;
       }
