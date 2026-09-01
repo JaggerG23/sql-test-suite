@@ -38,7 +38,9 @@ jobs:
             sudo pkill -f "python.*server.py" || true
             sleep 2
             
-            # Launch detached process with stdin redirected
+            # Launch detached process safely via bash subshell
             cd /var/www/html
-            sudo nohup python3 server.py </dev/null > /var/www/html/server_error.txt 2>&1 &
-            disown
+            sudo bash -c "nohup python3 server.py </dev/null> /var/www/html/server_error.txt 2>&1 &"
+            
+            # Force the SSH action to close cleanly
+            exit 0
