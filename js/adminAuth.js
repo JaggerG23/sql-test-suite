@@ -219,6 +219,19 @@ class AdminAuthManager {
         try { data = JSON.parse(text); } catch (e) {}
         if (data && data.authenticated) {
           this.unlockDashboard();
+          // Always ensure telemetry is synced when verified
+          if (window.app && window.app.analytics) {
+            window.app.analytics.syncWithDiskStorage().then(() => {
+              if (typeof window.app.renderAnalyticsDashboard === 'function') {
+                window.app.renderAnalyticsDashboard();
+              }
+            });
+          }
+          return;
+        } else if (data && data.authenticated === false) {
+          // Server explicitly rejected the token (session expired or server restarted)
+          this.setToken(null);
+          this.lockDashboard();
           return;
         }
       }

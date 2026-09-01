@@ -7,14 +7,19 @@ import csv
 import secrets
 import urllib.parse
 import threading
+import hashlib
+import tempfile
 from http.cookies import SimpleCookie
 
 PORT = 8000
-DB_FILE = "participant_responses_db.json"
-CSV_FILE = "participant_responses_export.csv"
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+DB_FILE = os.path.join(BASE_DIR, "participant_responses_db.json")
+CSV_FILE = os.path.join(BASE_DIR, "participant_responses_export.csv")
 
 ADMIN_PASSWORD = os.environ.get("ADMIN_PASSWORD", "StefiksLabRootPassword")
-ACTIVE_ADMIN_SESSIONS = set()
+
+def get_admin_token():
+    return hashlib.sha256(ADMIN_PASSWORD.encode('utf-8')).hexdigest()
 
 # Global lock to ensure thread safety for concurrent file I/O
 db_lock = threading.Lock()
@@ -70,9 +75,11 @@ def load_db_data():
     return {"responses": [], "demographics": {}, "finalThoughts": {}}
 
 def save_db_data(db_data):
-    """Saves database data to JSON and exports CSV. Assumes caller holds db_lock."""
-    with open(DB_FILE, 'w', encoding='utf-8') as f:
+    """Saves database data to JSON and exports CSV atomically. Assumes caller holds db_lock."""
+    with tempfile.NamedTemporaryFile('w', dir=BASE_DIR, delete=False, encoding='utf-8') as f:
         json.dump(db_data, f, indent=2)
+        temp_name = f.name
+    os.replace(temp_name, DB_FILE)
     export_csv(db_data)
 
 def export_csv(db_data):
@@ -89,7 +96,7 @@ def export_csv(db_data):
                 pass
         return
 
-    with open(CSV_FILE, 'w', newline='', encoding='utf-8') as f:
+    with tempfile.NamedTemporaryFile('w', dir=BASE_DIR, delete=False, newline='', encoding='utf-8') as f:
         writer = csv.writer(f)
         writer.writerow(CSV_HEADERS)
         for r in responses:
@@ -125,15 +132,18 @@ def export_csv(db_data):
                 r.get('dialectSql', r.get('rawQuery', '')),
                 r.get('jsCode', r.get('incompleteQuery', ''))
             ])
+        temp_name = f.name
+    os.replace(temp_name, CSV_FILE)
 
 class TelemetryHandler(http.server.SimpleHTTPRequestHandler):
     def is_admin_authenticated(self):
         cookies = parse_cookies(self.headers.get('Cookie', ''))
         token = cookies.get('admin_session')
-        if token and token in ACTIVE_ADMIN_SESSIONS:
+        valid_token = get_admin_token()
+        if token and token == valid_token:
             return True
         header_token = self.headers.get('X-Admin-Token')
-        if header_token and header_token in ACTIVE_ADMIN_SESSIONS:
+        if header_token and header_token == valid_token:
             return True
         return False
 
@@ -196,8 +206,7 @@ class TelemetryHandler(http.server.SimpleHTTPRequestHandler):
                 payload = json.loads(body.decode('utf-8'))
                 password = payload.get('password', '')
                 if password == ADMIN_PASSWORD:
-                    token = secrets.token_hex(16)
-                    ACTIVE_ADMIN_SESSIONS.add(token)
+                    token = get_admin_token()
                     self.send_json(200, {"status": "success", "token": token}, {
                         'Set-Cookie': f'admin_session={token}; Path=/; HttpOnly; SameSite=Lax'
                     })
@@ -208,14 +217,6 @@ class TelemetryHandler(http.server.SimpleHTTPRequestHandler):
             return
 
         elif parsed_path == '/api/admin/logout':
-            cookies = parse_cookies(self.headers.get('Cookie', ''))
-            token = cookies.get('admin_session')
-            if token and token in ACTIVE_ADMIN_SESSIONS:
-                ACTIVE_ADMIN_SESSIONS.remove(token)
-            header_token = self.headers.get('X-Admin-Token')
-            if header_token and header_token in ACTIVE_ADMIN_SESSIONS:
-                ACTIVE_ADMIN_SESSIONS.remove(header_token)
-
             self.send_json(200, {"status": "success"}, {
                 'Set-Cookie': 'admin_session=; Path=/; Expires=Thu, 01 Jan 1970 00:00:00 GMT'
             })
