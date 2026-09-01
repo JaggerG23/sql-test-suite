@@ -5912,6 +5912,13 @@
       "tabFocusLost": false,
       "tabSwitchCount": 0,
       "focusLostDurationMs": 0
+    },
+    {
+      "id": "1"
+    },
+    {
+      "id": "test1",
+      "participantId": "tester"
     }
   ],
   "demographics": {

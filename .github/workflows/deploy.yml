@@ -21,7 +21,7 @@ jobs:
             git pull origin master
             
             # Sync files to the web root, delete old files, and ignore the .git folder and database files
-            sudo rsync -av --delete --exclude='.git/' --exclude='participant_responses_db.json' --exclude='participant_responses_export.csv' ~/sql-test-suite/ /var/www/html/
+            sudo rsync -av --delete --exclude='.git/' --exclude='participant_responses_db.json' --exclude='participant_responses_export.csv' --exclude='telemetry_events.jsonl' ~/sql-test-suite/ /var/www/html/
             
             # Restart the python telemetry server so the newly deployed code actually runs
             # (Replace 'sql-study' with your actual service name if it's different)

@@ -212,6 +212,9 @@ class ParticipantAnalytics {
             localStorage.setItem(this.finalThoughtsKey, JSON.stringify(this.finalThoughts));
           }
 
+          if (diskData.demographics && Object.keys(diskData.demographics).length > 0) changed = true;
+          if (diskData.finalThoughts && Object.keys(diskData.finalThoughts).length > 0) changed = true;
+
           if (changed) {
             this.saveResponsesLocally();
             this.notify({ type: 'DISK_SYNC' });
@@ -231,12 +234,10 @@ class ParticipantAnalytics {
 
   async pushToDiskStorage(incrementalData = null) {
     try {
-      const payload = {
-        responses: this.responses,
-        demographics: this.demographics,
-        finalThoughts: this.finalThoughts,
-        ...incrementalData
-      };
+      const payload = incrementalData || {};
+
+      // If there's no incremental data to push, don't ping the server
+      if (Object.keys(payload).length === 0) return;
 
       const endpoint = this.getApiUrl('/api/save-telemetry');
       await fetch(endpoint, {
@@ -319,8 +320,8 @@ class ParticipantAnalytics {
     this.responses.push(record);
     this.saveResponsesLocally();
 
-    this.pushToDiskStorage({ record });
-    this.pushToCloudWebhook({ record });
+    this.pushToDiskStorage({ newResponse: record });
+    this.pushToCloudWebhook({ newResponse: record });
 
     if (this.channel) {
       this.channel.postMessage({ type: 'NEW_RESPONSE', record });
@@ -343,8 +344,8 @@ class ParticipantAnalytics {
       localStorage.setItem(this.demographicsKey, JSON.stringify(this.demographics));
     } catch (e) {}
 
-    this.pushToDiskStorage({ newDemographics: record });
-    this.pushToCloudWebhook({ newDemographics: record });
+    this.pushToDiskStorage({ newDemographic: record });
+    this.pushToCloudWebhook({ newDemographic: record });
 
     if (this.channel) {
       this.channel.postMessage({ type: 'DEMOGRAPHICS_UPDATE', demographics: record });

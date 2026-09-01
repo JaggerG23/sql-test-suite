@@ -4,15 +4,15 @@ import json
 import os
 import sys
 import csv
-import secrets
-import urllib.parse
-import threading
 import hashlib
 import tempfile
+import threading
+import urllib.parse
 from http.cookies import SimpleCookie
 
 PORT = 8000
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+LOG_FILE = os.path.join(BASE_DIR, "telemetry_events.jsonl")
 DB_FILE = os.path.join(BASE_DIR, "participant_responses_db.json")
 CSV_FILE = os.path.join(BASE_DIR, "participant_responses_export.csv")
 
@@ -21,79 +21,84 @@ ADMIN_PASSWORD = os.environ.get("ADMIN_PASSWORD", "StefiksLabRootPassword")
 def get_admin_token():
     return hashlib.sha256(ADMIN_PASSWORD.encode('utf-8')).hexdigest()
 
-# Global lock to ensure thread safety for concurrent file I/O
 db_lock = threading.Lock()
 
 CSV_HEADERS = [
-    'Response ID',
-    'Participant ID',
-    'Session ID',
-    'Timestamp (ISO)',
-    'Question Number',
-    'Question Category',
-    'Syntax Dialect ID',
-    'Syntax Dialect Name',
-    'Selected Key (1-4)',
-    'Selected Option',
-    'Correct Option',
-    'Is Correct',
-    'Response Time (ms)',
-    'Random Seed',
-    'Tab Focus Lost',
-    'Tab Switch Count',
-    'Focus Lost Duration (ms)',
-    'Age',
-    'Gender',
-    'Academic Standing',
-    'Coding Experience',
-    'Database Experience',
-    'Query Writing Experience',
-    'Final Thoughts',
-    'Raw SQL Query',
-    'Dialect SQL Query',
-    'JS Code Snippet'
+    'Response ID', 'Participant ID', 'Session ID', 'Timestamp (ISO)',
+    'Question Number', 'Question Category', 'Syntax Dialect ID',
+    'Syntax Dialect Name', 'Selected Key (1-4)', 'Selected Option',
+    'Correct Option', 'Is Correct', 'Response Time (ms)', 'Random Seed',
+    'Tab Focus Lost', 'Tab Switch Count', 'Focus Lost Duration (ms)',
+    'Age', 'Gender', 'Academic Standing', 'Coding Experience',
+    'Database Experience', 'Query Writing Experience', 'Final Thoughts',
+    'Raw SQL Query', 'Dialect SQL Query', 'JS Code Snippet'
 ]
 
 def parse_cookies(cookie_header):
-    if not cookie_header:
-        return {}
+    if not cookie_header: return {}
     cookie = SimpleCookie()
     try:
         cookie.load(cookie_header)
         return {k: v.value for k, v in cookie.items()}
-    except Exception:
-        return {}
+    except Exception: return {}
+
+def append_event(event_type, data):
+    """Appends an event to the append-only JSONL log file. Caller should hold db_lock."""
+    event = {"type": event_type, "data": data}
+    with open(LOG_FILE, 'a', encoding='utf-8') as f:
+        f.write(json.dumps(event) + '\n')
 
 def load_db_data():
-    """Loads database data. Assumes caller holds db_lock if necessary."""
-    if os.path.exists(DB_FILE):
-        try:
-            with open(DB_FILE, 'r', encoding='utf-8') as f:
-                return json.load(f)
-        except Exception as e:
-            print(f"Error loading DB: {e}")
-    return {"responses": [], "demographics": {}, "finalThoughts": {}}
-
-def save_db_data(db_data):
-    """Saves database data to JSON and exports CSV atomically. Assumes caller holds db_lock."""
-    with tempfile.NamedTemporaryFile('w', dir=BASE_DIR, delete=False, encoding='utf-8') as f:
-        json.dump(db_data, f, indent=2)
-        temp_name = f.name
-    os.replace(temp_name, DB_FILE)
-    export_csv(db_data)
+    """Reconstructs state by chronologically replaying the append-only log."""
+    db_data = {"responses": [], "demographics": {}, "finalThoughts": {}}
+    if not os.path.exists(LOG_FILE):
+        return db_data
+        
+    responses_map = {}
+    
+    try:
+        with open(LOG_FILE, 'r', encoding='utf-8') as f:
+            for line in f:
+                line = line.strip()
+                if not line: continue
+                try:
+                    event = json.loads(line)
+                    etype = event.get("type")
+                    edata = event.get("data", {})
+                    
+                    if etype == "RESPONSE":
+                        responses_map[edata.get('id')] = edata
+                    elif etype == "DEMOGRAPHICS":
+                        db_data['demographics'][edata.get('participantId')] = edata
+                    elif etype == "FINAL_THOUGHT":
+                        db_data['finalThoughts'][edata.get('participantId')] = edata
+                    elif etype == "DELETE_USER":
+                        pid = edata.get("participantId")
+                        responses_map = {k: v for k, v in responses_map.items() if v.get('participantId') != pid}
+                        if pid in db_data['demographics']: del db_data['demographics'][pid]
+                        if pid in db_data['finalThoughts']: del db_data['finalThoughts'][pid]
+                    elif etype == "CLEAR_ALL":
+                        responses_map.clear()
+                        db_data['demographics'].clear()
+                        db_data['finalThoughts'].clear()
+                except Exception:
+                    continue
+    except Exception as e:
+        print(f"Error reading log: {e}")
+        
+    db_data['responses'] = list(responses_map.values())
+    return db_data
 
 def export_csv(db_data):
-    """Exports DB data to CSV. Assumes caller holds db_lock."""
+    """Exports reconstructed state to CSV for convenience."""
     responses = db_data.get('responses', [])
     demographics = db_data.get('demographics', {})
     final_thoughts = db_data.get('finalThoughts', {})
 
     if not responses:
         if os.path.exists(CSV_FILE):
-            try:
-                os.remove(CSV_FILE)
-            except Exception:
-                pass
+            try: os.remove(CSV_FILE)
+            except: pass
         return
 
     with tempfile.NamedTemporaryFile('w', dir=BASE_DIR, delete=False, newline='', encoding='utf-8') as f:
@@ -104,33 +109,18 @@ def export_csv(db_data):
             demo = demographics.get(pid, {})
             thought_obj = final_thoughts.get(pid, {})
             writer.writerow([
-                r.get('id', ''),
-                pid,
-                r.get('sessionId', ''),
-                r.get('timestamp', ''),
-                r.get('questionNumber', ''),
-                r.get('questionCategory', ''),
-                r.get('activeDialect', ''),
-                r.get('activeDialectName', ''),
-                r.get('selectedKey', ''),
-                r.get('selectedOptionText', ''),
-                r.get('correctOptionText', ''),
-                'TRUE' if r.get('isCorrect') else 'FALSE',
-                r.get('responseTimeMs', 0),
-                r.get('seed', ''),
-                'TRUE' if r.get('tabFocusLost') else 'FALSE',
-                r.get('tabSwitchCount', 0),
-                r.get('focusLostDurationMs', 0),
-                demo.get('age', ''),
-                demo.get('gender', ''),
-                demo.get('academicStanding', ''),
-                demo.get('codingExp', ''),
-                demo.get('dbExp', ''),
-                demo.get('queryExp', ''),
-                thought_obj.get('thoughts', ''),
-                r.get('rawQuery', ''),
-                r.get('dialectSql', r.get('rawQuery', '')),
-                r.get('jsCode', r.get('incompleteQuery', ''))
+                r.get('id', ''), pid, r.get('sessionId', ''), r.get('timestamp', ''),
+                r.get('questionNumber', ''), r.get('questionCategory', ''),
+                r.get('activeDialect', ''), r.get('activeDialectName', ''),
+                r.get('selectedKey', ''), r.get('selectedOptionText', ''),
+                r.get('correctOptionText', ''), 'TRUE' if r.get('isCorrect') else 'FALSE',
+                r.get('responseTimeMs', 0), r.get('seed', ''),
+                'TRUE' if r.get('tabFocusLost') else 'FALSE', r.get('tabSwitchCount', 0),
+                r.get('focusLostDurationMs', 0), demo.get('age', ''), demo.get('gender', ''),
+                demo.get('academicStanding', ''), demo.get('codingExp', ''),
+                demo.get('dbExp', ''), demo.get('queryExp', ''),
+                thought_obj.get('thoughts', ''), r.get('rawQuery', ''),
+                r.get('dialectSql', r.get('rawQuery', '')), r.get('jsCode', r.get('incompleteQuery', ''))
             ])
         temp_name = f.name
     os.replace(temp_name, CSV_FILE)
@@ -140,11 +130,9 @@ class TelemetryHandler(http.server.SimpleHTTPRequestHandler):
         cookies = parse_cookies(self.headers.get('Cookie', ''))
         token = cookies.get('admin_session')
         valid_token = get_admin_token()
-        if token and token == valid_token:
-            return True
+        if token and token == valid_token: return True
         header_token = self.headers.get('X-Admin-Token')
-        if header_token and header_token == valid_token:
-            return True
+        if header_token and header_token == valid_token: return True
         return False
 
     def send_json(self, status_code, data, extra_headers=None):
@@ -179,18 +167,16 @@ class TelemetryHandler(http.server.SimpleHTTPRequestHandler):
             return
 
         if parsed_path == '/api/admin/check-auth':
-            is_auth = self.is_admin_authenticated()
-            self.send_json(200, {"authenticated": is_auth})
+            self.send_json(200, {"authenticated": self.is_admin_authenticated()})
             return
 
         if parsed_path == '/api/load-telemetry':
             if not self.is_admin_authenticated():
-                self.send_json(401, {"status": "error", "message": "Unauthorized: Admin access required"})
+                self.send_json(401, {"status": "error", "message": "Unauthorized"})
                 return
 
             with db_lock:
                 data = load_db_data()
-
             self.send_json(200, data)
             return
 
@@ -204,14 +190,13 @@ class TelemetryHandler(http.server.SimpleHTTPRequestHandler):
         if parsed_path == '/api/admin/login':
             try:
                 payload = json.loads(body.decode('utf-8'))
-                password = payload.get('password', '')
-                if password == ADMIN_PASSWORD:
+                if payload.get('password', '') == ADMIN_PASSWORD:
                     token = get_admin_token()
                     self.send_json(200, {"status": "success", "token": token}, {
                         'Set-Cookie': f'admin_session={token}; Path=/; HttpOnly; SameSite=Lax'
                     })
                 else:
-                    self.send_json(401, {"status": "error", "message": "Invalid admin password"})
+                    self.send_json(401, {"status": "error", "message": "Invalid password"})
             except Exception as e:
                 self.send_json(400, {"status": "error", "message": str(e)})
             return
@@ -227,32 +212,27 @@ class TelemetryHandler(http.server.SimpleHTTPRequestHandler):
                 payload = json.loads(body.decode('utf-8'))
                 
                 with db_lock:
-                    db_data = load_db_data()
+                    # Handle new incremental payloads
+                    if payload.get('newResponse'):
+                        append_event("RESPONSE", payload['newResponse'])
+                    if payload.get('newDemographic'):
+                        append_event("DEMOGRAPHICS", payload['newDemographic'])
+                    if payload.get('newFinalThought'):
+                        append_event("FINAL_THOUGHT", payload['newFinalThought'])
 
-                    # Merge responses deduplicated by unique ID
-                    existing_map = {r.get('id'): r for r in db_data.get('responses', []) if r.get('id')}
+                    # Support legacy arrays if old clients connect
                     for r in payload.get('responses', []):
-                        if r.get('id'):
-                            existing_map[r['id']] = r
-                    if payload.get('newResponse') and payload['newResponse'].get('id'):
-                        existing_map[payload['newResponse']['id']] = payload['newResponse']
-
-                    db_data['responses'] = list(existing_map.values())
-
-                    # Merge demographics
+                        append_event("RESPONSE", r)
                     if payload.get('demographics'):
-                        db_data['demographics'].update(payload['demographics'])
-                    if payload.get('newDemographic') and payload['newDemographic'].get('participantId'):
-                        db_data['demographics'][payload['newDemographic']['participantId']] = payload['newDemographic']
-
-                    # Merge final thoughts
+                        for k, v in payload['demographics'].items():
+                            append_event("DEMOGRAPHICS", v)
                     if payload.get('finalThoughts'):
-                        db_data['finalThoughts'].update(payload['finalThoughts'])
-                    if payload.get('newFinalThought') and payload['newFinalThought'].get('participantId'):
-                        db_data['finalThoughts'][payload['newFinalThought']['participantId']] = payload['newFinalThought']
+                        for k, v in payload['finalThoughts'].items():
+                            append_event("FINAL_THOUGHT", v)
 
-                    # Write to DB file and Export CSV
-                    save_db_data(db_data)
+                    # Export CSV
+                    db_data = load_db_data()
+                    export_csv(db_data)
 
                 self.send_json(200, {"status": "success", "count": len(db_data['responses'])})
             except Exception as e:
@@ -262,9 +242,8 @@ class TelemetryHandler(http.server.SimpleHTTPRequestHandler):
 
         elif parsed_path == '/api/delete-user-telemetry':
             if not self.is_admin_authenticated():
-                self.send_json(401, {"status": "error", "message": "Unauthorized: Admin access required"})
+                self.send_json(401, {"status": "error", "message": "Unauthorized"})
                 return
-
             try:
                 payload = json.loads(body.decode('utf-8'))
                 pid = payload.get('participantId')
@@ -273,16 +252,9 @@ class TelemetryHandler(http.server.SimpleHTTPRequestHandler):
                     return
 
                 with db_lock:
+                    append_event("DELETE_USER", {"participantId": pid})
                     db_data = load_db_data()
-
-                    db_data['responses'] = [r for r in db_data.get('responses', []) if r.get('participantId') != pid]
-                    if pid in db_data.get('demographics', {}):
-                        del db_data['demographics'][pid]
-                    if pid in db_data.get('finalThoughts', {}):
-                        del db_data['finalThoughts'][pid]
-
-                    save_db_data(db_data)
-
+                    export_csv(db_data)
                 self.send_json(200, {"status": "success", "deletedParticipantId": pid})
             except Exception as e:
                 self.send_json(400, {"status": "error", "message": str(e)})
@@ -290,16 +262,13 @@ class TelemetryHandler(http.server.SimpleHTTPRequestHandler):
 
         elif parsed_path == '/api/clear-telemetry':
             if not self.is_admin_authenticated():
-                self.send_json(401, {"status": "error", "message": "Unauthorized: Admin access required"})
+                self.send_json(401, {"status": "error", "message": "Unauthorized"})
                 return
-
             try:
                 with db_lock:
-                    if os.path.exists(DB_FILE):
-                        os.remove(DB_FILE)
+                    append_event("CLEAR_ALL", {})
                     if os.path.exists(CSV_FILE):
                         os.remove(CSV_FILE)
-                print("All telemetry data wiped successfully.")
                 self.send_json(200, {"status": "success"})
             except Exception as e:
                 self.send_json(500, {"status": "error", "message": str(e)})
@@ -311,24 +280,19 @@ if __name__ == '__main__':
     port = int(sys.argv[1]) if len(sys.argv) > 1 else PORT
     server_address = ('', port)
     
-    # Use ThreadingHTTPServer for concurrent requests support
     if hasattr(http.server, 'ThreadingHTTPServer'):
         ServerClass = http.server.ThreadingHTTPServer
     else:
-        class ThreadingHTTPServer(socketserver.ThreadingMixIn, http.server.HTTPServer):
-            pass
+        class ThreadingHTTPServer(socketserver.ThreadingMixIn, http.server.HTTPServer): pass
         ServerClass = ThreadingHTTPServer
 
     httpd = ServerClass(server_address, TelemetryHandler)
     print(f"=========================================================")
     print(f"   SQL Test Suite Telemetry Server Started at:")
     print(f"   http://localhost:{port} (Threaded)")
-    print(f"   All logs will be saved to disk at:")
-    print(f"   - {os.path.abspath(DB_FILE)}")
-    print(f"   - {os.path.abspath(CSV_FILE)}")
+    print(f"   APPEND-ONLY LOG: {os.path.abspath(LOG_FILE)}")
     print(f"=========================================================", flush=True)
     try:
         httpd.serve_forever()
     except KeyboardInterrupt:
         print("Server stopped.")
-

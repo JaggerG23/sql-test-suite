@@ -1,0 +1,3 @@
+*.jsonl
+participant_responses_export.csv
+participant_responses_db.json
