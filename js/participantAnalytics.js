@@ -107,13 +107,21 @@ class ParticipantAnalytics {
     }
 
     window.addEventListener('storage', (e) => {
-      if ([this.storageKey, this.demographicsKey, this.finalThoughtsKey].includes(e.key)) {
+      if (e.key === this.storageKey || e.key === this.demographicsKey || e.key === this.finalThoughtsKey) {
         this.responses = this.loadResponses();
         this.demographics = this.loadDemographics();
         this.finalThoughts = this.loadFinalThoughts();
-        this.notify({ type: 'STORAGE_UPDATE' });
+        this.notify({ type: 'EXTERNAL_SYNC' });
       }
     });
+
+    // Cross-device synchronization (polling) for the Admin Dashboard
+    setInterval(() => {
+      // Only poll if we are logged in as admin to avoid spamming 401s from normal participants
+      if (window.adminAuth && window.adminAuth.getToken()) {
+        this.syncWithDiskStorage(true);
+      }
+    }, 5000); // Check for new data every 5 seconds
   }
 
   subscribe(callback) {
@@ -170,7 +178,7 @@ class ParticipantAnalytics {
     return path.startsWith('/') ? path : `/${path}`;
   }
 
-  async syncWithDiskStorage() {
+  async syncWithDiskStorage(pullOnly = false) {
     try {
       const endpoint = this.getApiUrl('/api/load-telemetry');
       const res = await fetch(endpoint);
@@ -214,9 +222,11 @@ class ParticipantAnalytics {
       // Backend offline or static hosting
     }
 
-    // Push local data to server or cloud webhook
-    this.pushToDiskStorage();
-    this.pushToCloudWebhook();
+    if (!pullOnly) {
+      // Push local data to server or cloud webhook
+      this.pushToDiskStorage();
+      this.pushToCloudWebhook();
+    }
   }
 
   async pushToDiskStorage(incrementalData = null) {
