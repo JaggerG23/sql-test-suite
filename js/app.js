@@ -32,6 +32,33 @@ class QueryExperimentApp {
     if (seedInput) seedInput.value = this.seed;
   }
 
+  isParticipantView() {
+    if (typeof document !== 'undefined') {
+      if (document.getElementById('tab-generator')) return false;
+      if (document.title && document.title.includes('Participant')) return true;
+      if (document.getElementById('participant-id-input')) return true;
+      if (document.getElementById('human-challenge-container')) return true;
+    }
+    if (typeof window !== 'undefined' && window.location && window.location.pathname) {
+      const p = window.location.pathname.toLowerCase();
+      if (p.includes('participant') || p === '/' || p.endsWith('/')) return true;
+    }
+    return false;
+  }
+
+  hasCompletedDemographics(pid) {
+    if (!this.analytics) return false;
+    const targetPid = pid || this.analytics.participantId;
+    const demo = this.analytics.getDemographics(targetPid);
+    if (!demo) return false;
+    const age = parseInt(demo.age, 10);
+    if (isNaN(age) || age < 18) return false;
+    if (!demo.gender || !demo.academicStanding || !demo.codingExp || !demo.dbExp || !demo.queryExp) {
+      return false;
+    }
+    return true;
+  }
+
   async init() {
     this.seed = 42;
     this.currentQuestionNumber = 1;
@@ -52,8 +79,17 @@ class QueryExperimentApp {
     } catch (e) {
       console.warn('SQLite WASM init deferred:', e);
     }
-    await this.loadIncrementalQuestion(1);
+    if (this.isParticipantView() && !this.hasCompletedDemographics()) {
+      this.currentQuestionNumber = 'intake';
+      await this.loadIncrementalQuestion('intake');
+    } else {
+      await this.loadIncrementalQuestion(1);
+    }
     this.renderAnalyticsDashboard();
+    if (!this.isParticipantView()) {
+      this.bindAdminGroupControls();
+      this.populateAdminQuestionGrid();
+    }
   }
 
   bindEvents() {
@@ -226,6 +262,174 @@ class QueryExperimentApp {
     });
   }
 
+  // -----------------------------------------------------------------------
+  //  Admin: Group & Question Preview Controls
+  // -----------------------------------------------------------------------
+
+  /**
+   * Populates the 6×10 question grid in the admin sidebar.
+   * Called once after the first question loads; also re-called on question change
+   * to highlight the currently active cell.
+   */
+  populateAdminQuestionGrid() {
+    const grid = document.getElementById('admin-question-grid');
+    if (!grid) return;
+
+    grid.innerHTML = '';
+
+    // Render 10 block rows, each with a block label + 6 question buttons
+    for (let blockIdx = 1; blockIdx <= 10; blockIdx++) {
+      // Block label cell
+      const label = document.createElement('div');
+      label.style.cssText = 'font-size:9px;color:rgba(255,255,255,0.3);font-weight:700;text-align:right;padding-right:6px;padding-top:4px;white-space:nowrap;';
+      label.textContent = `Blk ${blockIdx}`;
+      grid.appendChild(label);
+
+      // 6-cell inner grid
+      const row = document.createElement('div');
+      row.style.cssText = 'display:grid;grid-template-columns:repeat(6,1fr);gap:4px;';
+
+      for (let v = 1; v <= 6; v++) {
+        const qNum = (blockIdx - 1) * 6 + v;
+        const btn = document.createElement('button');
+        btn.id = `admin-qgrid-btn-${qNum}`;
+        btn.title = `Q${qNum} — Block ${blockIdx}, variation ${v}`;
+        btn.textContent = qNum;
+        btn.dataset.qnum = qNum;
+
+        const isActive = (qNum === this.currentQuestionNumber);
+        btn.style.cssText = [
+          'font-size: 11px',
+          'padding: 5px 0',
+          'border-radius: 5px',
+          'cursor: pointer',
+          'font-weight: 600',
+          'border: 1.5px solid ' + (isActive ? 'rgba(139,92,246,0.7)' : 'rgba(255,255,255,0.1)'),
+          'background: ' + (isActive ? 'rgba(139,92,246,0.35)' : 'rgba(0,0,0,0.3)'),
+          'color: ' + (isActive ? '#c4b5fd' : '#64748b'),
+          'transition: all 0.15s',
+          'width: 100%'
+        ].join(';');
+
+        btn.addEventListener('mouseenter', () => {
+          if (parseInt(btn.dataset.qnum) !== this.currentQuestionNumber) {
+            btn.style.background = 'rgba(139,92,246,0.18)';
+            btn.style.color = '#a78bfa';
+            btn.style.borderColor = 'rgba(139,92,246,0.45)';
+          }
+        });
+        btn.addEventListener('mouseleave', () => {
+          if (parseInt(btn.dataset.qnum) !== this.currentQuestionNumber) {
+            btn.style.background = 'rgba(0,0,0,0.3)';
+            btn.style.color = '#64748b';
+            btn.style.borderColor = 'rgba(255,255,255,0.1)';
+          }
+        });
+
+        // Click handled by event delegation in bindAdminGroupControls()
+
+        row.appendChild(btn);
+      }
+      grid.appendChild(row);
+    }
+  }
+
+  /**
+   * Updates the active highlight in the question grid to match currentQuestionNumber.
+   */
+  syncAdminQuestionGrid(activeQNum) {
+    for (let q = 1; q <= 60; q++) {
+      const btn = document.getElementById(`admin-qgrid-btn-${q}`);
+      if (!btn) continue;
+      const isActive = (q === activeQNum);
+      btn.style.border = '1px solid ' + (isActive ? 'rgba(139,92,246,0.7)' : 'rgba(255,255,255,0.1)');
+      btn.style.background = isActive ? 'rgba(139,92,246,0.35)' : 'rgba(0,0,0,0.25)';
+      btn.style.color = isActive ? '#c4b5fd' : '#64748b';
+    }
+  }
+
+  /**
+   * Switches the admin preview group and re-renders the current question with
+   * the selected group's SQL dialect + host language.
+   * Keeps the header dropdown and sidebar buttons in sync.
+   */
+  applyAdminGroup(groupId) {
+    if (!this.humanResolver) return;
+
+    // Track currently selected group for re-application on question change
+    this._adminPreviewGroupId = groupId;
+
+    // Sync tab group buttons
+    document.querySelectorAll('.admin-group-btn').forEach(btn => {
+      const gid = btn.dataset.groupId;
+      const isActive = (gid === groupId);
+      btn.classList.toggle('active', isActive);
+
+      const COLORS = {
+        google_sql_python:     { border: '1.5px solid rgba(56,189,248,0.55)', bg: 'rgba(56,189,248,0.12)', color: '#93c5fd' },
+        google_sql_javascript: { border: '1.5px solid rgba(56,189,248,0.55)', bg: 'rgba(56,189,248,0.12)', color: '#93c5fd' },
+        quorum_python:         { border: '1.5px solid rgba(16,185,129,0.55)', bg: 'rgba(16,185,129,0.12)', color: '#6ee7b7' },
+        quorum_javascript:     { border: '1.5px solid rgba(16,185,129,0.55)', bg: 'rgba(16,185,129,0.12)', color: '#6ee7b7' }
+      };
+      const c = COLORS[gid] || COLORS.google_sql_python;
+
+      if (isActive) {
+        btn.style.border = c.border;
+        btn.style.background = c.bg;
+        btn.style.color = c.color;
+      } else {
+        btn.style.border = '1.5px solid rgba(255,255,255,0.1)';
+        btn.style.background = 'rgba(0,0,0,0.2)';
+        btn.style.color = '#94a3b8';
+      }
+    });
+
+    // Update badge label
+    const label = document.getElementById('admin-active-group-label');
+    const GROUP_LABELS = {
+      google_sql_python:     'Google SQL + Python',
+      google_sql_javascript: 'Google SQL + JavaScript',
+      quorum_python:         'Quorum + Python',
+      quorum_javascript:     'Quorum + JavaScript'
+    };
+    if (label) label.textContent = GROUP_LABELS[groupId] || groupId;
+
+    // Re-render current question with chosen group's dialect + host language
+    this.humanResolver.switchGroup(groupId);
+  }
+
+  /**
+   * Binds admin group buttons via event delegation so clicks work even
+   * when tab-admin-preview is hidden (display:none) at init time.
+   * Called once from init() on the admin dashboard.
+   */
+  bindAdminGroupControls() {
+    // Use event delegation on document — works even if buttons are inside
+    // a tab-content that has display:none when this runs
+    document.addEventListener('click', (e) => {
+      const btn = e.target.closest('.admin-group-btn');
+      if (btn && btn.dataset.groupId) {
+        this.applyAdminGroup(btn.dataset.groupId);
+      }
+
+      // Also handle question grid clicks from the admin tab
+      const qBtn = e.target.closest('[id^="admin-qgrid-btn-"]');
+      if (qBtn && qBtn.dataset.qnum) {
+        const qNum = parseInt(qBtn.dataset.qnum, 10);
+        if (qNum >= 1 && qNum <= 60) {
+          this.loadIncrementalQuestion(qNum);
+          // Auto-switch to Participant Test Suite tab
+          document.querySelectorAll('.nav-tab').forEach(t => t.classList.remove('active'));
+          document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
+          const humanTab = document.querySelector('[data-tab="tab-human"]');
+          if (humanTab) humanTab.classList.add('active');
+          const humanContent = document.getElementById('tab-human');
+          if (humanContent) humanContent.classList.add('active');
+        }
+      }
+    });
+  }
+
   async generateAll() {
     await this.generateSchemaOnly();
     this.generateQueryOnly();
@@ -305,13 +509,16 @@ class QueryExperimentApp {
   }
 
   async loadIncrementalQuestion(targetQNum) {
-    const isParticipantPage = window.location && window.location.pathname ? window.location.pathname.includes('participant.html') : false;
+    const isParticipantPage = this.isParticipantView();
 
     if (targetQNum === 'intake') {
       this.currentQuestionNumber = 'intake';
       const select = document.getElementById('question-jump-select');
       if (select) select.value = 'intake';
-      if (this.humanResolver) this.humanResolver.renderIntakeScreen();
+      if (this.humanResolver) {
+        this.humanResolver.intakeCompleted = false;
+        this.humanResolver.renderIntakeScreen();
+      }
       return;
     }
 
@@ -323,18 +530,18 @@ class QueryExperimentApp {
       return;
     }
 
-    // Check if intake form has been completed (ONLY enforce mandatory redirect on participant.html)
-    if (isParticipantPage && this.humanResolver && !this.humanResolver.intakeCompleted) {
-      const demo = this.analytics ? this.analytics.getDemographics() : null;
-      if (!demo) {
-        this.currentQuestionNumber = 'intake';
-        const select = document.getElementById('question-jump-select');
-        if (select) select.value = 'intake';
+    // Check if intake form has been completed (Mandatory redirect before showing study)
+    if (isParticipantPage && !this.hasCompletedDemographics()) {
+      this.currentQuestionNumber = 'intake';
+      const select = document.getElementById('question-jump-select');
+      if (select) select.value = 'intake';
+      if (this.humanResolver) {
+        this.humanResolver.intakeCompleted = false;
         this.humanResolver.renderIntakeScreen();
-        return;
-      } else {
-        this.humanResolver.intakeCompleted = true;
       }
+      return;
+    } else if (isParticipantPage && this.humanResolver) {
+      this.humanResolver.intakeCompleted = true;
     }
 
     const qNum = Math.max(1, Math.min(60, parseInt(targetQNum, 10) || 1));
@@ -376,6 +583,17 @@ class QueryExperimentApp {
 
     const groundTruth = (r1 && r1.success && r1.columns && r1.columns.length > 0) ? r1 : ((r2 && r2.success) ? r2 : r3);
     this.humanResolver.startNewChallenge(this.currentSchema, this.currentQuery, groundTruth, qNum);
+
+    // Admin-only: sync sidebar question grid highlight
+    if (!this.isParticipantView()) {
+      this.syncAdminQuestionGrid(qNum);
+
+      // Re-apply the currently selected admin preview group (if any) so the
+      // code snippet immediately shows the right dialect/language for the new Q.
+      if (this._adminPreviewGroupId) {
+        this.applyAdminGroup(this._adminPreviewGroupId);
+      }
+    }
   }
 
   async generateNextIncrementalQuestion() {
@@ -896,9 +1114,18 @@ class QueryExperimentApp {
   }
 
   async resetParticipantTest() {
-    if (confirm('Reset experiment progress and return to Questionnaire & Question 1? All dev response progress will be wiped.')) {
+    if (confirm('Reset test session and return to Questionnaire & Question 1? Previous responses will be preserved.')) {
       if (this.analytics) {
-        this.analytics.clearAllResponsesWithoutConfirm();
+        // Generate a new random Participant ID and pick a new completely random experimental group
+        const newPid = 'user_' + Math.random().toString(36).substring(2, 9) + Math.random().toString(36).substring(2, 5);
+        this.analytics.setParticipantId(newPid);
+        this.analytics.sessionId = 'session_' + Date.now() + '_' + Math.random().toString(36).substring(2, 7);
+        try {
+          sessionStorage.setItem(this.analytics.sessionIdKey, this.analytics.sessionId);
+        } catch (e) {}
+
+        const pidInput = document.getElementById('participant-id-input');
+        if (pidInput) pidInput.value = this.analytics.participantId;
       }
       if (this.humanResolver) {
         this.humanResolver.resetToFirstQuestion();
@@ -931,6 +1158,21 @@ class QueryExperimentApp {
     const statAvgTime = document.getElementById('astat-avgtime');
     if (statAvgTime) statAvgTime.textContent = `${summary.avgResponseTimeMs} ms`;
 
+    // 4 Experimental Groups Breakdown
+    const groupContainer = document.getElementById('analytics-group-breakdown');
+    if (groupContainer && summary.groupStats) {
+      const gKeys = Object.keys(summary.groupStats);
+      groupContainer.innerHTML = gKeys.map(k => {
+        const s = summary.groupStats[k];
+        return `
+          <div class="d-flex justify-between align-center mb-1 pb-1" style="display:flex; justify-content:space-between; border-bottom: 1px solid rgba(255,255,255,0.05);">
+            <span><strong>${this.escapeHTML(k)}</strong> (${s.total} answers)</span>
+            <span>Accuracy: <strong class="${s.accuracy >= 70 ? 'text-success' : 'text-warning'}">${s.accuracy}%</strong> | Avg Time: <strong>${s.avgTimeMs}ms</strong></span>
+          </div>
+        `;
+      }).join('');
+    }
+
     // Dialect Breakdown
     const dialectContainer = document.getElementById('analytics-dialect-breakdown');
     if (dialectContainer) {
@@ -942,15 +1184,13 @@ class QueryExperimentApp {
           const s = summary.dialectStats[k];
           return `
             <div class="d-flex justify-between align-center mb-1 pb-1" style="display:flex; justify-content:space-between; border-bottom: 1px solid rgba(255,255,255,0.05);">
-              <span><strong>${k}</strong> (${s.total} answers)</span>
+              <span><strong>${this.escapeHTML(k)}</strong> (${s.total} answers)</span>
               <span>Accuracy: <strong class="${s.accuracy >= 70 ? 'text-success' : 'text-warning'}">${s.accuracy}%</strong> | Avg Time: <strong>${s.avgTimeMs}ms</strong></span>
             </div>
           `;
         }).join('');
       }
     }
-
-
 
     // Raw Event Logs Grouped by User ID Folders
     const foldersContainer = document.getElementById('analytics-user-folders-container');
@@ -991,6 +1231,7 @@ class QueryExperimentApp {
                 <div class="d-flex align-center gap-2" style="display: flex; align-items: center; gap: 8px;">
                   <i class="fa-solid ${folderIcon} text-warning" id="folder-icon-${safeUidId}" style="font-size: 16px;"></i>
                   <strong style="color: var(--color-primary); font-size: 13px;">User ID: ${this.escapeHTML(uid)}</strong>
+                  <span class="badge" style="background: rgba(99, 102, 241, 0.2); border: 1px solid rgba(99, 102, 241, 0.4); color: #a5b4fc; font-size: 10px;"><i class="fa-solid fa-layer-group"></i> ${this.escapeHTML(group.assignedGroupName || 'Unassigned')}</span>
                   <span class="badge badge-accent" style="font-size: 10.5px;">${group.totalAnswers} / 60 Questions</span>
                   <span class="badge ${group.accuracy >= 70 ? 'badge-success' : 'badge-warning'}" style="font-size: 10.5px;">${group.accuracy}% Accuracy</span>
                   <span class="badge badge-outline text-muted" style="font-size: 10px;">Avg: ${group.avgTimeMs}ms</span>
@@ -1036,8 +1277,9 @@ class QueryExperimentApp {
                     <thead>
                       <tr style="position: sticky; top: 0; background: #111520; z-index: 2;">
                         <th>#</th>
-                        <th>Timestamp</th>
+                        <th>Date & Time (PST)</th>
                         <th>Session ID</th>
+                        <th>Group</th>
                         <th>Dialect</th>
                         <th>Category</th>
                         <th>Key</th>
@@ -1050,12 +1292,16 @@ class QueryExperimentApp {
                     </thead>
                     <tbody>
                       ${group.responses.slice().reverse().map((r, idx) => {
-                        const timeFormatted = new Date(r.timestamp).toLocaleTimeString();
+                        const timeFormatted = r.timestampPST || (r.timestamp ? (() => {
+                          const d = new Date(r.timestamp);
+                          return `${d.toLocaleDateString('en-US', { timeZone: 'America/Los_Angeles' })} ${d.toLocaleTimeString('en-US', { timeZone: 'America/Los_Angeles' })} PST`;
+                        })() : '-');
                         return `
                           <tr>
                             <td><strong>Q${group.responses.length - idx}</strong></td>
-                            <td class="fs-xs text-muted">${timeFormatted}</td>
+                            <td class="fs-xs text-muted" style="white-space: nowrap;">${timeFormatted}</td>
                             <td class="fs-xs text-dim">${r.sessionId ? r.sessionId.slice(-8) : '-'}</td>
+                            <td><span class="badge" style="background: rgba(99, 102, 241, 0.15); border: 1px solid rgba(99, 102, 241, 0.3); color: #a5b4fc; font-size: 10px;">${this.escapeHTML(r.assignedGroupName || r.assignedGroup || group.assignedGroupName || '-')}</span></td>
                             <td><span class="badge badge-outline">${r.activeDialectName || r.activeDialect}</span></td>
                             <td><span class="badge badge-primary">${r.questionCategory}</span></td>
                             <td><kbd>${r.selectedKey}</kbd></td>

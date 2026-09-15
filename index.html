@@ -58,6 +58,7 @@
           </button>
         </div>
 
+
         <button id="btn-reset-test" class="btn btn-sm" title="Reset test progress and start at Question 1" style="font-size: 11px; padding: 4px 8px; border-radius: 6px; border: 1px solid rgba(239, 68, 68, 0.4); background: rgba(239, 68, 68, 0.15); color: #f87171; cursor: pointer; display: inline-flex; align-items: center; gap: 4px; white-space: nowrap;">
           <i class="fa-solid fa-rotate-left"></i> Reset Test
         </button>
@@ -73,11 +74,7 @@
     <!-- Main Grid Layout -->
     <main class="main-layout">
       <!-- Sidebar Control Panel -->
-      <aside class="sidebar-panel">
-
-
-
-      </aside>
+      <aside class="sidebar-panel" id="admin-sidebar-panel"></aside>
 
       <!-- Center Workspace -->
       <section class="workspace-panel">
@@ -87,7 +84,10 @@
             <i class="fa-solid fa-keyboard"></i> Participant Test Suite (<kbd>1</kbd><kbd>2</kbd><kbd>3</kbd><kbd>4</kbd>)
           </button>
           <button class="nav-tab" data-tab="tab-analytics">
-            <i class="fa-solid fa-chart-line"></i> Participant Analytics & Logs (<span id="resp-count-badge">0</span>)
+            <i class="fa-solid fa-chart-line"></i> Participant Analytics &amp; Logs (<span id="resp-count-badge">0</span>)
+          </button>
+          <button class="nav-tab" data-tab="tab-admin-preview">
+            <i class="fa-solid fa-flask" style="color:#a78bfa;"></i> <span style="color:#a78bfa;">Admin Group Preview</span>
           </button>
         </nav>
 
@@ -95,6 +95,88 @@
         <div id="tab-human" class="tab-content active">
           <div id="human-challenge-container">
             <!-- Dynamically rendered Participant Challenge Card -->
+          </div>
+        </div>
+
+        <!-- Tab: Admin Group Preview -->
+        <div id="tab-admin-preview" class="tab-content">
+          <div class="card" style="background: rgba(14,18,28,0.98); border: 1px solid rgba(139,92,246,0.3); border-radius: 12px; padding: 24px; max-width: 900px; margin: 0 auto;">
+
+            <!-- Header -->
+            <div style="display:flex; align-items:center; gap:10px; margin-bottom:20px; padding-bottom:14px; border-bottom:1px solid rgba(255,255,255,0.07);">
+              <div style="width:36px;height:36px;border-radius:50%;background:rgba(139,92,246,0.15);border:1.5px solid rgba(139,92,246,0.45);display:flex;align-items:center;justify-content:center;">
+                <i class="fa-solid fa-flask" style="color:#a78bfa;font-size:16px;"></i>
+              </div>
+              <div>
+                <h3 style="margin:0;font-size:16px;color:#f8fafc;font-weight:700;">Admin Group Preview</h3>
+                <p style="margin:0;font-size:11px;color:rgba(255,255,255,0.4);">Preview any of the 4 experimental groups + any of the 60 questions — not visible to participants</p>
+              </div>
+              <div id="admin-active-group-badge" style="margin-left:auto;padding:6px 14px;border-radius:8px;background:rgba(139,92,246,0.14);border:1px solid rgba(139,92,246,0.35);font-size:12px;color:#c4b5fd;font-weight:600;">
+                <i class="fa-solid fa-eye"></i> Previewing: <strong id="admin-active-group-label" style="color:#a78bfa;">Google SQL + Python</strong>
+              </div>
+            </div>
+
+            <!-- Two-column layout: Groups left, Question grid right -->
+            <div style="display:grid; grid-template-columns: 280px 1fr; gap: 24px; align-items:start;">
+
+              <!-- LEFT: Group selector -->
+              <div>
+                <p style="font-size:11px;font-weight:700;color:rgba(255,255,255,0.5);text-transform:uppercase;letter-spacing:0.6px;margin:0 0 10px 0;"><i class="fa-solid fa-users"></i> Experimental Group</p>
+                <div style="display:flex;flex-direction:column;gap:8px;">
+                  <button class="admin-group-btn active" id="sidebar-group-btn-google_sql_python" data-group-id="google_sql_python"
+                    style="display:flex;align-items:center;gap:10px;padding:10px 14px;border-radius:9px;border:1.5px solid rgba(56,189,248,0.45);background:rgba(56,189,248,0.1);color:#93c5fd;font-size:13px;font-weight:600;cursor:pointer;text-align:left;transition:all 0.18s;width:100%;">
+                    <i class="fa-brands fa-python" style="font-size:16px;color:#38bdf8;"></i>
+                    <span>Google SQL &nbsp;<span style="color:rgba(255,255,255,0.3)">&middot;</span>&nbsp; Python</span>
+                  </button>
+                  <button class="admin-group-btn" id="sidebar-group-btn-google_sql_javascript" data-group-id="google_sql_javascript"
+                    style="display:flex;align-items:center;gap:10px;padding:10px 14px;border-radius:9px;border:1.5px solid rgba(255,255,255,0.1);background:rgba(0,0,0,0.2);color:#94a3b8;font-size:13px;font-weight:600;cursor:pointer;text-align:left;transition:all 0.18s;width:100%;">
+                    <i class="fa-brands fa-js" style="font-size:16px;color:#f59e0b;"></i>
+                    <span>Google SQL &nbsp;<span style="color:rgba(255,255,255,0.3)">&middot;</span>&nbsp; JavaScript</span>
+                  </button>
+                  <button class="admin-group-btn" id="sidebar-group-btn-quorum_python" data-group-id="quorum_python"
+                    style="display:flex;align-items:center;gap:10px;padding:10px 14px;border-radius:9px;border:1.5px solid rgba(255,255,255,0.1);background:rgba(0,0,0,0.2);color:#94a3b8;font-size:13px;font-weight:600;cursor:pointer;text-align:left;transition:all 0.18s;width:100%;">
+                    <i class="fa-brands fa-python" style="font-size:16px;color:#10b981;"></i>
+                    <span>Quorum &nbsp;<span style="color:rgba(255,255,255,0.3)">&middot;</span>&nbsp; Python</span>
+                  </button>
+                  <button class="admin-group-btn" id="sidebar-group-btn-quorum_javascript" data-group-id="quorum_javascript"
+                    style="display:flex;align-items:center;gap:10px;padding:10px 14px;border-radius:9px;border:1.5px solid rgba(255,255,255,0.1);background:rgba(0,0,0,0.2);color:#94a3b8;font-size:13px;font-weight:600;cursor:pointer;text-align:left;transition:all 0.18s;width:100%;">
+                    <i class="fa-brands fa-js" style="font-size:16px;color:#34d399;"></i>
+                    <span>Quorum &nbsp;<span style="color:rgba(255,255,255,0.3)">&middot;</span>&nbsp; JavaScript</span>
+                  </button>
+                </div>
+
+                <div style="margin-top:18px;padding:10px 14px;border-radius:8px;background:rgba(0,0,0,0.25);border:1px solid rgba(255,255,255,0.06);font-size:11px;color:rgba(255,255,255,0.4);line-height:1.6;">
+                  <i class="fa-solid fa-circle-info" style="color:#6366f1;"></i>
+                  After selecting a group and question, switch back to the
+                  <strong style="color:rgba(255,255,255,0.6);">Participant Test Suite</strong> tab to see the rendered quiz card.
+                </div>
+              </div>
+
+              <!-- RIGHT: Question grid 1-60 -->
+              <div>
+                <p style="font-size:11px;font-weight:700;color:rgba(255,255,255,0.5);text-transform:uppercase;letter-spacing:0.6px;margin:0 0 10px 0;"><i class="fa-solid fa-list-ol"></i> Jump to Question (1 – 60)</p>
+
+                <!-- Block row labels -->
+                <div style="display:grid;grid-template-columns:48px 1fr;gap:6px;align-items:start;">
+                  <div></div>
+                  <div style="display:grid;grid-template-columns:repeat(6,1fr);gap:4px;margin-bottom:4px;">
+                    <span style="text-align:center;font-size:9px;color:rgba(255,255,255,0.25);">Q1</span>
+                    <span style="text-align:center;font-size:9px;color:rgba(255,255,255,0.25);">Q2</span>
+                    <span style="text-align:center;font-size:9px;color:rgba(255,255,255,0.25);">Q3</span>
+                    <span style="text-align:center;font-size:9px;color:rgba(255,255,255,0.25);">Q4</span>
+                    <span style="text-align:center;font-size:9px;color:rgba(255,255,255,0.25);">Q5</span>
+                    <span style="text-align:center;font-size:9px;color:rgba(255,255,255,0.25);">Q6</span>
+                  </div>
+                </div>
+
+                <div id="admin-question-grid" style="display:grid;grid-template-columns:48px 1fr;gap:6px;align-items:center;">
+                  <!-- Populated dynamically by app.js (10 rows × label + 6 cells) -->
+                </div>
+
+                <div style="margin-top:10px;font-size:10px;color:rgba(255,255,255,0.25);text-align:right;">10 blocks &times; 6 questions each = 60 total</div>
+              </div>
+
+            </div>
           </div>
         </div>
 
@@ -135,8 +217,12 @@
                 </div>
               </div>
 
-              <!-- Dialect and Question Category Breakdown Grid -->
+              <!-- Experimental Group and Dialect Breakdown Grid -->
               <div class="grid grid-2 mb-4" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 16px;">
+                <div class="card" style="padding: 20px; background: rgba(0,0,0,0.3); border: 1px solid rgba(255,255,255,0.08);">
+                  <h4 class="mb-2 text-accent fs-sm"><i class="fa-solid fa-users"></i> Performance by Experimental Group (4 Groups)</h4>
+                  <div id="analytics-group-breakdown" class="fs-xs text-muted">No answer events recorded yet</div>
+                </div>
                 <div class="card" style="padding: 20px; background: rgba(0,0,0,0.3); border: 1px solid rgba(255,255,255,0.08);">
                   <h4 class="mb-2 text-accent fs-sm"><i class="fa-solid fa-code-branch"></i> Performance by Syntax Dialect</h4>
                   <div id="analytics-dialect-breakdown" class="fs-xs text-muted">No answer events recorded yet</div>
@@ -208,17 +294,17 @@
   </div>
 
   <!-- JS Module Scripts -->
-  <script src="js/config.js?v=12"></script>
-  <script src="js/adminAuth.js?v=12"></script>
-  <script src="js/schemaGenerator.js?v=12"></script>
-  <script src="js/queryGenerator.js?v=12"></script>
-  <script src="js/syntaxDialects.js?v=12"></script>
-  <script src="js/quizGenerator.js?v=12"></script>
-  <script src="js/participantAnalytics.js?v=12"></script>
-  <script src="js/engines/sqliteEngine.js?v=12"></script>
-  <script src="js/engines/customJsEngine.js?v=12"></script>
-  <script src="js/engines/optimizerEngine.js?v=12"></script>
-  <script src="js/humanResolver.js?v=12"></script>
-  <script src="js/app.js?v=12"></script>
+  <script src="js/config.js?v=14"></script>
+  <script src="js/adminAuth.js?v=14"></script>
+  <script src="js/schemaGenerator.js?v=14"></script>
+  <script src="js/queryGenerator.js?v=14"></script>
+  <script src="js/syntaxDialects.js?v=14"></script>
+  <script src="js/quizGenerator.js?v=14"></script>
+  <script src="js/participantAnalytics.js?v=14"></script>
+  <script src="js/engines/sqliteEngine.js?v=14"></script>
+  <script src="js/engines/customJsEngine.js?v=14"></script>
+  <script src="js/engines/optimizerEngine.js?v=14"></script>
+  <script src="js/humanResolver.js?v=14"></script>
+  <script src="js/app.js?v=15"></script>
 </body>
 </html>
