@@ -9,6 +9,8 @@ import tempfile
 import threading
 import urllib.parse
 from http.cookies import SimpleCookie
+from datetime import datetime
+from zoneinfo import ZoneInfo
 
 PORT = 8000
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -25,13 +27,13 @@ db_lock = threading.Lock()
 
 CSV_HEADERS = [
     'Response ID', 'Participant ID', 'Session ID', 'Timestamp (ISO)',
-    'Question Number', 'Question Category', 'Syntax Dialect ID',
-    'Syntax Dialect Name', 'Selected Key (1-4)', 'Selected Option',
+    'Question Number', 'Question Category', 'Assigned Group', 'Host Language',
+    'Syntax Dialect ID', 'Syntax Dialect Name', 'Selected Key (1-4)', 'Selected Option',
     'Correct Option', 'Is Correct', 'Response Time (ms)', 'Random Seed',
     'Tab Focus Lost', 'Tab Switch Count', 'Focus Lost Duration (ms)',
     'Age', 'Gender', 'Academic Standing', 'Coding Experience',
     'Database Experience', 'Query Writing Experience', 'Final Thoughts',
-    'Raw SQL Query', 'Dialect SQL Query', 'JS Code Snippet'
+    'Raw SQL Query', 'Dialect SQL Query', 'Code Snippet'
 ]
 
 def parse_cookies(cookie_header):
@@ -111,6 +113,8 @@ def export_csv(db_data):
             writer.writerow([
                 r.get('id', ''), pid, r.get('sessionId', ''), r.get('timestamp', ''),
                 r.get('questionNumber', ''), r.get('questionCategory', ''),
+                r.get('assignedGroupName', r.get('assignedGroup', demo.get('assignedGroupName', demo.get('assignedGroup', '')))),
+                r.get('hostLanguage', demo.get('hostLanguage', '')),
                 r.get('activeDialect', ''), r.get('activeDialectName', ''),
                 r.get('selectedKey', ''), r.get('selectedOptionText', ''),
                 r.get('correctOptionText', ''), 'TRUE' if r.get('isCorrect') else 'FALSE',
@@ -120,7 +124,8 @@ def export_csv(db_data):
                 demo.get('academicStanding', ''), demo.get('codingExp', ''),
                 demo.get('dbExp', ''), demo.get('queryExp', ''),
                 thought_obj.get('thoughts', ''), r.get('rawQuery', ''),
-                r.get('dialectSql', r.get('rawQuery', '')), r.get('jsCode', r.get('incompleteQuery', ''))
+                r.get('dialectSql', r.get('rawQuery', '')),
+                r.get('codeSnippet', r.get('jsCode', r.get('incompleteQuery', '')))
             ])
         temp_name = f.name
     os.replace(temp_name, CSV_FILE)
@@ -212,9 +217,12 @@ class TelemetryHandler(http.server.SimpleHTTPRequestHandler):
                 payload = json.loads(body.decode('utf-8'))
                 
                 with db_lock:
+                    pst_now = datetime.now(ZoneInfo('America/Los_Angeles')).strftime('%Y-%m-%d %I:%M:%S %p PST')
                     # Handle new incremental payloads
                     if payload.get('newResponse'):
-                        append_event("RESPONSE", payload['newResponse'])
+                        r = payload['newResponse']
+                        print(f"[{pst_now}] Response logged: Participant={r.get('participantId')} Q={r.get('questionNumber')} Correct={r.get('isCorrect')}", flush=True)
+                        append_event("RESPONSE", r)
                     if payload.get('newDemographic'):
                         append_event("DEMOGRAPHICS", payload['newDemographic'])
                     if payload.get('newFinalThought'):
@@ -222,6 +230,7 @@ class TelemetryHandler(http.server.SimpleHTTPRequestHandler):
 
                     # Support legacy arrays if old clients connect
                     for r in payload.get('responses', []):
+                        print(f"[{pst_now}] Response logged (batch): Participant={r.get('participantId')} Q={r.get('questionNumber')} Correct={r.get('isCorrect')}", flush=True)
                         append_event("RESPONSE", r)
                     if payload.get('demographics'):
                         for k, v in payload['demographics'].items():

@@ -9,15 +9,26 @@ class QuizGenerator {
     this.seed = seed;
   }
 
-  generateQuestion(rawSql, schema, dialectManager, groundTruthResult) {
+  generateQuestion(rawSql, schema, dialectManager, groundTruthResult, targetGroup = null) {
     if (!rawSql || !schema) {
       return null;
     }
 
-    const currentDialect = dialectManager ? dialectManager.getCurrentDialect() : { name: 'Standard SQL', id: 'mysql' };
+    let group = targetGroup;
+    if (!group && typeof window !== 'undefined' && window.app && window.app.analytics && typeof window.app.analytics.getAssignedGroup === 'function') {
+      group = window.app.analytics.getAssignedGroup();
+    }
+
+    const hostLanguage = group && group.hostLanguage ? group.hostLanguage : 'javascript';
+    const dialectKey = group && group.sqlDialect ? group.sqlDialect : (dialectManager ? dialectManager.getCurrentDialect().id : 'pipe');
+
+    const currentDialect = (dialectManager && dialectManager.availableDialects && dialectManager.availableDialects[dialectKey])
+      ? dialectManager.availableDialects[dialectKey]
+      : (dialectManager ? dialectManager.getCurrentDialect(null, 42, group) : { name: 'Google SQL (Pipe Syntax)', id: 'pipe' });
+
     const dialectSql = dialectManager ? dialectManager.formatQueryToDialect(rawSql, currentDialect.id) : rawSql;
 
-    const jsCode = this.generateJsCodeFromSql(rawSql, schema, dialectSql);
+    const codeSnippet = this.generateCodeSnippet(rawSql, schema, dialectSql, hostLanguage);
     const options = this.generateTableOptions(groundTruthResult, schema, rawSql);
 
     // Shuffle options and assign hotkeys [1, 2, 3, 4]
@@ -31,16 +42,83 @@ class QuizGenerator {
 
     return {
       type: questionType,
-      title: 'Embedded SQL & JavaScript Execution Challenge',
+      title: 'Embedded Query Execution Challenge',
       prompt: 'Select the correct final table output:',
-      jsCode: jsCode,
+      codeSnippet: codeSnippet,
+      jsCode: codeSnippet, // For backward compatibility with existing views
+      hostLanguage: hostLanguage,
       rawQuery: rawSql,
       dialectSql: dialectSql,
       dialect: currentDialect,
+      assignedGroup: group ? group.name : 'Unknown',
+      assignedGroupId: group ? group.id : 'unknown',
       options: shuffled.options,
       correctIndex: shuffled.correctIndex,
       correctKey: shuffled.correctIndex + 1
     };
+  }
+
+  /**
+   * Routes code generation to Python or JavaScript based on hostLanguage.
+   */
+  generateCodeSnippet(sql, schema, dialectSql, hostLanguage = 'javascript') {
+    if (hostLanguage === 'python') {
+      return this.generatePythonCodeFromSql(sql, schema, dialectSql);
+    }
+    return this.generateJsCodeFromSql(sql, schema, dialectSql);
+  }
+
+  /**
+   * Translates an SQL query into beginner-friendly Python string-manipulation code.
+   * Includes benign Python loops, counters, and flags that do not affect the final generated SQL query.
+   */
+  generatePythonCodeFromSql(sql, schema, dialectSql) {
+    const queryStr = (dialectSql || sql).trim();
+
+    // Seed hash to pick 1 of 4 beginner-friendly code structure variations
+    const strHash = queryStr.split('').reduce((acc, char) => acc + char.charCodeAt(0), 0);
+    const patternIdx = (strHash + (dialectSql ? dialectSql.length : 7)) % 4;
+
+    const outputVarNames = ['result_table', 'final_data', 'query_output', 'summary_rows'];
+    const outputVar = outputVarNames[patternIdx % outputVarNames.length];
+
+    let blocks = [];
+
+    switch (patternIdx) {
+      case 0:
+        // Pattern 0: Status Loop & Multi-line String
+        blocks.push(`status_list = ["init", "validated", "ready"]\nstep_count = 0\nfor status in status_list:\n    step_count += 1`);
+        blocks.push(`query = """\n${queryStr}\n"""`);
+        blocks.push(`execution_log = []\nexecution_log.append(f"Built query in {step_count} steps")`);
+        blocks.push(`${outputVar} = db.execute(query)`);
+        break;
+
+      case 1:
+        // Pattern 1: Retry Counter & Direct String Assignment
+        blocks.push(`retry_counter = 0\nwhile retry_counter < 2:\n    retry_counter += 1`);
+        blocks.push(`target_query = """\n${queryStr}\n"""`);
+        blocks.push(`audit_trail = []\naudit_trail.append(f"Attempt {retry_counter} successful")`);
+        blocks.push(`${outputVar} = db.execute(target_query)`);
+        break;
+
+      case 2:
+        // Pattern 2: Config Flag & Statement Variable
+        blocks.push(`is_approved = True\ncheck_count = 0\nfor i in range(3):\n    check_count += 1`);
+        blocks.push(`sql_statement = """\n${queryStr}\n"""`);
+        blocks.push(`${outputVar} = db.execute(sql_statement)`);
+        break;
+
+      case 3:
+      default:
+        // Pattern 3: Loop Accumulator & Full Query Template
+        blocks.push(`batch_number = 1\nprocess_logs = ["start", "process"]\nfor log in process_logs:\n    batch_number += 1`);
+        blocks.push(`full_query = """\n${queryStr}\n"""`);
+        blocks.push(`status_msg = "OK" if batch_number > 0 else "PENDING"`);
+        blocks.push(`${outputVar} = db.execute(full_query)`);
+        break;
+    }
+
+    return blocks.join('\n\n');
   }
 
   /**

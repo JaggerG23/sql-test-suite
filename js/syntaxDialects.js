@@ -34,7 +34,8 @@ class SyntaxDialectManager {
 
     // Active base dialects: Google SQL (Pipe) & Quorum Syntax
     this.activeDialectKeys = ['pipe', 'quorum'];
-    this.currentSelectedDialectIndex = null; // null = automatic question assignment (30 Google SQL, 30 Quorum)
+    this.currentSelectedDialectIndex = null; // null = automatic question assignment
+    this.fixedDialectKey = null;
     this.balancedSequence = null;
     this.initBalancedSequence(42);
   }
@@ -64,7 +65,28 @@ class SyntaxDialectManager {
     return this.activeDialectKeys.map(key => this.availableDialects[key] || this.availableDialects.pipe);
   }
 
-  getDialectForQuestion(qNumber = 1, seed = 42) {
+  setFixedDialectKey(key) {
+    if (key && this.availableDialects[key]) {
+      this.fixedDialectKey = key;
+    } else {
+      this.fixedDialectKey = null;
+    }
+  }
+
+  getDialectForQuestion(qNumber = 1, seed = 42, targetGroup = null) {
+    if (targetGroup && targetGroup.sqlDialect) {
+      const key = targetGroup.sqlDialect;
+      return this.availableDialects[key] || this.availableDialects.pipe;
+    }
+    if (this.fixedDialectKey) {
+      return this.availableDialects[this.fixedDialectKey] || this.availableDialects.pipe;
+    }
+    if (typeof window !== 'undefined' && window.app && window.app.analytics && typeof window.app.analytics.getAssignedGroup === 'function') {
+      const g = window.app.analytics.getAssignedGroup();
+      if (g && g.sqlDialect) {
+        return this.availableDialects[g.sqlDialect] || this.availableDialects.pipe;
+      }
+    }
     if (!this.balancedSequence || this.balancedSequence.length !== 60) {
       this.initBalancedSequence(seed);
     }
@@ -73,13 +95,13 @@ class SyntaxDialectManager {
     return this.availableDialects[key] || this.availableDialects.pipe;
   }
 
-  getCurrentDialect(qNumber = null, seed = 42) {
+  getCurrentDialect(qNumber = null, seed = 42, targetGroup = null) {
     if (this.currentSelectedDialectIndex !== null && this.currentSelectedDialectIndex !== undefined) {
       const key = this.activeDialectKeys[this.currentSelectedDialectIndex] || 'pipe';
       return this.availableDialects[key] || this.availableDialects.pipe;
     }
     const targetQ = qNumber || (window.app ? window.app.currentQuestionNumber : 1);
-    return this.getDialectForQuestion(targetQ, seed);
+    return this.getDialectForQuestion(targetQ, seed, targetGroup);
   }
 
   setActiveDialects(d1Key, d2Key) {

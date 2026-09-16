@@ -7,6 +7,7 @@ class QueryExperimentApp {
   constructor() {
     // Fixed deterministic seed (randomization disabled for un-randomized questions)
     this.seed = 42;
+    this._adminPreviewGroupId = 'google_sql_python';
     this.schemaGenerator = new SchemaGenerator(this.seed);
     this.queryGenerator = new QueryGenerator(this.seed);
     this.syntaxDialects = new SyntaxDialectManager();
@@ -34,14 +35,19 @@ class QueryExperimentApp {
 
   isParticipantView() {
     if (typeof document !== 'undefined') {
-      if (document.getElementById('tab-generator')) return false;
-      if (document.title && document.title.includes('Participant')) return true;
-      if (document.getElementById('participant-id-input')) return true;
-      if (document.getElementById('human-challenge-container')) return true;
+      if (document.getElementById('tab-admin-preview') || document.getElementById('admin-sidebar-panel') || document.getElementById('btn-admin-logout')) {
+        return false;
+      }
+      if (document.title && document.title.toLowerCase().includes('admin')) {
+        return false;
+      }
+      if (document.title && document.title.toLowerCase().includes('participant')) {
+        return true;
+      }
     }
     if (typeof window !== 'undefined' && window.location && window.location.pathname) {
       const p = window.location.pathname.toLowerCase();
-      if (p.includes('participant') || p === '/' || p.endsWith('/')) return true;
+      if (p.includes('participant')) return true;
     }
     return false;
   }
@@ -89,10 +95,19 @@ class QueryExperimentApp {
     if (!this.isParticipantView()) {
       this.bindAdminGroupControls();
       this.populateAdminQuestionGrid();
+      this.applyAdminGroup(this._adminPreviewGroupId || 'google_sql_python');
     }
   }
 
   bindEvents() {
+    // Admin Group Select dropdown
+    const groupSelect = document.getElementById('admin-group-select');
+    if (groupSelect) {
+      groupSelect.addEventListener('change', (e) => {
+        this.applyAdminGroup(e.target.value);
+      });
+    }
+
     // Question Jump Select and Step Buttons
     const jumpSelect = document.getElementById('question-jump-select');
     if (jumpSelect) {
@@ -358,6 +373,10 @@ class QueryExperimentApp {
 
     // Track currently selected group for re-application on question change
     this._adminPreviewGroupId = groupId;
+
+    // Sync header dropdown if present
+    const groupSelect = document.getElementById('admin-group-select');
+    if (groupSelect) groupSelect.value = groupId;
 
     // Sync tab group buttons
     document.querySelectorAll('.admin-group-btn').forEach(btn => {

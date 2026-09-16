@@ -15,6 +15,7 @@ class ParticipantAnalytics {
 
     this.participantId = this.initParticipantId();
     this.sessionId = this.initSessionId();
+    this.assignedGroup = this.initAssignedGroup(this.participantId);
     this.callbacks = [];
 
     this.migrateLegacyData();
@@ -77,7 +78,105 @@ class ParticipantAnalytics {
     if (!newId || !newId.trim()) return;
     this.participantId = newId.trim();
     localStorage.setItem(this.participantIdKey, this.participantId);
-    this.notify({ type: 'USER_ID_CHANGE', participantId: this.participantId });
+    this.assignedGroup = this.initAssignedGroup(this.participantId);
+    this.notify({ type: 'USER_ID_CHANGE', participantId: this.participantId, assignedGroup: this.assignedGroup });
+  }
+
+  // --- 4 Experimental Study Groups Configuration & Random Assignment ---
+
+  static get STUDY_GROUPS() {
+    return [
+      { id: 'google_sql_python', name: 'Google SQL with Python', sqlDialect: 'pipe', hostLanguage: 'python' },
+      { id: 'google_sql_javascript', name: 'Google SQL with Javascript', sqlDialect: 'pipe', hostLanguage: 'javascript' },
+      { id: 'quorum_python', name: 'Quorum with Python', sqlDialect: 'quorum', hostLanguage: 'python' },
+      { id: 'quorum_javascript', name: 'Quorum with Javascript', sqlDialect: 'quorum', hostLanguage: 'javascript' }
+    ];
+  }
+
+  getAllGroups() {
+    return ParticipantAnalytics.STUDY_GROUPS;
+  }
+
+  getGroupById(id) {
+    if (!id) return null;
+    return ParticipantAnalytics.STUDY_GROUPS.find(g => g.id === id || g.name.toLowerCase() === String(id).toLowerCase()) || null;
+  }
+
+  initAssignedGroup(pid = this.participantId) {
+    const targetPid = pid || this.participantId || 'user';
+    const groupStorageKey = `sql_study_assigned_group_${targetPid}`;
+
+    // Optional query parameter override for testing/admin validation: ?group=google_sql_python
+    if (typeof window !== 'undefined' && window.location && window.location.search) {
+      try {
+        const params = new URLSearchParams(window.location.search);
+        const forced = params.get('group') || params.get('study_group');
+        if (forced) {
+          const match = this.getGroupById(forced);
+          if (match) {
+            try { localStorage.setItem(groupStorageKey, JSON.stringify(match)); } catch (e) {}
+            return match;
+          }
+        }
+      } catch (e) {}
+    }
+
+    // Check if participant was already assigned a group previously
+    try {
+      const saved = localStorage.getItem(groupStorageKey);
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (parsed && parsed.id && ParticipantAnalytics.STUDY_GROUPS.some(g => g.id === parsed.id)) {
+          return parsed;
+        }
+      }
+    } catch (e) {}
+
+    // Uniformly random selection among the 4 groups (crypto-secure when available)
+    const groups = ParticipantAnalytics.STUDY_GROUPS;
+    let randIdx = 0;
+    if (typeof window !== 'undefined' && window.crypto && window.crypto.getRandomValues) {
+      const array = new Uint32Array(1);
+      window.crypto.getRandomValues(array);
+      randIdx = array[0] % groups.length;
+    } else {
+      randIdx = Math.floor(Math.random() * groups.length);
+    }
+
+    const assigned = groups[randIdx];
+    try {
+      localStorage.setItem(groupStorageKey, JSON.stringify(assigned));
+    } catch (e) {}
+    return assigned;
+  }
+
+  getAssignedGroup(pid = this.participantId) {
+    const targetPid = pid || this.participantId || 'user';
+    const groupStorageKey = `sql_study_assigned_group_${targetPid}`;
+    try {
+      const saved = localStorage.getItem(groupStorageKey);
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (parsed && parsed.id) return parsed;
+      }
+    } catch (e) {}
+    return this.initAssignedGroup(targetPid);
+  }
+
+  setAssignedGroup(groupOrId, pid = this.participantId) {
+    const targetPid = pid || this.participantId || 'user';
+    const groupStorageKey = `sql_study_assigned_group_${targetPid}`;
+    let match = typeof groupOrId === 'object' ? groupOrId : this.getGroupById(groupOrId);
+    if (!match) match = ParticipantAnalytics.STUDY_GROUPS[0];
+
+    try {
+      localStorage.setItem(groupStorageKey, JSON.stringify(match));
+    } catch (e) {}
+    if (targetPid === this.participantId) {
+      this.assignedGroup = match;
+    }
+    this.notify({ type: 'GROUP_CHANGE', participantId: targetPid, assignedGroup: match });
+    return match;
   }
 
   initSessionId() {
@@ -293,19 +392,46 @@ class ParticipantAnalytics {
     }
   }
 
+  getPSTDateTime(date = new Date()) {
+    const d = (typeof date === 'string' || typeof date === 'number') ? new Date(date) : date;
+    const datePST = d.toLocaleDateString('en-US', { timeZone: 'America/Los_Angeles' });
+    const timePST = d.toLocaleTimeString('en-US', { timeZone: 'America/Los_Angeles', hour12: true });
+    return {
+      datePST,
+      timePST,
+      dateTimePST: `${datePST} ${timePST} PST`
+    };
+  }
+
   logResponse(entry) {
+    const pst = this.getPSTDateTime();
+    const assignedGroup = this.getAssignedGroup(this.participantId);
+    const groupName = entry.assignedGroupName || entry.assignedGroup || (assignedGroup ? assignedGroup.name : 'Unknown');
+    const groupId = entry.assignedGroupId || (assignedGroup ? assignedGroup.id : 'unknown');
+    const hostLang = entry.hostLanguage || (assignedGroup ? assignedGroup.hostLanguage : 'javascript');
+    const activeDialectKey = entry.activeDialect || (assignedGroup ? assignedGroup.sqlDialect : 'pipe');
+    const activeDialectLabel = entry.activeDialectName || (activeDialectKey === 'quorum' ? 'Quorum Syntax' : 'Google SQL (Pipe Syntax)');
+
     const record = {
       id: 'resp_' + Date.now() + '_' + Math.random().toString(36).substring(2, 7),
       participantId: this.participantId,
       sessionId: this.sessionId,
       timestamp: new Date().toISOString(),
+      timestampPST: pst.dateTimePST,
+      datePST: pst.datePST,
+      timePST: pst.timePST,
+      assignedGroup: groupName,
+      assignedGroupId: groupId,
+      assignedGroupName: groupName,
+      hostLanguage: hostLang,
       questionNumber: entry.questionNumber || (this.getParticipantResponses(this.participantId).length + 1),
       questionCategory: entry.questionCategory || 'General',
-      activeDialect: entry.activeDialect || 'ansi',
-      activeDialectName: entry.activeDialectName || 'ANSI SQL',
+      activeDialect: activeDialectKey,
+      activeDialectName: activeDialectLabel,
       rawQuery: entry.rawQuery || '',
       dialectSql: entry.dialectSql || entry.rawQuery || '',
-      jsCode: entry.jsCode || entry.incompleteQuery || '',
+      codeSnippet: entry.codeSnippet || entry.jsCode || entry.incompleteQuery || '',
+      jsCode: entry.codeSnippet || entry.jsCode || entry.incompleteQuery || '',
       selectedKey: entry.selectedKey || null,
       selectedOptionText: entry.selectedOptionText || '',
       correctOptionText: entry.correctOptionText || '',
@@ -333,10 +459,20 @@ class ParticipantAnalytics {
 
   saveDemographics(demographicsData, pid = this.participantId) {
     if (!pid) return null;
+    const pst = this.getPSTDateTime();
+    const assignedGroup = this.getAssignedGroup(pid);
     const record = {
       participantId: pid,
+      assignedGroup: assignedGroup ? assignedGroup.name : '',
+      assignedGroupId: assignedGroup ? assignedGroup.id : '',
+      assignedGroupName: assignedGroup ? assignedGroup.name : '',
+      hostLanguage: assignedGroup ? assignedGroup.hostLanguage : '',
+      sqlDialect: assignedGroup ? assignedGroup.sqlDialect : '',
       ...demographicsData,
-      timestamp: new Date().toISOString()
+      timestamp: new Date().toISOString(),
+      timestampPST: pst.dateTimePST,
+      datePST: pst.datePST,
+      timePST: pst.timePST
     };
 
     this.demographics[pid] = record;
@@ -360,10 +496,18 @@ class ParticipantAnalytics {
 
   saveFinalThoughts(thoughtsText, pid = this.participantId) {
     if (!pid) return null;
+    const pst = this.getPSTDateTime();
+    const assignedGroup = this.getAssignedGroup(pid);
     const record = {
       participantId: pid,
+      assignedGroup: assignedGroup ? assignedGroup.name : '',
+      assignedGroupId: assignedGroup ? assignedGroup.id : '',
+      assignedGroupName: assignedGroup ? assignedGroup.name : '',
       thoughts: thoughtsText || '',
-      timestamp: new Date().toISOString()
+      timestamp: new Date().toISOString(),
+      timestampPST: pst.dateTimePST,
+      datePST: pst.datePST,
+      timePST: pst.timePST
     };
 
     this.finalThoughts[pid] = record;
@@ -419,6 +563,12 @@ class ParticipantAnalytics {
 
     const dialectStats = {};
     const categoryStats = {};
+    const groupStats = {
+      'Google SQL with Python': { total: 0, correct: 0, totalTime: 0 },
+      'Google SQL with Javascript': { total: 0, correct: 0, totalTime: 0 },
+      'Quorum with Python': { total: 0, correct: 0, totalTime: 0 },
+      'Quorum with Javascript': { total: 0, correct: 0, totalTime: 0 }
+    };
 
     this.responses.forEach(r => {
       const dKey = r.activeDialectName || r.activeDialect || 'Unknown';
@@ -432,6 +582,12 @@ class ParticipantAnalytics {
       categoryStats[cKey].total++;
       if (r.isCorrect) categoryStats[cKey].correct++;
       categoryStats[cKey].totalTime += (r.responseTimeMs || 0);
+
+      const gKey = r.assignedGroupName || r.assignedGroup || (this.getAssignedGroup(r.participantId).name);
+      if (!groupStats[gKey]) groupStats[gKey] = { total: 0, correct: 0, totalTime: 0 };
+      groupStats[gKey].total++;
+      if (r.isCorrect) groupStats[gKey].correct++;
+      groupStats[gKey].totalTime += (r.responseTimeMs || 0);
     });
 
     Object.keys(dialectStats).forEach(k => {
@@ -446,13 +602,20 @@ class ParticipantAnalytics {
       s.avgTimeMs = Math.round(s.totalTime / s.total);
     });
 
+    Object.keys(groupStats).forEach(k => {
+      const s = groupStats[k];
+      s.accuracy = s.total > 0 ? Math.round((s.correct / s.total) * 100) : 0;
+      s.avgTimeMs = s.total > 0 ? Math.round(s.totalTime / s.total) : 0;
+    });
+
     return {
       totalResponses: total,
       uniqueParticipants,
       overallAccuracy,
       avgResponseTimeMs,
       dialectStats,
-      categoryStats
+      categoryStats,
+      groupStats
     };
   }
 
@@ -464,8 +627,14 @@ class ParticipantAnalytics {
     Object.keys(this.finalThoughts || {}).forEach(pid => { if (pid) allUserIds.add(pid); });
 
     allUserIds.forEach(uid => {
+      const assigned = this.getAssignedGroup(uid);
       groups[uid] = {
         participantId: uid,
+        assignedGroup: assigned.name,
+        assignedGroupId: assigned.id,
+        assignedGroupName: assigned.name,
+        hostLanguage: assigned.hostLanguage,
+        sqlDialect: assigned.sqlDialect,
         responses: [],
         totalAnswers: 0,
         correctCount: 0,
@@ -478,8 +647,14 @@ class ParticipantAnalytics {
     this.responses.forEach(r => {
       const uid = r.participantId || 'Anonymous';
       if (!groups[uid]) {
+        const assigned = this.getAssignedGroup(uid);
         groups[uid] = {
           participantId: uid,
+          assignedGroup: assigned.name,
+          assignedGroupId: assigned.id,
+          assignedGroupName: assigned.name,
+          hostLanguage: assigned.hostLanguage,
+          sqlDialect: assigned.sqlDialect,
           responses: [],
           totalAnswers: 0,
           correctCount: 0,
@@ -506,6 +681,10 @@ class ParticipantAnalytics {
       g.finalThoughts = this.getFinalThoughts(uid);
       if (!g.lastActive && g.demographics && g.demographics.timestamp) {
         g.lastActive = g.demographics.timestamp;
+      }
+      if (g.demographics && g.demographics.assignedGroupName) {
+        g.assignedGroupName = g.demographics.assignedGroupName;
+        g.assignedGroup = g.demographics.assignedGroupName;
       }
     });
 
@@ -599,6 +778,22 @@ class ParticipantAnalytics {
       };
 
       const headers = parseCSVLine(lines[0]);
+      const headerMap = {};
+      headers.forEach((h, idx) => {
+        const clean = h.trim().toLowerCase().replace(/[^a-z0-9]/g, '');
+        headerMap[clean] = idx;
+      });
+
+      const getVal = (row, names, fallbackIdx) => {
+        for (const name of names) {
+          const clean = name.toLowerCase().replace(/[^a-z0-9]/g, '');
+          if (headerMap[clean] !== undefined && row[headerMap[clean]] !== undefined) {
+            return row[headerMap[clean]];
+          }
+        }
+        return (fallbackIdx !== undefined && row[fallbackIdx] !== undefined) ? row[fallbackIdx] : '';
+      };
+
       const responses = [];
       const demographics = {};
       const finalThoughts = {};
@@ -608,49 +803,65 @@ class ParticipantAnalytics {
         const row = parseCSVLine(lines[i]);
         if (row.length < 5) continue;
 
-        const pid = row[1] || 'user_imported';
+        const pid = getVal(row, ['Participant ID', 'participantId'], 1) || 'user_imported';
+        const assignedGroupVal = getVal(row, ['Assigned Group', 'assignedGroup', 'assignedGroupName'], undefined);
+        const hostLangVal = getVal(row, ['Host Language', 'hostLanguage'], undefined);
+        const codeVal = getVal(row, ['Code Snippet', 'codeSnippet', 'JS Code Snippet', 'jsCode'], undefined);
+
         const resp = {
-          id: row[0] || ('resp_' + Date.now() + '_' + Math.random().toString(36).substring(2, 7)),
+          id: getVal(row, ['Response ID', 'id'], 0) || ('resp_' + Date.now() + '_' + Math.random().toString(36).substring(2, 7)),
           participantId: pid,
-          sessionId: row[2] || '',
-          timestamp: row[3] || new Date().toISOString(),
-          questionNumber: parseInt(row[4], 10) || 1,
-          questionCategory: row[5] || 'General',
-          activeDialect: row[6] || 'ansi',
-          activeDialectName: row[7] || 'ANSI SQL',
-          selectedKey: row[8] ? parseInt(row[8], 10) : null,
-          selectedOptionText: row[9] || '',
-          correctOptionText: row[10] || '',
-          isCorrect: String(row[11]).toUpperCase() === 'TRUE',
-          responseTimeMs: parseInt(row[12], 10) || 0,
-          seed: row[13] || '',
-          tabFocusLost: String(row[14]).toUpperCase() === 'TRUE',
-          tabSwitchCount: parseInt(row[15], 10) || 0,
-          focusLostDurationMs: parseInt(row[16], 10) || 0,
-          rawQuery: row[24] || '',
-          dialectSql: row[25] || '',
-          jsCode: row[26] || ''
+          sessionId: getVal(row, ['Session ID', 'sessionId'], 2) || '',
+          timestamp: getVal(row, ['Timestamp (ISO)', 'timestamp'], 3) || new Date().toISOString(),
+          questionNumber: parseInt(getVal(row, ['Question Number', 'questionNumber'], 4), 10) || 1,
+          questionCategory: getVal(row, ['Question Category', 'questionCategory'], 5) || 'General',
+          assignedGroup: assignedGroupVal || '',
+          assignedGroupName: assignedGroupVal || '',
+          hostLanguage: hostLangVal || '',
+          activeDialect: getVal(row, ['Syntax Dialect ID', 'activeDialect'], 6) || 'ansi',
+          activeDialectName: getVal(row, ['Syntax Dialect Name', 'activeDialectName'], 7) || 'ANSI SQL',
+          selectedKey: getVal(row, ['Selected Key (1-4)', 'selectedKey'], 8) ? parseInt(getVal(row, ['Selected Key (1-4)', 'selectedKey'], 8), 10) : null,
+          selectedOptionText: getVal(row, ['Selected Option', 'selectedOptionText'], 9) || '',
+          correctOptionText: getVal(row, ['Correct Option', 'correctOptionText'], 10) || '',
+          isCorrect: String(getVal(row, ['Is Correct', 'isCorrect'], 11)).toUpperCase() === 'TRUE',
+          responseTimeMs: parseInt(getVal(row, ['Response Time (ms)', 'responseTimeMs'], 12), 10) || 0,
+          seed: getVal(row, ['Random Seed', 'seed'], 13) || '',
+          tabFocusLost: String(getVal(row, ['Tab Focus Lost', 'tabFocusLost'], 14)).toUpperCase() === 'TRUE',
+          tabSwitchCount: parseInt(getVal(row, ['Tab Switch Count', 'tabSwitchCount'], 15), 10) || 0,
+          focusLostDurationMs: parseInt(getVal(row, ['Focus Lost Duration (ms)', 'focusLostDurationMs'], 16), 10) || 0,
+          rawQuery: getVal(row, ['Raw SQL Query', 'rawQuery'], row.length > 28 ? 26 : 24) || '',
+          dialectSql: getVal(row, ['Dialect SQL Query', 'dialectSql'], row.length > 28 ? 27 : 25) || '',
+          codeSnippet: codeVal || '',
+          jsCode: codeVal || ''
         };
         responses.push(resp);
 
-        if (!demographics[pid] && (row[17] || row[18] || row[19])) {
+        const age = getVal(row, ['Age', 'age'], 17);
+        const gender = getVal(row, ['Gender', 'gender'], 18);
+        const academic = getVal(row, ['Academic Standing', 'academicStanding'], 19);
+
+        if (!demographics[pid] && (age || gender || academic)) {
           demographics[pid] = {
             participantId: pid,
-            age: row[17] || '',
-            gender: row[18] || '',
-            academicStanding: row[19] || '',
-            codingExp: row[20] || '',
-            dbExp: row[21] || '',
-            queryExp: row[22] || '',
-            timestamp: row[3] || new Date().toISOString()
+            assignedGroup: assignedGroupVal || '',
+            assignedGroupName: assignedGroupVal || '',
+            hostLanguage: hostLangVal || '',
+            age: age || '',
+            gender: gender || '',
+            academicStanding: academic || '',
+            codingExp: getVal(row, ['Coding Experience', 'codingExp'], 20) || '',
+            dbExp: getVal(row, ['Database Experience', 'dbExp'], 21) || '',
+            queryExp: getVal(row, ['Query Writing Experience', 'queryExp'], 22) || '',
+            timestamp: resp.timestamp || new Date().toISOString()
           };
         }
 
-        if (!finalThoughts[pid] && row[23]) {
+        const thoughts = getVal(row, ['Final Thoughts', 'finalThoughts'], 23);
+        if (!finalThoughts[pid] && thoughts) {
           finalThoughts[pid] = {
             participantId: pid,
-            thoughts: row[23],
-            timestamp: row[3] || new Date().toISOString()
+            thoughts: thoughts,
+            timestamp: resp.timestamp || new Date().toISOString()
           };
         }
       }
@@ -713,6 +924,8 @@ class ParticipantAnalytics {
       'Timestamp (ISO)',
       'Question Number',
       'Question Category',
+      'Assigned Group',
+      'Host Language',
       'Syntax Dialect ID',
       'Syntax Dialect Name',
       'Selected Key (1-4)',
@@ -733,13 +946,14 @@ class ParticipantAnalytics {
       'Final Thoughts',
       'Raw SQL Query',
       'Dialect SQL Query',
-      'JS Code Snippet'
+      'Code Snippet'
     ];
   }
 
   formatCSVRow(r) {
     const demo = this.getDemographics(r.participantId) || {};
     const thoughtsObj = this.getFinalThoughts(r.participantId) || {};
+    const assigned = this.getAssignedGroup(r.participantId);
     const escapeCsv = (val) => {
       if (val === null || val === undefined) return '""';
       const str = String(val).replace(/"/g, '""');
@@ -753,6 +967,8 @@ class ParticipantAnalytics {
       r.timestamp || '',
       r.questionNumber || '',
       r.questionCategory || '',
+      r.assignedGroupName || r.assignedGroup || (assigned ? assigned.name : ''),
+      r.hostLanguage || (assigned ? assigned.hostLanguage : ''),
       r.activeDialect || '',
       r.activeDialectName || '',
       r.selectedKey !== null && r.selectedKey !== undefined ? r.selectedKey : '',
@@ -773,7 +989,7 @@ class ParticipantAnalytics {
       thoughtsObj.thoughts || '',
       r.rawQuery || '',
       r.dialectSql || r.rawQuery || '',
-      r.jsCode || r.incompleteQuery || ''
+      r.codeSnippet || r.jsCode || r.incompleteQuery || ''
     ].map(escapeCsv).join(',');
   }
 

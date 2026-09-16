@@ -18,12 +18,12 @@
 
 const CSV_HEADERS = [
   'Response ID', 'Participant ID', 'Session ID', 'Timestamp (ISO)', 'Question Number',
-  'Question Category', 'Syntax Dialect ID', 'Syntax Dialect Name', 'Selected Key (1-4)',
-  'Selected Option', 'Correct Option', 'Is Correct', 'Response Time (ms)', 'Random Seed',
-  'Tab Focus Lost', 'Tab Switch Count', 'Focus Lost Duration (ms)', 'Age', 'Gender',
-  'Academic Standing', 'Coding Experience', 'Database Experience',
-  'Query Writing Experience', 'Final Thoughts', 'Raw SQL Query', 'Dialect SQL Query',
-  'JS Code Snippet'
+  'Question Category', 'Assigned Group', 'Host Language', 'Syntax Dialect ID',
+  'Syntax Dialect Name', 'Selected Key (1-4)', 'Selected Option', 'Correct Option',
+  'Is Correct', 'Response Time (ms)', 'Random Seed', 'Tab Focus Lost', 'Tab Switch Count',
+  'Focus Lost Duration (ms)', 'Age', 'Gender', 'Academic Standing', 'Coding Experience',
+  'Database Experience', 'Query Writing Experience', 'Final Thoughts', 'Raw SQL Query',
+  'Dialect SQL Query', 'Code Snippet'
 ];
 
 function setupSheet() {
@@ -80,6 +80,8 @@ function doPost(e) {
         r.timestamp || '',
         r.questionNumber || '',
         r.questionCategory || '',
+        r.assignedGroupName || r.assignedGroup || demo.assignedGroupName || demo.assignedGroup || '',
+        r.hostLanguage || demo.hostLanguage || '',
         r.activeDialect || '',
         r.activeDialectName || '',
         r.selectedKey !== undefined && r.selectedKey !== null ? r.selectedKey : '',
@@ -100,7 +102,7 @@ function doPost(e) {
         thoughts.thoughts || '',
         r.rawQuery || '',
         r.dialectSql || '',
-        r.jsCode || ''
+        r.codeSnippet || r.jsCode || ''
       ];
       sheet.appendRow(row);
     });

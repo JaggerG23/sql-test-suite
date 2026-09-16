@@ -34,6 +34,39 @@ class HumanResolver {
     this.bindFocusListeners();
   }
 
+  isParticipantView() {
+    if (this.app && typeof this.app.isParticipantView === 'function') {
+      return this.app.isParticipantView();
+    }
+    if (typeof document !== 'undefined') {
+      if (document.getElementById('tab-generator')) return false;
+      if (document.title && document.title.includes('Participant')) return true;
+      if (document.getElementById('participant-id-input')) return true;
+      if (document.getElementById('human-challenge-container')) return true;
+    }
+    if (typeof window !== 'undefined' && window.location && window.location.pathname) {
+      const p = window.location.pathname.toLowerCase();
+      if (p.includes('participant') || p === '/' || p.endsWith('/')) return true;
+    }
+    return false;
+  }
+
+  hasCompletedDemographics(pid) {
+    if (this.app && typeof this.app.hasCompletedDemographics === 'function') {
+      return this.app.hasCompletedDemographics(pid);
+    }
+    if (!this.app || !this.app.analytics) return false;
+    const targetPid = pid || this.app.analytics.participantId;
+    const demo = this.app.analytics.getDemographics(targetPid);
+    if (!demo) return false;
+    const age = parseInt(demo.age, 10);
+    if (isNaN(age) || age < 18) return false;
+    if (!demo.gender || !demo.academicStanding || !demo.codingExp || !demo.dbExp || !demo.queryExp) {
+      return false;
+    }
+    return true;
+  }
+
   get totalAnswered() {
     if (this.app && this.app.analytics) {
       return this.app.analytics.getParticipantResponses(this.app.analytics.participantId).length;
@@ -397,9 +430,10 @@ class HumanResolver {
   startNewChallenge(schema, query, groundTruthResult, targetQNum) {
     if (!this.app.syntaxDialects || !this.app.quizGenerator) return;
 
-    const isParticipantPage = window.location && window.location.pathname ? window.location.pathname.includes('participant.html') : false;
+    const isParticipantPage = this.isParticipantView();
 
     if (targetQNum === 'intake') {
+      this.intakeCompleted = false;
       this.renderIntakeScreen();
       return;
     }
@@ -409,14 +443,12 @@ class HumanResolver {
       return;
     }
 
-    if (isParticipantPage && !this.intakeCompleted) {
-      const demo = this.app.analytics ? this.app.analytics.getDemographics() : null;
-      if (!demo) {
-        this.renderIntakeScreen();
-        return;
-      } else {
-        this.intakeCompleted = true;
-      }
+    if (isParticipantPage && !this.hasCompletedDemographics()) {
+      this.intakeCompleted = false;
+      this.renderIntakeScreen();
+      return;
+    } else if (isParticipantPage) {
+      this.intakeCompleted = true;
     }
 
     const qNum = targetQNum || (this.stats ? this.stats.totalAnswered + 1 : 1);
@@ -427,11 +459,16 @@ class HumanResolver {
       this.currentGroundTruth = groundTruthResult;
     }
 
+    const assignedGroup = this.adminPreviewGroup || ((this.app.analytics && typeof this.app.analytics.getAssignedGroup === 'function')
+      ? this.app.analytics.getAssignedGroup()
+      : null);
+
     this.currentQuestion = this.app.quizGenerator.generateQuestion(
       query,
       schema,
       this.app.syntaxDialects,
-      this.currentGroundTruth
+      this.currentGroundTruth,
+      assignedGroup
     );
 
     if (!this.currentQuestion) {
@@ -459,6 +496,7 @@ class HumanResolver {
     this.selectedOptionIndex = null;
     this.currentQuestion = null;
     this.intakeCompleted = false;
+    this.adminPreviewGroup = null;
     this.updateNavCounter();
   }
 
@@ -468,11 +506,37 @@ class HumanResolver {
     this.app.syntaxDialects.setCurrentDialectIndex(dialectIdx);
     const currentDialect = this.app.syntaxDialects.getCurrentDialect();
     const dialectSql = this.app.syntaxDialects.formatQueryToDialect(this.currentRawQuery, currentDialect.id);
+    const hostLang = this.currentQuestion.hostLanguage || 'javascript';
+    const code = this.app.quizGenerator.generateCodeSnippet(this.currentRawQuery, this.currentSchema, dialectSql, hostLang);
 
-    // Update embedded SQL string in JS code without changing candidate options
     this.currentQuestion.dialect = currentDialect;
     this.currentQuestion.dialectSql = dialectSql;
-    this.currentQuestion.jsCode = this.app.quizGenerator.generateJsCodeFromSql(this.currentRawQuery, this.currentSchema, dialectSql);
+    this.currentQuestion.codeSnippet = code;
+    this.currentQuestion.jsCode = code;
+
+    this.renderQuizUI();
+  }
+
+  switchGroup(groupId) {
+    if (!this.currentQuestion || !this.app.quizGenerator || !this.app.syntaxDialects) return;
+    const group = (this.app.analytics && typeof this.app.analytics.getGroupById === 'function')
+      ? this.app.analytics.getGroupById(groupId)
+      : null;
+    if (!group) return;
+
+    this.adminPreviewGroup = group;
+    if (this.app) this.app._adminPreviewGroupId = groupId;
+    const dialect = this.app.syntaxDialects.availableDialects[group.sqlDialect] || this.app.syntaxDialects.availableDialects.pipe;
+    const dialectSql = this.app.syntaxDialects.formatQueryToDialect(this.currentRawQuery, dialect.id);
+    const code = this.app.quizGenerator.generateCodeSnippet(this.currentRawQuery, this.currentSchema, dialectSql, group.hostLanguage);
+
+    this.currentQuestion.dialect = dialect;
+    this.currentQuestion.dialectSql = dialectSql;
+    this.currentQuestion.hostLanguage = group.hostLanguage;
+    this.currentQuestion.assignedGroup = group.name;
+    this.currentQuestion.assignedGroupId = group.id;
+    this.currentQuestion.codeSnippet = code;
+    this.currentQuestion.jsCode = code;
 
     this.renderQuizUI();
   }
@@ -498,7 +562,7 @@ class HumanResolver {
     const q = this.currentQuestion;
     const activeDialects = this.app.syntaxDialects.getActiveDialects();
     const currentDialectIdx = this.app.syntaxDialects.currentSelectedDialectIndex;
-    const isParticipantPage = window.location && window.location.pathname ? window.location.pathname.includes('participant.html') : false;
+    const isParticipantPage = this.isParticipantView();
 
     // Update navbar questions counter badge in Participant ID box
     this.updateNavCounter();
@@ -525,23 +589,20 @@ class HumanResolver {
             <div class="quiz-left-column" style="display: flex; flex-direction: column; gap: 4px;">
               ${!isParticipantPage ? `
                 <div class="dialect-config-bar p-1 px-2 d-flex justify-between align-center" style="background: rgba(0, 0, 0, 0.3); border-radius: 5px; font-size: 10.5px;">
-                  <div class="dialect-tabs d-flex align-center gap-1">
-                    <span class="text-muted" style="font-size: 10px; margin-right: 2px;"><i class="fa-solid fa-sliders"></i> Dialect:</span>
-                    ${activeDialects.map((d, idx) => `
-                      <button class="btn btn-sm dialect-tab ${(currentDialectIdx === idx || (currentDialectIdx === null && q.dialect && d.id === q.dialect.id)) ? 'active' : ''}" data-idx="${idx}" style="padding: 1px 7px; font-size: 10px; border-radius: 4px;">
-                        ${d.name}
+                  <div class="group-tabs d-flex align-center gap-1 flex-wrap">
+                    <span class="text-muted" style="font-size: 10px; margin-right: 2px;"><i class="fa-solid fa-layer-group"></i> Preview Group:</span>
+                    ${(this.app.analytics && typeof this.app.analytics.getAllGroups === 'function' ? this.app.analytics.getAllGroups() : []).map(g => `
+                      <button class="btn btn-sm group-tab ${((this.adminPreviewGroup && this.adminPreviewGroup.id === g.id) || (!this.adminPreviewGroup && q.assignedGroupId === g.id)) ? 'active' : ''}" data-group-id="${g.id}" style="padding: 1px 7px; font-size: 10px; border-radius: 4px;">
+                        ${g.name}
                       </button>
                     `).join('')}
                   </div>
-                  <button id="btn-configure-syntaxes" class="btn btn-sm btn-ghost p-0 px-1" title="Configure Dialects" style="font-size: 10.5px;">
-                    <i class="fa-solid fa-gear"></i> Settings
-                  </button>
                 </div>
               ` : ''}
 
               <!-- Coding Window: Displays all code lines at once with no scrolling required -->
               <div class="query-code-preview p-2" style="border: 1px solid rgba(16, 185, 129, 0.3); border-radius: 6px; background: rgba(10, 14, 26, 0.95); flex: 1; min-height: 350px; max-height: 380px; overflow: visible;">
-                <pre style="margin: 0; font-family: var(--font-mono); font-size: 11.5px; line-height: 1.45; color: #e2e8f0; white-space: pre-wrap; overflow: visible;"><code>${this.escapeHTML(q.jsCode)}</code></pre>
+                <pre style="margin: 0; font-family: var(--font-mono); font-size: 11.5px; line-height: 1.45; color: #e2e8f0; white-space: pre-wrap; overflow: visible;"><code>${this.escapeHTML(q.codeSnippet || q.jsCode)}</code></pre>
               </div>
             </div>
 
@@ -630,6 +691,18 @@ class HumanResolver {
       }
     });
 
+    // Group preview selector buttons in Admin Mode
+    document.querySelectorAll('.group-tab').forEach(tab => {
+      tab.addEventListener('click', (e) => {
+        const gid = e.currentTarget.dataset.groupId;
+        if (this.app && typeof this.app.applyAdminGroup === 'function') {
+          this.app.applyAdminGroup(gid);
+        } else {
+          this.switchGroup(gid);
+        }
+      });
+    });
+
     // Dialect selector buttons - update SQL snippet without altering answer options!
     document.querySelectorAll('.dialect-tab').forEach(tab => {
       tab.addEventListener('click', (e) => {
@@ -710,12 +783,21 @@ class HumanResolver {
         ? this.app.currentQuestionNumber 
         : (this.totalAnswered + 1);
 
+      const assignedGroup = (this.app.analytics && typeof this.app.analytics.getAssignedGroup === 'function')
+        ? this.app.analytics.getAssignedGroup()
+        : null;
+
       this.app.analytics.logResponse({
         questionNumber: currentQNum,
         questionCategory: q.type,
-        activeDialect: q.dialect ? q.dialect.id : 'javascript',
-        activeDialectName: q.dialect ? q.dialect.name : 'JavaScript with Embedded SQL',
-        jsCode: q.jsCode || '',
+        assignedGroup: q.assignedGroup || (assignedGroup ? assignedGroup.name : 'Unknown'),
+        assignedGroupId: q.assignedGroupId || (assignedGroup ? assignedGroup.id : 'unknown'),
+        assignedGroupName: q.assignedGroup || (assignedGroup ? assignedGroup.name : 'Unknown'),
+        hostLanguage: q.hostLanguage || (assignedGroup ? assignedGroup.hostLanguage : 'javascript'),
+        activeDialect: q.dialect ? q.dialect.id : (assignedGroup ? assignedGroup.sqlDialect : 'pipe'),
+        activeDialectName: q.dialect ? q.dialect.name : (assignedGroup && assignedGroup.sqlDialect === 'quorum' ? 'Quorum Syntax' : 'Google SQL (Pipe Syntax)'),
+        codeSnippet: q.codeSnippet || q.jsCode || '',
+        jsCode: q.codeSnippet || q.jsCode || '',
         dialectSql: q.dialectSql || q.rawQuery || '',
         rawQuery: q.rawQuery || '',
         selectedKey: index + 1,

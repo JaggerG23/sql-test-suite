@@ -1,2 +1,128 @@
-Response ID,Participant ID,Session ID,Timestamp (ISO),Question Number,Question Category,Syntax Dialect ID,Syntax Dialect Name,Selected Key (1-4),Selected Option,Correct Option,Is Correct,Response Time (ms),Random Seed,Tab Focus Lost,Tab Switch Count,Focus Lost Duration (ms),Age,Gender,Academic Standing,Coding Experience,Database Experience,Query Writing Experience,Final Thoughts,Raw SQL Query,Dialect SQL Query,JS Code Snippet
-resp_test_001,user_abc,,,,,,,,,,TRUE,0,,FALSE,0,0,22,Male,,,,,Great study!,,,
+Response ID,Participant ID,Session ID,Timestamp (ISO),Question Number,Question Category,Assigned Group,Host Language,Syntax Dialect ID,Syntax Dialect Name,Selected Key (1-4),Selected Option,Correct Option,Is Correct,Response Time (ms),Random Seed,Tab Focus Lost,Tab Switch Count,Focus Lost Duration (ms),Age,Gender,Academic Standing,Coding Experience,Database Experience,Query Writing Experience,Final Thoughts,Raw SQL Query,Dialect SQL Query,Code Snippet
+resp_test_001,user_abc,,,,,,,,,,,,TRUE,0,,FALSE,0,0,22,Male,,,,,Great study!,,,
+resp_1788540381215_glac8,user_h48r0ubpdy,session_1788540374560_20ybk,2026-09-04T16:46:21.215Z,1,Group & Aggregate Transformation,,,pipe,Google SQL (Pipe Syntax),1,Option A (15 rows),Option B (15 rows),FALSE,2007,42,TRUE,1,2007,25,Male,Undergraduate (Sophomore),1 year,Beginner (< 1 year),Yes - Frequently write SQL / database queries,,"SELECT users.id, COUNT(products.id) AS agg_val
+FROM users
+JOIN products ON users.id = products.user_id
+WHERE users.id > 1
+GROUP BY users.id
+ORDER BY agg_val DESC
+LIMIT 15;","FROM users
+|> JOIN products ON users.id = products.user_id
+|> WHERE users.id > 1
+|> AGGREGATE COUNT(products.id) AS agg_val GROUP BY users.id
+|> ORDER BY agg_val DESC
+|> LIMIT 15","let retryCounter = 0;
+while (retryCounter < 2) {
+  retryCounter++;
+}
+
+let targetQuery = `
+FROM users
+|> JOIN products ON users.id = products.user_id
+|> WHERE users.id > 1
+|> AGGREGATE COUNT(products.id) AS agg_val GROUP BY users.id
+|> ORDER BY agg_val DESC
+|> LIMIT 15
+`;
+
+let auditTrail = [];
+auditTrail.push(`Attempt ${retryCounter} successful`);
+
+let finalData = db.execute(targetQuery);"
+resp_1788540383222_aop3v,user_h48r0ubpdy,session_1788540374560_20ybk,2026-09-04T16:46:23.222Z,2,Group & Aggregate Transformation,,,quorum,Quorum Syntax,2,Option B (15 rows),Option B (15 rows),TRUE,1503,42,TRUE,1,1503,25,Male,Undergraduate (Sophomore),1 year,Beginner (< 1 year),Yes - Frequently write SQL / database queries,,"SELECT users.id, COUNT(products.id) AS agg_val
+FROM users
+JOIN products ON users.id = products.user_id
+WHERE users.id >= 1
+GROUP BY users.id
+ORDER BY agg_val DESC
+LIMIT 15;","query:SetTable(""users"")
+query:AddJoin(""products"", ""users:id = products:user_id"")
+query:Filter(""users:id >= 1"")
+query:AddGroupColumn(""users:id"")
+query:AddColumn(""users:id"")
+query:AddColumn(""COUNT(products:id)"", ""agg_val"")
+query:Sort(""agg_val"", ""DESC"")
+query:SetLimit(15)","let batchNumber = 1;
+let processLogs = [""start"", ""process""];
+for (let log of processLogs) {
+  batchNumber++;
+}
+
+let fullQuery = `
+query:SetTable(""users"")
+query:AddJoin(""products"", ""users:id = products:user_id"")
+query:Filter(""users:id >= 1"")
+query:AddGroupColumn(""users:id"")
+query:AddColumn(""users:id"")
+query:AddColumn(""COUNT(products:id)"", ""agg_val"")
+query:Sort(""agg_val"", ""DESC"")
+query:SetLimit(15)
+`;
+
+let statusMsg = batchNumber > 0 ? ""OK"" : ""PENDING"";
+
+let summaryRows = db.execute(fullQuery);"
+resp_1789582061961_p9npm,user_7uc0ph2n82,session_1789582057411_d735t,2026-09-16T18:07:41.961Z,1,Group & Aggregate Transformation,Quorum with Python,python,quorum,Quorum Syntax,1,Option A (14 rows),Option C (15 rows),FALSE,1502,42,FALSE,0,0,25,Male,Undergraduate (Junior),1 year,Beginner (< 1 year),Yes - Frequently write SQL / database queries,Great SQL experiment!,"SELECT users.id, COUNT(products.id) AS agg_val
+FROM users
+JOIN products ON users.id = products.user_id
+WHERE users.id > 1
+GROUP BY users.id
+ORDER BY agg_val DESC
+LIMIT 15;","query:SetTable(""users"")
+query:AddJoin(""products"", ""users:id = products:user_id"")
+query:Filter(""users:id > 1"")
+query:AddGroupColumn(""users:id"")
+query:AddColumn(""users:id"")
+query:AddColumn(""COUNT(products:id)"", ""agg_val"")
+query:Sort(""agg_val"", ""DESC"")
+query:SetLimit(15)","retry_counter = 0
+while retry_counter < 2:
+    retry_counter += 1
+
+target_query = """"""
+query:SetTable(""users"")
+query:AddJoin(""products"", ""users:id = products:user_id"")
+query:Filter(""users:id > 1"")
+query:AddGroupColumn(""users:id"")
+query:AddColumn(""users:id"")
+query:AddColumn(""COUNT(products:id)"", ""agg_val"")
+query:Sort(""agg_val"", ""DESC"")
+query:SetLimit(15)
+""""""
+
+audit_trail = []
+audit_trail.append(f""Attempt {retry_counter} successful"")
+
+final_data = db.execute(target_query)"
+resp_1789582063477_nhpg3,user_7uc0ph2n82,session_1789582057411_d735t,2026-09-16T18:07:43.477Z,2,Group & Aggregate Transformation,Quorum with Python,python,quorum,Quorum Syntax,2,Option B (15 rows),Option B (15 rows),TRUE,1005,42,FALSE,0,0,25,Male,Undergraduate (Junior),1 year,Beginner (< 1 year),Yes - Frequently write SQL / database queries,Great SQL experiment!,"SELECT users.id, COUNT(products.id) AS agg_val
+FROM users
+JOIN products ON users.id = products.user_id
+WHERE users.id >= 1
+GROUP BY users.id
+ORDER BY agg_val DESC
+LIMIT 15;","query:SetTable(""users"")
+query:AddJoin(""products"", ""users:id = products:user_id"")
+query:Filter(""users:id >= 1"")
+query:AddGroupColumn(""users:id"")
+query:AddColumn(""users:id"")
+query:AddColumn(""COUNT(products:id)"", ""agg_val"")
+query:Sort(""agg_val"", ""DESC"")
+query:SetLimit(15)","batch_number = 1
+process_logs = [""start"", ""process""]
+for log in process_logs:
+    batch_number += 1
+
+full_query = """"""
+query:SetTable(""users"")
+query:AddJoin(""products"", ""users:id = products:user_id"")
+query:Filter(""users:id >= 1"")
+query:AddGroupColumn(""users:id"")
+query:AddColumn(""users:id"")
+query:AddColumn(""COUNT(products:id)"", ""agg_val"")
+query:Sort(""agg_val"", ""DESC"")
+query:SetLimit(15)
+""""""
+
+status_msg = ""OK"" if batch_number > 0 else ""PENDING""
+
+summary_rows = db.execute(full_query)"

@@ -11,7 +11,7 @@
   <!-- FontAwesome Icons -->
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
   <!-- CSS -->
-  <link rel="stylesheet" href="styles.css?v=12">
+  <link rel="stylesheet" href="styles.css?v=13">
   <!-- sql.js (SQLite WASM) library -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/sql.js/1.8.0/sql-wasm.js"></script>
 </head>
@@ -21,7 +21,7 @@
     <header class="app-header" style="padding: 6px 16px;">
       <div class="brand" style="gap: 8px; display: flex; align-items: center;">
         <div class="logo-icon" style="width: 30px; height: 30px; font-size: 15px;" title="Admin Dashboard"><i class="fa-solid fa-database"></i></div>
-        <span class="badge" style="font-size: 10px; padding: 2px 6px; background: rgba(255,255,255,0.1); color: #cbd5e1; border: 1px solid rgba(255,255,255,0.2); border-radius: 4px;">v1.0.12</span>
+        <span class="badge" style="font-size: 10px; padding: 2px 6px; background: rgba(255,255,255,0.1); color: #cbd5e1; border: 1px solid rgba(255,255,255,0.2); border-radius: 4px;">v1.0.13</span>
       </div>
       <div class="header-actions" style="display: flex; align-items: center; gap: 8px; flex-wrap: nowrap; white-space: nowrap;">
         <div class="seed-control d-flex align-center gap-1" style="background: rgba(56, 189, 248, 0.12); border: 1.5px solid rgba(56, 189, 248, 0.4); padding: 4px 10px; border-radius: 6px; white-space: nowrap; box-shadow: 0 0 10px rgba(56, 189, 248, 0.15);">
@@ -43,6 +43,16 @@
           <button id="btn-randomize-seed" class="btn btn-sm btn-icon" title="Generate New Seed" style="padding: 2px 4px;">
             <i class="fa-solid fa-shuffle"></i>
           </button>
+        </div>
+        <!-- Admin Group Selector Control -->
+        <div class="d-flex align-center gap-1" style="background: rgba(139, 92, 246, 0.15); border: 1px solid rgba(139, 92, 246, 0.4); padding: 3px 8px; border-radius: 6px; white-space: nowrap;">
+          <label for="admin-group-select" style="font-size: 11px; color: #c4b5fd; font-weight: 700; margin: 0; white-space: nowrap;"><i class="fa-solid fa-users"></i> Group:</label>
+          <select id="admin-group-select" style="background: rgba(0, 0, 0, 0.4); border: 1px solid rgba(139, 92, 246, 0.5); color: #ddd6fe; font-weight: 700; font-size: 11px; padding: 2px 4px; border-radius: 4px; cursor: pointer; outline: none; white-space: nowrap;">
+            <option value="google_sql_python">Google SQL + Python</option>
+            <option value="google_sql_javascript">Google SQL + JS</option>
+            <option value="quorum_python">Quorum + Python</option>
+            <option value="quorum_javascript">Quorum + JS</option>
+          </select>
         </div>
         <!-- Question 1-60 Jump Selector Control -->
         <div class="d-flex align-center gap-1" style="background: rgba(16, 185, 129, 0.15); border: 1px solid rgba(16, 185, 129, 0.4); padding: 3px 8px; border-radius: 6px; white-space: nowrap;">
