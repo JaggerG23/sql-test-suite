@@ -57,10 +57,23 @@ class QueryExperimentApp {
     const targetPid = pid || this.analytics.participantId;
     const demo = this.analytics.getDemographics(targetPid);
     if (!demo) return false;
+
+    // Anyone that visits /index.html before, during, or after the study must be required to fill out demographics again
+    const indexVisitedAt = parseInt(localStorage.getItem('sql_study_index_visited_at') || '0', 10);
+    const demoSavedAt = demo.savedAtTimestamp || (demo.timestamp ? new Date(demo.timestamp).getTime() : 0);
+    if (indexVisitedAt > 0 && demoSavedAt < indexVisitedAt) {
+      return false;
+    }
+
     const age = parseInt(demo.age, 10);
     if (isNaN(age) || age < 18) return false;
-    if (!demo.gender || !demo.academicStanding || !demo.codingExp || !demo.dbExp || !demo.queryExp) {
+    if (!demo.gender || (!demo.education && !demo.academicStanding && !demo.highestEducation) || !demo.codingExp || !demo.dbExp) {
       return false;
+    }
+    if (demo.primaryLanguage !== undefined || demo.countryOfOrigin !== undefined || demo.disability !== undefined) {
+      if (!demo.primaryLanguage || !demo.countryOfOrigin || !demo.disability) {
+        return false;
+      }
     }
     return true;
   }
@@ -85,7 +98,18 @@ class QueryExperimentApp {
     } catch (e) {
       console.warn('SQLite WASM init deferred:', e);
     }
-    if (this.isParticipantView() && !this.hasCompletedDemographics()) {
+    const isIndex = typeof window !== 'undefined' && window.location && (!window.location.pathname.toLowerCase().includes('participant'));
+    if (isIndex) {
+      const visitTime = Date.now();
+      localStorage.setItem('sql_study_index_visited_at', visitTime.toString());
+      if (this.analytics && this.analytics.channel) {
+        try {
+          this.analytics.channel.postMessage({ type: 'INDEX_HTML_VISITED', timestamp: visitTime });
+        } catch (e) {}
+      }
+    }
+
+    if (!this.hasCompletedDemographics()) {
       this.currentQuestionNumber = 'intake';
       await this.loadIncrementalQuestion('intake');
     } else {
@@ -249,6 +273,19 @@ class QueryExperimentApp {
       });
     }
 
+    // Participant View button: fresh participant session and forced demographics
+    const btnParticipantView = document.getElementById('btn-participant-view-link');
+    if (btnParticipantView) {
+      btnParticipantView.addEventListener('click', () => {
+        const now = Date.now();
+        localStorage.setItem('sql_study_index_visited_at', now.toString());
+        if (this.analytics) {
+          const newPid = 'user_' + Math.random().toString(36).substring(2, 9) + Math.random().toString(36).substring(2, 5);
+          this.analytics.setParticipantId(newPid);
+        }
+      });
+    }
+
     // Nav Tabs
     document.querySelectorAll('.nav-tab').forEach(tab => {
       tab.addEventListener('click', (e) => {
@@ -258,7 +295,12 @@ class QueryExperimentApp {
         e.currentTarget.classList.add('active');
         document.getElementById(targetTab).classList.add('active');
 
-        if (targetTab === 'tab-analytics') {
+        if (targetTab === 'tab-human') {
+          if (!this.hasCompletedDemographics()) {
+            this.currentQuestionNumber = 'intake';
+            this.loadIncrementalQuestion('intake');
+          }
+        } else if (targetTab === 'tab-analytics') {
           this.renderAnalyticsDashboard();
         }
       });
@@ -549,8 +591,8 @@ class QueryExperimentApp {
       return;
     }
 
-    // Check if intake form has been completed (Mandatory redirect before showing study)
-    if (isParticipantPage && !this.hasCompletedDemographics()) {
+    // Check if intake form has been completed (Mandatory before anyone can see or take the study)
+    if (!this.hasCompletedDemographics()) {
       this.currentQuestionNumber = 'intake';
       const select = document.getElementById('question-jump-select');
       if (select) select.value = 'intake';
@@ -559,7 +601,7 @@ class QueryExperimentApp {
         this.humanResolver.renderIntakeScreen();
       }
       return;
-    } else if (isParticipantPage && this.humanResolver) {
+    } else if (this.humanResolver) {
       this.humanResolver.intakeCompleted = true;
     }
 
@@ -1275,12 +1317,14 @@ class QueryExperimentApp {
                       <div class="d-flex flex-wrap gap-3 align-center mb-1" style="display:flex; flex-wrap:wrap; gap:12px;">
                         <span><i class="fa-solid fa-cake-candles text-accent"></i> <strong>Age:</strong> ${this.escapeHTML(group.demographics.age || 'N/A')}</span>
                         <span><i class="fa-solid fa-venus-mars text-accent"></i> <strong>Gender:</strong> ${this.escapeHTML(group.demographics.gender || 'N/A')}</span>
-                        <span><i class="fa-solid fa-graduation-cap text-accent"></i> <strong>Academic:</strong> ${this.escapeHTML(group.demographics.academicStanding || 'N/A')}</span>
+                        <span><i class="fa-solid fa-graduation-cap text-accent"></i> <strong>Education:</strong> ${this.escapeHTML(group.demographics.education || group.demographics.highestEducation || group.demographics.academicStanding || 'N/A')}</span>
+                        <span><i class="fa-solid fa-code text-success"></i> <strong>Prog Exp:</strong> ${this.escapeHTML(group.demographics.codingExp || 'N/A')}</span>
+                        <span><i class="fa-solid fa-database text-warning"></i> <strong>DB Exp:</strong> ${this.escapeHTML(group.demographics.dbExp || 'N/A')}</span>
                       </div>
                       <div class="d-flex flex-wrap gap-3 align-center" style="display:flex; flex-wrap:wrap; gap:12px;">
-                        <span><i class="fa-solid fa-code text-success"></i> <strong>Coding Exp:</strong> ${this.escapeHTML(group.demographics.codingExp || 'N/A')}</span>
-                        <span><i class="fa-solid fa-database text-warning"></i> <strong>DB Exp:</strong> ${this.escapeHTML(group.demographics.dbExp || 'N/A')}</span>
-                        <span><i class="fa-solid fa-terminal text-info"></i> <strong>Query Exp:</strong> ${this.escapeHTML(group.demographics.queryExp || 'N/A')}</span>
+                        <span><i class="fa-solid fa-language text-info"></i> <strong>Language:</strong> ${this.escapeHTML(group.demographics.primaryLanguage || 'N/A')}</span>
+                        <span><i class="fa-solid fa-earth-americas text-accent"></i> <strong>Country:</strong> ${this.escapeHTML(group.demographics.countryOfOrigin || 'N/A')}</span>
+                        <span><i class="fa-solid fa-universal-access text-secondary"></i> <strong>Disability:</strong> ${this.escapeHTML(group.demographics.disability || 'N/A')}</span>
                       </div>
                     ` : ''}
                     ${group.finalThoughts && group.finalThoughts.thoughts ? `

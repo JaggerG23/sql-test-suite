@@ -284,7 +284,7 @@ class AdminAuthManager {
               <button type="submit" id="btn-admin-login-submit" class="btn btn-primary btn-block">
                 <i class="fa-solid fa-lock-open"></i> Unlock Dashboard
               </button>
-              <a href="participant.html" class="btn btn-secondary btn-block text-center" style="margin-top: 8px; text-decoration: none; text-align: center; display: block;">
+              <a href="participant.html?new_participant=1" class="btn btn-secondary btn-block text-center" style="margin-top: 8px; text-decoration: none; text-align: center; display: block;">
                 <i class="fa-solid fa-arrow-left"></i> Go to Public Participant View
               </a>
             </div>

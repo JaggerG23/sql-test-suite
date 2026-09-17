@@ -29,6 +29,46 @@ class HumanResolver {
 
     this.intakeCompleted = false;
 
+    // Check if new participant session is explicitly requested via URL (e.g. from index.html Participant View link)
+    if (typeof window !== 'undefined' && window.location && window.location.search) {
+      try {
+        const params = new URLSearchParams(window.location.search);
+        if (params.get('new_participant') === '1' || params.get('new_session') === 'true') {
+          if (this.app && this.app.analytics) {
+            const newPid = 'user_' + Math.random().toString(36).substring(2, 9) + Math.random().toString(36).substring(2, 5);
+            this.app.analytics.setParticipantId(newPid);
+          }
+          this.intakeCompleted = false;
+        }
+      } catch (e) {}
+    }
+
+    // Real-time listener for /index.html visits: forces active participant to fill demographics again
+    const handleIndexVisitEvent = () => {
+      if (!this.hasCompletedDemographics()) {
+        this.intakeCompleted = false;
+        if (this.app) this.app.currentQuestionNumber = 'intake';
+        this.renderIntakeScreen();
+      }
+    };
+    if (typeof window !== 'undefined' && 'BroadcastChannel' in window) {
+      try {
+        const bc = new BroadcastChannel('sql_study_telemetry_channel');
+        bc.addEventListener('message', (ev) => {
+          if (ev.data && ev.data.type === 'INDEX_HTML_VISITED') {
+            handleIndexVisitEvent();
+          }
+        });
+      } catch (e) {}
+    }
+    if (typeof window !== 'undefined') {
+      window.addEventListener('storage', (ev) => {
+        if (ev.key === 'sql_study_index_visited_at') {
+          handleIndexVisitEvent();
+        }
+      });
+    }
+
     // Attach global keyboard shortcuts & focus tracking listeners
     this.bindKeyboardShortcuts();
     this.bindFocusListeners();
@@ -59,10 +99,23 @@ class HumanResolver {
     const targetPid = pid || this.app.analytics.participantId;
     const demo = this.app.analytics.getDemographics(targetPid);
     if (!demo) return false;
+
+    // Invalidation check: anyone who visits /index.html must complete demographics again
+    const indexVisitedAt = parseInt(localStorage.getItem('sql_study_index_visited_at') || '0', 10);
+    const demoSavedAt = demo.savedAtTimestamp || (demo.timestamp ? new Date(demo.timestamp).getTime() : 0);
+    if (indexVisitedAt > 0 && demoSavedAt < indexVisitedAt) {
+      return false;
+    }
+
     const age = parseInt(demo.age, 10);
     if (isNaN(age) || age < 18) return false;
-    if (!demo.gender || !demo.academicStanding || !demo.codingExp || !demo.dbExp || !demo.queryExp) {
+    if (!demo.gender || (!demo.education && !demo.academicStanding && !demo.highestEducation) || !demo.codingExp || !demo.dbExp) {
       return false;
+    }
+    if (demo.primaryLanguage !== undefined || demo.countryOfOrigin !== undefined || demo.disability !== undefined) {
+      if (!demo.primaryLanguage || !demo.countryOfOrigin || !demo.disability) {
+        return false;
+      }
     }
     return true;
   }
@@ -135,11 +188,15 @@ class HumanResolver {
     const container = document.getElementById('human-challenge-container');
     if (!container) return;
 
-    const existingDemo = this.app.analytics ? this.app.analytics.getDemographics() || {} : {};
+    const indexVisitedAt = parseInt(localStorage.getItem('sql_study_index_visited_at') || '0', 10);
+    const demoObj = this.app.analytics ? this.app.analytics.getDemographics() || {} : {};
+    const demoSavedAt = demoObj.savedAtTimestamp || (demoObj.timestamp ? new Date(demoObj.timestamp).getTime() : 0);
+    const isInvalidated = (indexVisitedAt > 0 && demoSavedAt < indexVisitedAt);
+    const existingDemo = isInvalidated ? {} : demoObj;
     const pid = this.app.analytics ? this.app.analytics.participantId : '';
 
     container.innerHTML = `
-      <div class="card quiz-card glow-card" style="max-width: 860px; margin: 20px auto; padding: 28px; background: rgba(18, 22, 34, 0.95); border: 1px solid rgba(99, 102, 241, 0.35); border-radius: 14px; box-shadow: 0 12px 40px rgba(0,0,0,0.5);">
+      <div class="card quiz-card glow-card" style="max-width: 1080px; width: 100%; margin: 20px auto; padding: 28px; background: rgba(18, 22, 34, 0.95); border: 1px solid rgba(99, 102, 241, 0.35); border-radius: 14px; box-shadow: 0 12px 40px rgba(0,0,0,0.5);">
         
         <!-- Header & Explanation Box -->
         <div class="card-header border-bottom pb-4 mb-4" style="border-bottom: 1px solid rgba(255,255,255,0.1);">
@@ -177,8 +234,8 @@ class HumanResolver {
                 <i class="fa-solid fa-shield-halved"></i> Data That Will Be Tracked & Collected During This Study:
               </p>
               <ul style="margin: 0; padding-left: 18px; font-size: 11.5px; color: var(--text-muted); display: grid; grid-template-columns: 1fr 1fr; gap: 6px 16px;">
-                <li><strong>Demographics:</strong> Age, Gender, Academic Standing</li>
-                <li><strong>Experience:</strong> Coding Experience, Database Experience</li>
+                <li><strong>Demographics:</strong> Age, Gender, Education, Primary Language, Country of Origin, Disability Status</li>
+                <li><strong>Experience:</strong> Programming Experience, Database Experience</li>
                 <li><strong>Identifiers:</strong> Immutable User ID</li>
                 <li><strong>Question Data:</strong> Question Category, Raw SQL Query</li>
                 <li><strong>Performance Metrics:</strong> Option Selected (1-4), Answer Accuracy</li>
@@ -196,91 +253,126 @@ class HumanResolver {
 
         <!-- Form Fields Grid -->
         <div id="intake-form">
-          <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 14px;">
+          <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 18px 24px;">
             
-            <!-- Age -->
+            <!-- 1. How old are you? -->
             <div class="form-group">
-              <label for="intake-age" style="font-size: 12px; font-weight: 600; margin-bottom: 5px; display: block; color: var(--text-main);">
-                <i class="fa-solid fa-cake-candles text-accent"></i> Age <span style="color: var(--color-danger)">*</span>
+              <label for="intake-age" style="font-size: 12.5px; font-weight: 600; margin-bottom: 6px; display: block; color: var(--text-main); white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">
+                <i class="fa-solid fa-cake-candles text-accent"></i> How old are you?
               </label>
-              <input type="number" id="intake-age" class="form-control" min="18" max="100" placeholder="e.g. 24" value="${this.escapeHTML(existingDemo.age || '')}" required style="width: 100%; padding: 8px 12px; background: rgba(0,0,0,0.4); border: 1px solid rgba(255,255,255,0.15); border-radius: 6px; color: #fff; font-size: 13px;">
+              <input type="number" id="intake-age" class="form-control" min="18" max="100" placeholder="e.g. 24" value="${this.escapeHTML(existingDemo.age || '')}" required style="width: 100%; padding: 9px 12px; background: rgba(0,0,0,0.4); border: 1px solid rgba(255,255,255,0.15); border-radius: 6px; color: #fff; font-size: 13px;">
             </div>
 
-            <!-- Gender -->
+            <!-- 2. What is your gender -->
             <div class="form-group">
-              <label for="intake-gender" style="font-size: 12px; font-weight: 600; margin-bottom: 5px; display: block; color: var(--text-main);">
-                <i class="fa-solid fa-venus-mars text-accent"></i> Gender <span style="color: var(--color-danger)">*</span>
+              <label for="intake-gender" style="font-size: 12.5px; font-weight: 600; margin-bottom: 6px; display: block; color: var(--text-main); white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">
+                <i class="fa-solid fa-venus-mars text-accent"></i> What is your gender
               </label>
-              <select id="intake-gender" class="form-select" required style="width: 100%; padding: 8px 12px; background: rgba(0,0,0,0.4); border: 1px solid rgba(255,255,255,0.15); border-radius: 6px; color: #fff; font-size: 13px;">
+              <select id="intake-gender" class="form-select" required style="width: 100%; padding: 9px 12px; background: rgba(0,0,0,0.4); border: 1px solid rgba(255,255,255,0.15); border-radius: 6px; color: #fff; font-size: 13px;">
                 <option value="" disabled ${!existingDemo.gender ? 'selected' : ''}>Select Gender...</option>
                 <option value="Male" ${existingDemo.gender === 'Male' ? 'selected' : ''}>Male</option>
                 <option value="Female" ${existingDemo.gender === 'Female' ? 'selected' : ''}>Female</option>
-                <option value="Non-binary" ${existingDemo.gender === 'Non-binary' ? 'selected' : ''}>Non-binary / Third gender</option>
+                <option value="Non-binary" ${existingDemo.gender === 'Non-binary' || existingDemo.gender === 'Non-binary / Third gender' ? 'selected' : ''}>Non-binary</option>
                 <option value="Prefer not to say" ${existingDemo.gender === 'Prefer not to say' ? 'selected' : ''}>Prefer not to say</option>
                 <option value="Other" ${existingDemo.gender === 'Other' ? 'selected' : ''}>Other</option>
               </select>
             </div>
 
-            <!-- Academic Standing -->
+            <!-- 3. How many total years of programming experience do you have? -->
             <div class="form-group">
-              <label for="intake-academic-standing" style="font-size: 12px; font-weight: 600; margin-bottom: 5px; display: block; color: var(--text-main);">
-                <i class="fa-solid fa-graduation-cap text-accent"></i> Academic Standing <span style="color: var(--color-danger)">*</span>
+              <label for="intake-coding-exp" style="font-size: 12.5px; font-weight: 600; margin-bottom: 6px; display: block; color: var(--text-main); white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">
+                <i class="fa-solid fa-code text-accent"></i> How many total years of programming experience do you have?
               </label>
-              <select id="intake-academic-standing" class="form-select" required style="width: 100%; padding: 8px 12px; background: rgba(0,0,0,0.4); border: 1px solid rgba(255,255,255,0.15); border-radius: 6px; color: #fff; font-size: 13px;">
-                <option value="" disabled ${!existingDemo.academicStanding ? 'selected' : ''}>Select Academic Standing...</option>
-                <option value="Undergraduate (Freshman)" ${existingDemo.academicStanding === 'Undergraduate (Freshman)' ? 'selected' : ''}>Undergraduate (Freshman)</option>
-                <option value="Undergraduate (Sophomore)" ${existingDemo.academicStanding === 'Undergraduate (Sophomore)' ? 'selected' : ''}>Undergraduate (Sophomore)</option>
-                <option value="Undergraduate (Junior)" ${existingDemo.academicStanding === 'Undergraduate (Junior)' ? 'selected' : ''}>Undergraduate (Junior)</option>
-                <option value="Undergraduate (Senior)" ${existingDemo.academicStanding === 'Undergraduate (Senior)' ? 'selected' : ''}>Undergraduate (Senior)</option>
-                <option value="Master's Student" ${existingDemo.academicStanding === "Master's Student" ? 'selected' : ''}>Master's Student</option>
-                <option value="Ph.D. Student / Doctoral Candidate" ${existingDemo.academicStanding === 'Ph.D. Student / Doctoral Candidate' ? 'selected' : ''}>Ph.D. Student / Doctoral Candidate</option>
-                <option value="Postdoctoral Researcher / Faculty" ${existingDemo.academicStanding === 'Postdoctoral Researcher / Faculty' ? 'selected' : ''}>Postdoctoral Researcher / Faculty</option>
-                <option value="Industry Professional / Engineer" ${existingDemo.academicStanding === 'Industry Professional / Engineer' ? 'selected' : ''}>Industry Professional / Engineer</option>
-                <option value="Other" ${existingDemo.academicStanding === 'Other' ? 'selected' : ''}>Other</option>
-              </select>
+              <input type="number" step="any" min="0" max="100" id="intake-coding-exp" class="form-control" placeholder="e.g. 3" value="${this.escapeHTML(existingDemo.codingExp || '')}" required style="width: 100%; padding: 9px 12px; background: rgba(0,0,0,0.4); border: 1px solid rgba(255,255,255,0.15); border-radius: 6px; color: #fff; font-size: 13px;">
             </div>
 
-            <!-- Coding Experience -->
+            <!-- 4. What is your highest level of education? -->
             <div class="form-group">
-              <label for="intake-coding-exp" style="font-size: 12px; font-weight: 600; margin-bottom: 5px; display: block; color: var(--text-main);">
-                <i class="fa-solid fa-code text-accent"></i> Coding Experience <span style="color: var(--color-danger)">*</span>
+              <label for="intake-education" style="font-size: 12.5px; font-weight: 600; margin-bottom: 6px; display: block; color: var(--text-main); white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">
+                <i class="fa-solid fa-graduation-cap text-accent"></i> What is your highest level of education?
               </label>
-              <select id="intake-coding-exp" class="form-select" required style="width: 100%; padding: 8px 12px; background: rgba(0,0,0,0.4); border: 1px solid rgba(255,255,255,0.15); border-radius: 6px; color: #fff; font-size: 13px;">
-                <option value="" disabled ${!existingDemo.codingExp ? 'selected' : ''}>Select Coding Experience...</option>
-                <option value="None (< 1 year)" ${existingDemo.codingExp === 'None (< 1 year)' ? 'selected' : ''}>None (< 1 year)</option>
-                <option value="1 year" ${existingDemo.codingExp === '1 year' ? 'selected' : ''}>1 year</option>
-                <option value="2 years" ${existingDemo.codingExp === '2 years' ? 'selected' : ''}>2 years</option>
-                <option value="3 years" ${existingDemo.codingExp === '3 years' ? 'selected' : ''}>3 years</option>
-                <option value="4 years" ${existingDemo.codingExp === '4 years' ? 'selected' : ''}>4 years</option>
-                <option value="5+ years" ${existingDemo.codingExp === '5+ years' ? 'selected' : ''}>5+ years</option>
+              <select id="intake-education" class="form-select" required style="width: 100%; padding: 9px 12px; background: rgba(0,0,0,0.4); border: 1px solid rgba(255,255,255,0.15); border-radius: 6px; color: #fff; font-size: 13px;">
+                <option value="" disabled ${!(existingDemo.education || existingDemo.academicStanding || existingDemo.highestEducation) ? 'selected' : ''}>Select Highest Level of Education...</option>
+                <option value="High School / GED" ${(existingDemo.education || existingDemo.academicStanding || existingDemo.highestEducation) === 'High School / GED' || (existingDemo.education || existingDemo.academicStanding || existingDemo.highestEducation) === 'High school diploma or equivalent' ? 'selected' : ''}>High School / GED</option>
+                <option value="Some college / university" ${(existingDemo.education || existingDemo.academicStanding || existingDemo.highestEducation) === 'Some college / university' || (existingDemo.education || existingDemo.academicStanding || existingDemo.highestEducation) === 'Some college, no degree' ? 'selected' : ''}>Some college / university</option>
+                <option value="Associate Degree" ${(existingDemo.education || existingDemo.academicStanding || existingDemo.highestEducation) === 'Associate Degree' || (existingDemo.education || existingDemo.academicStanding || existingDemo.highestEducation) === 'Associate degree' ? 'selected' : ''}>Associate Degree</option>
+                <option value="Bachelor Degree" ${(existingDemo.education || existingDemo.academicStanding || existingDemo.highestEducation) === 'Bachelor Degree' || (existingDemo.education || existingDemo.academicStanding || existingDemo.highestEducation) === "Bachelor's degree" || (existingDemo.academicStanding && existingDemo.academicStanding.includes('Undergraduate')) ? 'selected' : ''}>Bachelor Degree</option>
+                <option value="Masters Degree" ${(existingDemo.education || existingDemo.academicStanding || existingDemo.highestEducation) === 'Masters Degree' || (existingDemo.education || existingDemo.academicStanding || existingDemo.highestEducation) === "Master's degree" || (existingDemo.academicStanding && existingDemo.academicStanding.includes("Master's")) ? 'selected' : ''}>Masters Degree</option>
+                <option value="Ph. D." ${(existingDemo.education || existingDemo.academicStanding || existingDemo.highestEducation) === 'Ph. D.' || (existingDemo.education || existingDemo.academicStanding || existingDemo.highestEducation) === 'Doctorate or Ph.D.' || (existingDemo.academicStanding && (existingDemo.academicStanding.includes('Ph.D.') || existingDemo.academicStanding.includes('Postdoctoral'))) ? 'selected' : ''}>Ph. D.</option>
+                <option value="Other" ${(existingDemo.education || existingDemo.academicStanding || existingDemo.highestEducation) === 'Other' || (existingDemo.academicStanding && existingDemo.academicStanding.includes('Industry')) ? 'selected' : ''}>Other</option>
               </select>
             </div>
 
-            <!-- Database Experience -->
-            <div class="form-group" style="grid-column: span 2;">
-              <label for="intake-db-exp" style="font-size: 12px; font-weight: 600; margin-bottom: 5px; display: block; color: var(--text-main);">
-                <i class="fa-solid fa-database text-accent"></i> Database Experience <span style="color: var(--color-danger)">*</span>
+            <!-- 5. How many years of studying or working with databases do you have? -->
+            <div class="form-group">
+              <label for="intake-db-exp" style="font-size: 12.5px; font-weight: 600; margin-bottom: 6px; display: block; color: var(--text-main); white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">
+                <i class="fa-solid fa-database text-accent"></i> How many years of studying or working with databases do you have?
               </label>
-              <select id="intake-db-exp" class="form-select" required style="width: 100%; padding: 8px 12px; background: rgba(0,0,0,0.4); border: 1px solid rgba(255,255,255,0.15); border-radius: 6px; color: #fff; font-size: 13px;">
-                <option value="" disabled ${!existingDemo.dbExp ? 'selected' : ''}>Select Database Experience...</option>
-                <option value="No database experience" ${existingDemo.dbExp === 'No database experience' ? 'selected' : ''}>No database experience</option>
-                <option value="Beginner (< 1 year)" ${existingDemo.dbExp === 'Beginner (< 1 year)' ? 'selected' : ''}>Beginner (< 1 year)</option>
-                <option value="Intermediate (1–3 years)" ${existingDemo.dbExp === 'Intermediate (1–3 years)' ? 'selected' : ''}>Intermediate (1–3 years)</option>
-                <option value="Advanced (3+ years)" ${existingDemo.dbExp === 'Advanced (3+ years)' ? 'selected' : ''}>Advanced (3+ years)</option>
+              <input type="number" step="any" min="0" max="100" id="intake-db-exp" class="form-control" placeholder="e.g. 2" value="${this.escapeHTML(existingDemo.dbExp || '')}" required style="width: 100%; padding: 9px 12px; background: rgba(0,0,0,0.4); border: 1px solid rgba(255,255,255,0.15); border-radius: 6px; color: #fff; font-size: 13px;">
+            </div>
+
+            <!-- 6. What is your primary language (i.e., the language you speak at home)? -->
+            <div class="form-group">
+              <label for="intake-primary-language" style="font-size: 12.5px; font-weight: 600; margin-bottom: 6px; display: block; color: var(--text-main); white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">
+                <i class="fa-solid fa-language text-accent"></i> What is your primary language (i.e., the language you speak at home)?
+              </label>
+              <select id="intake-primary-language" class="form-select" required style="width: 100%; padding: 9px 12px; background: rgba(0,0,0,0.4); border: 1px solid rgba(255,255,255,0.15); border-radius: 6px; color: #fff; font-size: 13px;">
+                <option value="" disabled ${!existingDemo.primaryLanguage ? 'selected' : ''}>Select Primary Language...</option>
+                ${[
+                  "English", "Spanish", "Chinese (Mandarin / Cantonese)", "Hindi", "Arabic",
+                  "Bengali", "Portuguese", "Russian", "Urdu", "German",
+                  "Japanese", "Korean", "French", "Vietnamese", "Tagalog / Filipino",
+                  "Italian", "Turkish", "Polish", "Tamil", "Telugu", "Other", "Prefer not to say"
+                ].map(lang => `<option value="${lang}" ${existingDemo.primaryLanguage === lang ? 'selected' : ''}>${lang}</option>`).join('')}
               </select>
             </div>
 
-            <!-- Do they have experience writing queries? -->
-            <div class="form-group" style="grid-column: span 2;">
-              <label for="intake-query-exp" style="font-size: 12px; font-weight: 600; margin-bottom: 5px; display: block; color: var(--text-main);">
-                <i class="fa-solid fa-terminal text-accent"></i> Do you have experience with writing queries? <span style="color: var(--color-danger)">*</span>
+            <!-- 7. What is your country of origin? -->
+            <div class="form-group">
+              <label for="intake-country" style="font-size: 12.5px; font-weight: 600; margin-bottom: 6px; display: block; color: var(--text-main); white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">
+                <i class="fa-solid fa-earth-americas text-accent"></i> What is your country of origin?
               </label>
-              <select id="intake-query-exp" class="form-select" required style="width: 100%; padding: 8px 12px; background: rgba(0,0,0,0.4); border: 1px solid rgba(255,255,255,0.15); border-radius: 6px; color: #fff; font-size: 13px;">
-                <option value="" disabled ${!existingDemo.queryExp ? 'selected' : ''}>Select Query Writing Experience...</option>
-                <option value="Yes - Frequently write SQL / database queries" ${existingDemo.queryExp && existingDemo.queryExp.includes('Frequently') ? 'selected' : ''}>Yes — Frequently write SQL / database queries</option>
-                <option value="Yes - Occasionally write queries" ${existingDemo.queryExp && existingDemo.queryExp.includes('Occasionally') ? 'selected' : ''}>Yes — Occasionally write queries</option>
-                <option value="Basic classroom / coursework knowledge only" ${existingDemo.queryExp && existingDemo.queryExp.includes('classroom') ? 'selected' : ''}>Basic classroom / coursework knowledge only</option>
-                <option value="No - Never written queries before" ${existingDemo.queryExp && existingDemo.queryExp.includes('Never') ? 'selected' : ''}>No — Never written queries before</option>
+              <select id="intake-country" class="form-select" required style="width: 100%; padding: 9px 12px; background: rgba(0,0,0,0.4); border: 1px solid rgba(255,255,255,0.15); border-radius: 6px; color: #fff; font-size: 13px;">
+                <option value="" disabled ${!existingDemo.countryOfOrigin ? 'selected' : ''}>Select Country of Origin...</option>
+                ${[
+                  "United States", "Canada", "United Kingdom", "Australia", "India", "China",
+                  "Afghanistan", "Albania", "Algeria", "Andorra", "Angola", "Antigua and Barbuda", "Argentina", "Armenia", "Austria", "Azerbaijan",
+                  "Bahamas", "Bahrain", "Bangladesh", "Barbados", "Belarus", "Belgium", "Belize", "Benin", "Bhutan", "Bolivia", "Bosnia and Herzegovina", "Botswana", "Brazil", "Brunei", "Bulgaria", "Burkina Faso", "Burundi",
+                  "Cabo Verde", "Cambodia", "Cameroon", "Central African Republic", "Chad", "Chile", "Colombia", "Comoros", "Congo", "Costa Rica", "Croatia", "Cuba", "Cyprus", "Czech Republic",
+                  "Denmark", "Djibouti", "Dominica", "Dominican Republic",
+                  "Ecuador", "Egypt", "El Salvador", "Equatorial Guinea", "Eritrea", "Estonia", "Eswatini", "Ethiopia",
+                  "Fiji", "Finland", "France",
+                  "Gabon", "Gambia", "Georgia", "Germany", "Ghana", "Greece", "Grenada", "Guatemala", "Guinea", "Guinea-Bissau", "Guyana",
+                  "Haiti", "Honduras", "Hungary",
+                  "Iceland", "Indonesia", "Iran", "Iraq", "Ireland", "Israel", "Italy",
+                  "Jamaica", "Japan", "Jordan",
+                  "Kazakhstan", "Kenya", "Kiribati", "Kuwait", "Kyrgyzstan",
+                  "Laos", "Latvia", "Lebanon", "Lesotho", "Liberia", "Libya", "Liechtenstein", "Lithuania", "Luxembourg",
+                  "Madagascar", "Malawi", "Malaysia", "Maldives", "Mali", "Malta", "Marshall Islands", "Mauritania", "Mauritius", "Mexico", "Micronesia", "Moldova", "Monaco", "Mongolia", "Montenegro", "Morocco", "Mozambique", "Myanmar",
+                  "Namibia", "Nauru", "Nepal", "Netherlands", "New Zealand", "Nicaragua", "Niger", "Nigeria", "North Korea", "North Macedonia", "Norway",
+                  "Oman",
+                  "Pakistan", "Palau", "Palestine", "Panama", "Papua New Guinea", "Paraguay", "Peru", "Philippines", "Poland", "Portugal",
+                  "Qatar",
+                  "Romania", "Russia", "Rwanda",
+                  "Saint Kitts and Nevis", "Saint Lucia", "Saint Vincent and the Grenadines", "Samoa", "San Marino", "Sao Tome and Principe", "Saudi Arabia", "Senegal", "Serbia", "Seychelles", "Sierra Leone", "Singapore", "Slovakia", "Slovenia", "Solomon Islands", "Somalia", "South Africa", "South Korea", "South Sudan", "Spain", "Sri Lanka", "Sudan", "Suriname", "Sweden", "Switzerland", "Syria",
+                  "Taiwan", "Tajikistan", "Tanzania", "Thailand", "Timor-Leste", "Togo", "Tonga", "Trinidad and Tobago", "Tunisia", "Turkey", "Turkmenistan", "Tuvalu",
+                  "Uganda", "Ukraine", "United Arab Emirates", "Uruguay", "Uzbekistan",
+                  "Vanuatu", "Vatican City", "Venezuela", "Vietnam",
+                  "Yemen", "Zambia", "Zimbabwe", "Other", "Prefer not to say"
+                ].map(c => `<option value="${c}" ${existingDemo.countryOfOrigin === c ? 'selected' : ''}>${c}</option>`).join('')}
+              </select>
+            </div>
+
+            <!-- 8. Do you identify as having a disability or other chronic condition? -->
+            <div class="form-group">
+              <label for="intake-disability" style="font-size: 12.5px; font-weight: 600; margin-bottom: 6px; display: block; color: var(--text-main); white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">
+                <i class="fa-solid fa-universal-access text-accent"></i> Do you identify as having a disability or other chronic condition?
+              </label>
+              <select id="intake-disability" class="form-select" required style="width: 100%; padding: 9px 12px; background: rgba(0,0,0,0.4); border: 1px solid rgba(255,255,255,0.15); border-radius: 6px; color: #fff; font-size: 13px;">
+                <option value="" disabled ${!existingDemo.disability ? 'selected' : ''}>Select Option...</option>
+                <option value="Yes" ${existingDemo.disability === 'Yes' ? 'selected' : ''}>Yes</option>
+                <option value="No" ${existingDemo.disability === 'No' ? 'selected' : ''}>No</option>
+                <option value="Prefer not to disclose" ${existingDemo.disability === 'Prefer not to disclose' || existingDemo.disability === 'Prefer not to say' ? 'selected' : ''}>Prefer not to disclose</option>
               </select>
             </div>
 
@@ -299,24 +391,40 @@ class HumanResolver {
       </div>
     `;
 
+    // Backward compatibility helper for legacy scripts
+    if (typeof document !== 'undefined' && !document._intakeAliasInstalled) {
+      document._intakeAliasInstalled = true;
+      const origGet = document.getElementById.bind(document);
+      document.getElementById = function(id) {
+        if (id === 'intake-academic-standing') {
+          return origGet('intake-education') || origGet('intake-academic-standing');
+        }
+        return origGet(id);
+      };
+    }
+
     const handleIntakeSubmit = () => {
       const ageElem = document.getElementById('intake-age');
       const genderElem = document.getElementById('intake-gender');
-      const academicElem = document.getElementById('intake-academic-standing');
+      const educationElem = document.getElementById('intake-education') || document.getElementById('intake-academic-standing');
       const codingElem = document.getElementById('intake-coding-exp');
       const dbElem = document.getElementById('intake-db-exp');
-      const queryElem = document.getElementById('intake-query-exp');
+      const langElem = document.getElementById('intake-primary-language');
+      const countryElem = document.getElementById('intake-country');
+      const disabilityElem = document.getElementById('intake-disability');
 
       const ageVal = ageElem ? ageElem.value.trim() : '';
       const genderVal = genderElem ? genderElem.value : '';
-      const academicVal = academicElem ? academicElem.value : '';
-      const codingVal = codingElem ? codingElem.value : '';
-      const dbVal = dbElem ? dbElem.value : '';
-      const queryVal = queryElem ? queryElem.value : '';
+      const educationVal = educationElem ? educationElem.value : '';
+      const codingVal = codingElem ? codingElem.value.trim() : '';
+      const dbVal = dbElem ? dbElem.value.trim() : '';
+      const langVal = langElem ? langElem.value : '';
+      const countryVal = countryElem ? countryElem.value : '';
+      const disabilityVal = disabilityElem ? disabilityElem.value : '';
 
       const valMsg = document.getElementById('intake-validation-msg');
 
-      if (!ageVal || !genderVal || !academicVal || !codingVal || !dbVal || !queryVal) {
+      if (!ageVal || !genderVal || !educationVal || codingVal === '' || dbVal === '' || !langVal || !countryVal || !disabilityVal) {
         if (valMsg) {
           valMsg.style.display = 'block';
           valMsg.innerHTML = '<i class="fa-solid fa-circle-exclamation"></i> Please complete all required demographic fields to begin the experiment.';
@@ -332,15 +440,32 @@ class HumanResolver {
         return;
       }
 
+      const numCoding = parseFloat(codingVal);
+      const numDb = parseFloat(dbVal);
+      if (isNaN(numCoding) || numCoding < 0 || isNaN(numDb) || numDb < 0) {
+        if (valMsg) {
+          valMsg.style.display = 'block';
+          valMsg.innerHTML = '<i class="fa-solid fa-circle-exclamation"></i> Please enter a valid number of years (&ge; 0) for programming and database experience.';
+        }
+        return;
+      }
+
       if (valMsg) valMsg.style.display = 'none';
 
       const data = {
         age: ageVal,
         gender: genderVal,
-        academicStanding: academicVal,
+        education: educationVal,
+        highestEducation: educationVal,
+        academicStanding: educationVal, // backwards compatibility
         codingExp: codingVal,
         dbExp: dbVal,
-        queryExp: queryVal
+        primaryLanguage: langVal,
+        countryOfOrigin: countryVal,
+        disability: disabilityVal,
+        queryExp: 'Completed via updated survey', // backwards compatibility
+        savedAtTimestamp: Date.now(),
+        timestamp: new Date().toISOString()
       };
 
       if (this.app.analytics) {
@@ -443,11 +568,11 @@ class HumanResolver {
       return;
     }
 
-    if (isParticipantPage && !this.hasCompletedDemographics()) {
+    if (!this.hasCompletedDemographics()) {
       this.intakeCompleted = false;
       this.renderIntakeScreen();
       return;
-    } else if (isParticipantPage) {
+    } else {
       this.intakeCompleted = true;
     }
 
@@ -759,6 +884,11 @@ class HumanResolver {
   }
 
   selectOption(index) {
+    if (!this.hasCompletedDemographics()) {
+      this.intakeCompleted = false;
+      this.renderIntakeScreen();
+      return;
+    }
     if (this.isAnswered || !this.currentQuestion) return;
 
     this.isAnswered = true;

@@ -1,0 +1,93 @@
+2026-09-17 18:31:41.169: [INFO] CurrentProfilePath: C:\Users\fragm\.gemini\antigravity-ide\scratch\sql-randomized-test-suite\scratch\test_index_intake_profile\Default
+2026-09-17 18:31:41.169: [INFO] Profiles total count: 1
+2026-09-17 18:31:41.169: [INFO] Profile: name=Profile 1 path=C:\Users\fragm\.gemini\antigravity-ide\scratch\sql-randomized-test-suite\scratch\test_index_intake_profile\Default lastActive=null
+2026-09-17 18:31:41.169: [INFO] LastUsedProfileDir: C:\Users\fragm\.gemini\antigravity-ide\scratch\sql-randomized-test-suite\scratch\test_index_intake_profile\Default
+2026-09-17 18:31:41.169: [INFO] VisibilityChanged: 0
+2026-09-17 18:31:41.179: [INFO] RecordSyncInitDuration has_sync_been_enabled: 0 state: 0
+2026-09-17 18:31:41.179: [INFO] RecordSyncInitDuration has_sync_been_enabled: 0 state: 0
+2026-09-17 18:31:41.179: [INFO] RecordSyncInitDuration has_sync_been_enabled: 0 state: 0
+2026-09-17 18:31:41.180: [INFO] RecordSyncInitDuration has_sync_been_enabled: 0 state: 0
+2026-09-17 18:31:41.180: [INFO] RecordSyncInitDuration has_sync_been_enabled: 0 state: 0
+2026-09-17 18:31:41.181: [INFO] RecordSyncInitDuration has_sync_been_enabled: 0 state: 0
+2026-09-17 18:31:41.181: [INFO] RecordSyncInitDuration has_sync_been_enabled: 0 state: 0
+2026-09-17 18:31:41.181: [INFO] RecordSyncInitDuration has_sync_been_enabled: 0 state: 0
+2026-09-17 18:31:41.182: [INFO] RecordSyncInitDuration has_sync_been_enabled: 0 state: 0
+2026-09-17 18:31:41.182: [INFO] RecordSyncInitDuration has_sync_been_enabled: 0 state: 0
+2026-09-17 18:31:41.194: [INFO] OnDoneLoading sync enabled: 0
+2026-09-17 18:31:41.194: [INFO] BookmarkModelLoaded, ids_reassigned: 0
+2026-09-17 18:31:41.194: [INFO] BookmarksLoadDropped droppedNodes=0
+2026-09-17 18:31:41.194: [INFO] BookmarksSnapshot Startup total=0 bar=0 other=0 mobile=0 showBar=0 showBarNTP=1
+2026-09-17 18:31:41.242: [INFO] RecordSyncInitDuration has_sync_been_enabled: 0 state: 0
+2026-09-17 18:31:42.559: [INFO] RecordSyncInitDuration has_sync_been_enabled: 0 state: 0
+2026-09-17 18:31:42.566: [INFO] RecordSyncInitDuration has_sync_been_enabled: 0 state: 3
+2026-09-17 18:31:42.569: [INFO] Primary account changed.
+2026-09-17 18:31:42.569: [INFO] OnPrimaryAccountChanged PrimaryAccountChangeEvent::Type::kSet
+2026-09-17 18:31:42.585: [INFO] RecordSyncInitDuration has_sync_been_enabled: 0 state: 3
+2026-09-17 18:31:42.601: [INFO] RecordSyncInitDuration has_sync_been_enabled: 0 state: 3
+2026-09-17 18:31:45.150: [INFO] Sync initialization duration: 2461ms
+2026-09-17 18:38:37.444: [INFO] CurrentProfilePath: C:\Users\fragm\.gemini\antigravity-ide\scratch\sql-randomized-test-suite\scratch\test_index_intake_profile\Default
+2026-09-17 18:38:37.444: [INFO] Profiles total count: 1
+2026-09-17 18:38:37.444: [INFO] Profile: name=Personal path=C:\Users\fragm\.gemini\antigravity-ide\scratch\sql-randomized-test-suite\scratch\test_index_intake_profile\Default lastActive=2026-09-17T18:31:41.177Z
+2026-09-17 18:38:37.444: [INFO] LastUsedProfileDir: C:\Users\fragm\.gemini\antigravity-ide\scratch\sql-randomized-test-suite\scratch\test_index_intake_profile\Default
+2026-09-17 18:38:37.444: [INFO] MostRecentlyActiveProfile: name=Personal path=C:\Users\fragm\.gemini\antigravity-ide\scratch\sql-randomized-test-suite\scratch\test_index_intake_profile\Default lastActive=2026-09-17T18:31:41.177Z
+2026-09-17 18:38:37.444: [INFO] VisibilityChanged: 0
+2026-09-17 18:38:37.461: [INFO] OnDoneLoading sync enabled: 1
+2026-09-17 18:38:37.461: [INFO] BookmarkModelLoaded, ids_reassigned: 0
+2026-09-17 18:38:37.461: [INFO] BookmarksLoadDropped droppedNodes=0
+2026-09-17 18:38:37.461: [INFO] BookmarksSnapshot Startup total=0 bar=0 other=0 mobile=0 showBar=0 showBarNTP=1
+2026-09-17 18:38:37.559: [INFO] Sync initialization duration: 18ms
+2026-09-17 18:38:59.728: [INFO] CurrentProfilePath: C:\Users\fragm\.gemini\antigravity-ide\scratch\sql-randomized-test-suite\scratch\test_index_intake_profile\Default
+2026-09-17 18:38:59.728: [INFO] Profiles total count: 1
+2026-09-17 18:38:59.728: [INFO] Profile: name=Personal path=C:\Users\fragm\.gemini\antigravity-ide\scratch\sql-randomized-test-suite\scratch\test_index_intake_profile\Default lastActive=2026-09-17T18:31:41.177Z
+2026-09-17 18:38:59.728: [INFO] LastUsedProfileDir: C:\Users\fragm\.gemini\antigravity-ide\scratch\sql-randomized-test-suite\scratch\test_index_intake_profile\Default
+2026-09-17 18:38:59.728: [INFO] MostRecentlyActiveProfile: name=Personal path=C:\Users\fragm\.gemini\antigravity-ide\scratch\sql-randomized-test-suite\scratch\test_index_intake_profile\Default lastActive=2026-09-17T18:31:41.177Z
+2026-09-17 18:38:59.728: [INFO] VisibilityChanged: 0
+2026-09-17 18:38:59.752: [INFO] OnDoneLoading sync enabled: 1
+2026-09-17 18:38:59.752: [INFO] BookmarkModelLoaded, ids_reassigned: 0
+2026-09-17 18:38:59.752: [INFO] BookmarksLoadDropped droppedNodes=0
+2026-09-17 18:38:59.752: [INFO] BookmarksSnapshot Startup total=0 bar=0 other=0 mobile=0 showBar=0 showBarNTP=1
+2026-09-17 18:38:59.825: [INFO] Sync initialization duration: 13ms
+2026-09-17 18:39:18.958: [INFO] CurrentProfilePath: C:\Users\fragm\.gemini\antigravity-ide\scratch\sql-randomized-test-suite\scratch\test_index_intake_profile\Default
+2026-09-17 18:39:18.958: [INFO] Profiles total count: 1
+2026-09-17 18:39:18.958: [INFO] Profile: name=Personal path=C:\Users\fragm\.gemini\antigravity-ide\scratch\sql-randomized-test-suite\scratch\test_index_intake_profile\Default lastActive=2026-09-17T18:38:59.736Z
+2026-09-17 18:39:18.958: [INFO] LastUsedProfileDir: C:\Users\fragm\.gemini\antigravity-ide\scratch\sql-randomized-test-suite\scratch\test_index_intake_profile\Default
+2026-09-17 18:39:18.958: [INFO] MostRecentlyActiveProfile: name=Personal path=C:\Users\fragm\.gemini\antigravity-ide\scratch\sql-randomized-test-suite\scratch\test_index_intake_profile\Default lastActive=2026-09-17T18:38:59.736Z
+2026-09-17 18:39:18.958: [INFO] VisibilityChanged: 0
+2026-09-17 18:39:18.981: [INFO] OnDoneLoading sync enabled: 1
+2026-09-17 18:39:18.981: [INFO] BookmarkModelLoaded, ids_reassigned: 0
+2026-09-17 18:39:18.981: [INFO] BookmarksLoadDropped droppedNodes=0
+2026-09-17 18:39:18.981: [INFO] BookmarksSnapshot Startup total=0 bar=0 other=0 mobile=0 showBar=0 showBarNTP=1
+2026-09-17 18:39:19.052: [INFO] Sync initialization duration: 11ms
+2026-09-17 18:39:48.911: [INFO] CurrentProfilePath: C:\Users\fragm\.gemini\antigravity-ide\scratch\sql-randomized-test-suite\scratch\test_index_intake_profile\Default
+2026-09-17 18:39:48.911: [INFO] Profiles total count: 1
+2026-09-17 18:39:48.911: [INFO] Profile: name=Personal path=C:\Users\fragm\.gemini\antigravity-ide\scratch\sql-randomized-test-suite\scratch\test_index_intake_profile\Default lastActive=2026-09-17T18:39:18.966Z
+2026-09-17 18:39:48.911: [INFO] LastUsedProfileDir: C:\Users\fragm\.gemini\antigravity-ide\scratch\sql-randomized-test-suite\scratch\test_index_intake_profile\Default
+2026-09-17 18:39:48.911: [INFO] MostRecentlyActiveProfile: name=Personal path=C:\Users\fragm\.gemini\antigravity-ide\scratch\sql-randomized-test-suite\scratch\test_index_intake_profile\Default lastActive=2026-09-17T18:39:18.966Z
+2026-09-17 18:39:48.911: [INFO] VisibilityChanged: 0
+2026-09-17 18:39:48.934: [INFO] OnDoneLoading sync enabled: 1
+2026-09-17 18:39:48.934: [INFO] BookmarkModelLoaded, ids_reassigned: 0
+2026-09-17 18:39:48.934: [INFO] BookmarksLoadDropped droppedNodes=0
+2026-09-17 18:39:48.934: [INFO] BookmarksSnapshot Startup total=0 bar=0 other=0 mobile=0 showBar=0 showBarNTP=1
+2026-09-17 18:39:49.005: [INFO] Sync initialization duration: 12ms
+2026-09-17 18:47:03.073: [INFO] CurrentProfilePath: C:\Users\fragm\.gemini\antigravity-ide\scratch\sql-randomized-test-suite\scratch\test_index_intake_profile\Default
+2026-09-17 18:47:03.073: [INFO] Profiles total count: 1
+2026-09-17 18:47:03.073: [INFO] Profile: name=Personal path=C:\Users\fragm\.gemini\antigravity-ide\scratch\sql-randomized-test-suite\scratch\test_index_intake_profile\Default lastActive=2026-09-17T18:39:48.920Z
+2026-09-17 18:47:03.073: [INFO] LastUsedProfileDir: C:\Users\fragm\.gemini\antigravity-ide\scratch\sql-randomized-test-suite\scratch\test_index_intake_profile\Default
+2026-09-17 18:47:03.073: [INFO] MostRecentlyActiveProfile: name=Personal path=C:\Users\fragm\.gemini\antigravity-ide\scratch\sql-randomized-test-suite\scratch\test_index_intake_profile\Default lastActive=2026-09-17T18:39:48.920Z
+2026-09-17 18:47:03.073: [INFO] VisibilityChanged: 0
+2026-09-17 18:47:03.097: [INFO] OnDoneLoading sync enabled: 1
+2026-09-17 18:47:03.097: [INFO] BookmarkModelLoaded, ids_reassigned: 0
+2026-09-17 18:47:03.097: [INFO] BookmarksLoadDropped droppedNodes=0
+2026-09-17 18:47:03.097: [INFO] BookmarksSnapshot Startup total=0 bar=0 other=0 mobile=0 showBar=0 showBarNTP=1
+2026-09-17 18:47:03.168: [INFO] Sync initialization duration: 11ms
+2026-09-17 18:47:35.332: [INFO] CurrentProfilePath: C:\Users\fragm\.gemini\antigravity-ide\scratch\sql-randomized-test-suite\scratch\test_index_intake_profile\Default
+2026-09-17 18:47:35.332: [INFO] Profiles total count: 1
+2026-09-17 18:47:35.332: [INFO] Profile: name=Personal path=C:\Users\fragm\.gemini\antigravity-ide\scratch\sql-randomized-test-suite\scratch\test_index_intake_profile\Default lastActive=2026-09-17T18:39:48.920Z
+2026-09-17 18:47:35.332: [INFO] LastUsedProfileDir: C:\Users\fragm\.gemini\antigravity-ide\scratch\sql-randomized-test-suite\scratch\test_index_intake_profile\Default
+2026-09-17 18:47:35.332: [INFO] MostRecentlyActiveProfile: name=Personal path=C:\Users\fragm\.gemini\antigravity-ide\scratch\sql-randomized-test-suite\scratch\test_index_intake_profile\Default lastActive=2026-09-17T18:39:48.920Z
+2026-09-17 18:47:35.332: [INFO] VisibilityChanged: 0
+2026-09-17 18:47:35.353: [INFO] OnDoneLoading sync enabled: 1
+2026-09-17 18:47:35.353: [INFO] BookmarkModelLoaded, ids_reassigned: 0
+2026-09-17 18:47:35.353: [INFO] BookmarksLoadDropped droppedNodes=0
+2026-09-17 18:47:35.353: [INFO] BookmarksSnapshot Startup total=0 bar=0 other=0 mobile=0 showBar=0 showBarNTP=1
+2026-09-17 18:47:35.426: [INFO] Sync initialization duration: 11ms

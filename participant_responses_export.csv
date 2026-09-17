@@ -1,6 +1,6 @@
-Response ID,Participant ID,Session ID,Timestamp (ISO),Question Number,Question Category,Assigned Group,Host Language,Syntax Dialect ID,Syntax Dialect Name,Selected Key (1-4),Selected Option,Correct Option,Is Correct,Response Time (ms),Random Seed,Tab Focus Lost,Tab Switch Count,Focus Lost Duration (ms),Age,Gender,Academic Standing,Coding Experience,Database Experience,Query Writing Experience,Final Thoughts,Raw SQL Query,Dialect SQL Query,Code Snippet
-resp_test_001,user_abc,,,,,,,,,,,,TRUE,0,,FALSE,0,0,22,Male,,,,,Great study!,,,
-resp_1788540381215_glac8,user_h48r0ubpdy,session_1788540374560_20ybk,2026-09-04T16:46:21.215Z,1,Group & Aggregate Transformation,,,pipe,Google SQL (Pipe Syntax),1,Option A (15 rows),Option B (15 rows),FALSE,2007,42,TRUE,1,2007,25,Male,Undergraduate (Sophomore),1 year,Beginner (< 1 year),Yes - Frequently write SQL / database queries,,"SELECT users.id, COUNT(products.id) AS agg_val
+Response ID,Participant ID,Session ID,Timestamp (ISO),Question Number,Question Category,Assigned Group,Host Language,Syntax Dialect ID,Syntax Dialect Name,Selected Key (1-4),Selected Option,Correct Option,Is Correct,Response Time (ms),Random Seed,Tab Focus Lost,Tab Switch Count,Focus Lost Duration (ms),Age,Gender,Highest Level of Education,Programming Experience,Database Experience,Primary Language,Country of Origin,Disability Status,Final Thoughts,Raw SQL Query,Dialect SQL Query,Code Snippet
+resp_test_001,user_abc,,,,,,,,,,,,TRUE,0,,FALSE,0,0,22,Male,,,,,,,Great study!,,,
+resp_1788540381215_glac8,user_h48r0ubpdy,session_1788540374560_20ybk,2026-09-04T16:46:21.215Z,1,Group & Aggregate Transformation,,,pipe,Google SQL (Pipe Syntax),1,Option A (15 rows),Option B (15 rows),FALSE,2007,42,TRUE,1,2007,25,Male,Undergraduate (Sophomore),1 year,Beginner (< 1 year),,,,,"SELECT users.id, COUNT(products.id) AS agg_val
 FROM users
 JOIN products ON users.id = products.user_id
 WHERE users.id > 1
@@ -29,7 +29,7 @@ let auditTrail = [];
 auditTrail.push(`Attempt ${retryCounter} successful`);
 
 let finalData = db.execute(targetQuery);"
-resp_1788540383222_aop3v,user_h48r0ubpdy,session_1788540374560_20ybk,2026-09-04T16:46:23.222Z,2,Group & Aggregate Transformation,,,quorum,Quorum Syntax,2,Option B (15 rows),Option B (15 rows),TRUE,1503,42,TRUE,1,1503,25,Male,Undergraduate (Sophomore),1 year,Beginner (< 1 year),Yes - Frequently write SQL / database queries,,"SELECT users.id, COUNT(products.id) AS agg_val
+resp_1788540383222_aop3v,user_h48r0ubpdy,session_1788540374560_20ybk,2026-09-04T16:46:23.222Z,2,Group & Aggregate Transformation,,,quorum,Quorum Syntax,2,Option B (15 rows),Option B (15 rows),TRUE,1503,42,TRUE,1,1503,25,Male,Undergraduate (Sophomore),1 year,Beginner (< 1 year),,,,,"SELECT users.id, COUNT(products.id) AS agg_val
 FROM users
 JOIN products ON users.id = products.user_id
 WHERE users.id >= 1
@@ -62,7 +62,7 @@ query:SetLimit(15)
 let statusMsg = batchNumber > 0 ? ""OK"" : ""PENDING"";
 
 let summaryRows = db.execute(fullQuery);"
-resp_1789582061961_p9npm,user_7uc0ph2n82,session_1789582057411_d735t,2026-09-16T18:07:41.961Z,1,Group & Aggregate Transformation,Quorum with Python,python,quorum,Quorum Syntax,1,Option A (14 rows),Option C (15 rows),FALSE,1502,42,FALSE,0,0,25,Male,Undergraduate (Junior),1 year,Beginner (< 1 year),Yes - Frequently write SQL / database queries,Great SQL experiment!,"SELECT users.id, COUNT(products.id) AS agg_val
+resp_1789582061961_p9npm,user_7uc0ph2n82,session_1789582057411_d735t,2026-09-16T18:07:41.961Z,1,Group & Aggregate Transformation,Quorum with Python,python,quorum,Quorum Syntax,1,Option A (14 rows),Option C (15 rows),FALSE,1502,42,FALSE,0,0,25,Male,Undergraduate (Junior),1 year,Beginner (< 1 year),,,,Great SQL experiment!,"SELECT users.id, COUNT(products.id) AS agg_val
 FROM users
 JOIN products ON users.id = products.user_id
 WHERE users.id > 1
@@ -94,7 +94,7 @@ audit_trail = []
 audit_trail.append(f""Attempt {retry_counter} successful"")
 
 final_data = db.execute(target_query)"
-resp_1789582063477_nhpg3,user_7uc0ph2n82,session_1789582057411_d735t,2026-09-16T18:07:43.477Z,2,Group & Aggregate Transformation,Quorum with Python,python,quorum,Quorum Syntax,2,Option B (15 rows),Option B (15 rows),TRUE,1005,42,FALSE,0,0,25,Male,Undergraduate (Junior),1 year,Beginner (< 1 year),Yes - Frequently write SQL / database queries,Great SQL experiment!,"SELECT users.id, COUNT(products.id) AS agg_val
+resp_1789582063477_nhpg3,user_7uc0ph2n82,session_1789582057411_d735t,2026-09-16T18:07:43.477Z,2,Group & Aggregate Transformation,Quorum with Python,python,quorum,Quorum Syntax,2,Option B (15 rows),Option B (15 rows),TRUE,1005,42,FALSE,0,0,25,Male,Undergraduate (Junior),1 year,Beginner (< 1 year),,,,Great SQL experiment!,"SELECT users.id, COUNT(products.id) AS agg_val
 FROM users
 JOIN products ON users.id = products.user_id
 WHERE users.id >= 1
@@ -126,3 +126,441 @@ query:SetLimit(15)
 status_msg = ""OK"" if batch_number > 0 else ""PENDING""
 
 summary_rows = db.execute(full_query)"
+resp_1789669296281_tbxlx,user_6mcb43iuod,session_1789669289885_c3moo,2026-09-17T18:21:36.281Z,1,Group & Aggregate Transformation,Quorum with Javascript,javascript,quorum,Quorum Syntax,1,Option A (15 rows),Option A (15 rows),TRUE,2006,42,TRUE,1,2006,28,Female,Masters Degree,3.5,2,Spanish,Mexico,Prefer not to disclose,,"SELECT users.id, COUNT(products.id) AS agg_val
+FROM users
+JOIN products ON users.id = products.user_id
+WHERE users.id > 1
+GROUP BY users.id
+ORDER BY agg_val DESC
+LIMIT 15;","query:SetTable(""users"")
+query:AddJoin(""products"", ""users:id = products:user_id"")
+query:Filter(""users:id > 1"")
+query:AddGroupColumn(""users:id"")
+query:AddColumn(""users:id"")
+query:AddColumn(""COUNT(products:id)"", ""agg_val"")
+query:Sort(""agg_val"", ""DESC"")
+query:SetLimit(15)","let retryCounter = 0;
+while (retryCounter < 2) {
+  retryCounter++;
+}
+
+let targetQuery = `
+query:SetTable(""users"")
+query:AddJoin(""products"", ""users:id = products:user_id"")
+query:Filter(""users:id > 1"")
+query:AddGroupColumn(""users:id"")
+query:AddColumn(""users:id"")
+query:AddColumn(""COUNT(products:id)"", ""agg_val"")
+query:Sort(""agg_val"", ""DESC"")
+query:SetLimit(15)
+`;
+
+let auditTrail = [];
+auditTrail.push(`Attempt ${retryCounter} successful`);
+
+let finalData = db.execute(targetQuery);"
+resp_1789669320072_rov31,user_oxscjbczs8,session_1789669313169_940dk,2026-09-17T18:22:00.072Z,1,Group & Aggregate Transformation,Quorum with Python,python,quorum,Quorum Syntax,1,Option A (15 rows),Option A (15 rows),TRUE,2005,42,FALSE,0,0,25,Male,"Some college, no degree",1 year,1–2 years,English,United States,No,,"SELECT users.id, COUNT(products.id) AS agg_val
+FROM users
+JOIN products ON users.id = products.user_id
+WHERE users.id > 1
+GROUP BY users.id
+ORDER BY agg_val DESC
+LIMIT 15;","query:SetTable(""users"")
+query:AddJoin(""products"", ""users:id = products:user_id"")
+query:Filter(""users:id > 1"")
+query:AddGroupColumn(""users:id"")
+query:AddColumn(""users:id"")
+query:AddColumn(""COUNT(products:id)"", ""agg_val"")
+query:Sort(""agg_val"", ""DESC"")
+query:SetLimit(15)","retry_counter = 0
+while retry_counter < 2:
+    retry_counter += 1
+
+target_query = """"""
+query:SetTable(""users"")
+query:AddJoin(""products"", ""users:id = products:user_id"")
+query:Filter(""users:id > 1"")
+query:AddGroupColumn(""users:id"")
+query:AddColumn(""users:id"")
+query:AddColumn(""COUNT(products:id)"", ""agg_val"")
+query:Sort(""agg_val"", ""DESC"")
+query:SetLimit(15)
+""""""
+
+audit_trail = []
+audit_trail.append(f""Attempt {retry_counter} successful"")
+
+final_data = db.execute(target_query)"
+resp_1789669322088_d13wn,user_oxscjbczs8,session_1789669313169_940dk,2026-09-17T18:22:02.088Z,2,Group & Aggregate Transformation,Quorum with Python,python,quorum,Quorum Syntax,2,Option B (15 rows),Option C (15 rows),FALSE,1507,42,FALSE,0,0,25,Male,"Some college, no degree",1 year,1–2 years,English,United States,No,,"SELECT users.id, COUNT(products.id) AS agg_val
+FROM users
+JOIN products ON users.id = products.user_id
+WHERE users.id >= 1
+GROUP BY users.id
+ORDER BY agg_val DESC
+LIMIT 15;","query:SetTable(""users"")
+query:AddJoin(""products"", ""users:id = products:user_id"")
+query:Filter(""users:id >= 1"")
+query:AddGroupColumn(""users:id"")
+query:AddColumn(""users:id"")
+query:AddColumn(""COUNT(products:id)"", ""agg_val"")
+query:Sort(""agg_val"", ""DESC"")
+query:SetLimit(15)","batch_number = 1
+process_logs = [""start"", ""process""]
+for log in process_logs:
+    batch_number += 1
+
+full_query = """"""
+query:SetTable(""users"")
+query:AddJoin(""products"", ""users:id = products:user_id"")
+query:Filter(""users:id >= 1"")
+query:AddGroupColumn(""users:id"")
+query:AddColumn(""users:id"")
+query:AddColumn(""COUNT(products:id)"", ""agg_val"")
+query:Sort(""agg_val"", ""DESC"")
+query:SetLimit(15)
+""""""
+
+status_msg = ""OK"" if batch_number > 0 else ""PENDING""
+
+summary_rows = db.execute(full_query)"
+resp_1789669351888_sxwj5,user_oxscjbczs8,session_1789669344847_hv5j5,2026-09-17T18:22:31.888Z,1,Group & Aggregate Transformation,Quorum with Python,python,quorum,Quorum Syntax,1,Option A (14 rows),Option C (15 rows),FALSE,2011,42,TRUE,1,2010,25,Male,"Some college, no degree",1 year,1–2 years,English,United States,No,,"SELECT users.id, COUNT(products.id) AS agg_val
+FROM users
+JOIN products ON users.id = products.user_id
+WHERE users.id > 1
+GROUP BY users.id
+ORDER BY agg_val DESC
+LIMIT 15;","query:SetTable(""users"")
+query:AddJoin(""products"", ""users:id = products:user_id"")
+query:Filter(""users:id > 1"")
+query:AddGroupColumn(""users:id"")
+query:AddColumn(""users:id"")
+query:AddColumn(""COUNT(products:id)"", ""agg_val"")
+query:Sort(""agg_val"", ""DESC"")
+query:SetLimit(15)","retry_counter = 0
+while retry_counter < 2:
+    retry_counter += 1
+
+target_query = """"""
+query:SetTable(""users"")
+query:AddJoin(""products"", ""users:id = products:user_id"")
+query:Filter(""users:id > 1"")
+query:AddGroupColumn(""users:id"")
+query:AddColumn(""users:id"")
+query:AddColumn(""COUNT(products:id)"", ""agg_val"")
+query:Sort(""agg_val"", ""DESC"")
+query:SetLimit(15)
+""""""
+
+audit_trail = []
+audit_trail.append(f""Attempt {retry_counter} successful"")
+
+final_data = db.execute(target_query)"
+resp_1789669353903_2yzm6,user_oxscjbczs8,session_1789669344847_hv5j5,2026-09-17T18:22:33.903Z,2,Group & Aggregate Transformation,Quorum with Python,python,quorum,Quorum Syntax,2,Option B (15 rows),Option D (15 rows),FALSE,1505,42,TRUE,1,1505,25,Male,"Some college, no degree",1 year,1–2 years,English,United States,No,,"SELECT users.id, COUNT(products.id) AS agg_val
+FROM users
+JOIN products ON users.id = products.user_id
+WHERE users.id >= 1
+GROUP BY users.id
+ORDER BY agg_val DESC
+LIMIT 15;","query:SetTable(""users"")
+query:AddJoin(""products"", ""users:id = products:user_id"")
+query:Filter(""users:id >= 1"")
+query:AddGroupColumn(""users:id"")
+query:AddColumn(""users:id"")
+query:AddColumn(""COUNT(products:id)"", ""agg_val"")
+query:Sort(""agg_val"", ""DESC"")
+query:SetLimit(15)","batch_number = 1
+process_logs = [""start"", ""process""]
+for log in process_logs:
+    batch_number += 1
+
+full_query = """"""
+query:SetTable(""users"")
+query:AddJoin(""products"", ""users:id = products:user_id"")
+query:Filter(""users:id >= 1"")
+query:AddGroupColumn(""users:id"")
+query:AddColumn(""users:id"")
+query:AddColumn(""COUNT(products:id)"", ""agg_val"")
+query:Sort(""agg_val"", ""DESC"")
+query:SetLimit(15)
+""""""
+
+status_msg = ""OK"" if batch_number > 0 else ""PENDING""
+
+summary_rows = db.execute(full_query)"
+resp_1789669910182_2nubp,user_thwt9lv07x,session_1789669903394_a7mhd,2026-09-17T18:31:50.182Z,1,Group & Aggregate Transformation,Google SQL with Python,python,pipe,Google SQL (Pipe Syntax),1,Option A (14 rows),Option D (15 rows),FALSE,2006,42,FALSE,0,0,26,Male,Bachelor's degree,4 years,3–5 years,English,United States,No,,"SELECT users.id, COUNT(products.id) AS agg_val
+FROM users
+JOIN products ON users.id = products.user_id
+WHERE users.id > 1
+GROUP BY users.id
+ORDER BY agg_val DESC
+LIMIT 15;","FROM users
+|> JOIN products ON users.id = products.user_id
+|> WHERE users.id > 1
+|> AGGREGATE COUNT(products.id) AS agg_val GROUP BY users.id
+|> ORDER BY agg_val DESC
+|> LIMIT 15","retry_counter = 0
+while retry_counter < 2:
+    retry_counter += 1
+
+target_query = """"""
+FROM users
+|> JOIN products ON users.id = products.user_id
+|> WHERE users.id > 1
+|> AGGREGATE COUNT(products.id) AS agg_val GROUP BY users.id
+|> ORDER BY agg_val DESC
+|> LIMIT 15
+""""""
+
+audit_trail = []
+audit_trail.append(f""Attempt {retry_counter} successful"")
+
+final_data = db.execute(target_query)"
+resp_1789669931472_qaaqz,user_6mcb43iuod,session_1789669925011_c6cwt,2026-09-17T18:32:11.472Z,1,Group & Aggregate Transformation,Quorum with Javascript,javascript,quorum,Quorum Syntax,1,Option A (15 rows),Option C (15 rows),FALSE,2004,42,TRUE,1,2004,28,Female,Masters Degree,3.5,2,Spanish,Mexico,Prefer not to disclose,,"SELECT users.id, COUNT(products.id) AS agg_val
+FROM users
+JOIN products ON users.id = products.user_id
+WHERE users.id > 1
+GROUP BY users.id
+ORDER BY agg_val DESC
+LIMIT 15;","query:SetTable(""users"")
+query:AddJoin(""products"", ""users:id = products:user_id"")
+query:Filter(""users:id > 1"")
+query:AddGroupColumn(""users:id"")
+query:AddColumn(""users:id"")
+query:AddColumn(""COUNT(products:id)"", ""agg_val"")
+query:Sort(""agg_val"", ""DESC"")
+query:SetLimit(15)","let retryCounter = 0;
+while (retryCounter < 2) {
+  retryCounter++;
+}
+
+let targetQuery = `
+query:SetTable(""users"")
+query:AddJoin(""products"", ""users:id = products:user_id"")
+query:Filter(""users:id > 1"")
+query:AddGroupColumn(""users:id"")
+query:AddColumn(""users:id"")
+query:AddColumn(""COUNT(products:id)"", ""agg_val"")
+query:Sort(""agg_val"", ""DESC"")
+query:SetLimit(15)
+`;
+
+let auditTrail = [];
+auditTrail.push(`Attempt ${retryCounter} successful`);
+
+let finalData = db.execute(targetQuery);"
+resp_1789670313069_8ubcv,user_6mcb43iuod,session_1789670306568_yo5vi,2026-09-17T18:38:33.069Z,1,Group & Aggregate Transformation,Quorum with Javascript,javascript,quorum,Quorum Syntax,1,Option A (15 rows),Option A (15 rows),TRUE,2005,42,TRUE,1,2005,28,Female,Masters Degree,3.5,2,Spanish,Mexico,Prefer not to disclose,,"SELECT users.id, COUNT(products.id) AS agg_val
+FROM users
+JOIN products ON users.id = products.user_id
+WHERE users.id > 1
+GROUP BY users.id
+ORDER BY agg_val DESC
+LIMIT 15;","query:SetTable(""users"")
+query:AddJoin(""products"", ""users:id = products:user_id"")
+query:Filter(""users:id > 1"")
+query:AddGroupColumn(""users:id"")
+query:AddColumn(""users:id"")
+query:AddColumn(""COUNT(products:id)"", ""agg_val"")
+query:Sort(""agg_val"", ""DESC"")
+query:SetLimit(15)","let retryCounter = 0;
+while (retryCounter < 2) {
+  retryCounter++;
+}
+
+let targetQuery = `
+query:SetTable(""users"")
+query:AddJoin(""products"", ""users:id = products:user_id"")
+query:Filter(""users:id > 1"")
+query:AddGroupColumn(""users:id"")
+query:AddColumn(""users:id"")
+query:AddColumn(""COUNT(products:id)"", ""agg_val"")
+query:Sort(""agg_val"", ""DESC"")
+query:SetLimit(15)
+`;
+
+let auditTrail = [];
+auditTrail.push(`Attempt ${retryCounter} successful`);
+
+let finalData = db.execute(targetQuery);"
+resp_1789670348656_107zz,user_66awi9frfz,session_1789670341657_aqo5j,2026-09-17T18:39:08.656Z,1,Group & Aggregate Transformation,Quorum with Python,python,quorum,Quorum Syntax,1,Option A (5 rows),Option B (15 rows),FALSE,2009,42,TRUE,1,2009,26,Male,Bachelor Degree,4 years,3–5 years,English,United States,No,,"SELECT users.id, COUNT(products.id) AS agg_val
+FROM users
+JOIN products ON users.id = products.user_id
+WHERE users.id > 1
+GROUP BY users.id
+ORDER BY agg_val DESC
+LIMIT 15;","query:SetTable(""users"")
+query:AddJoin(""products"", ""users:id = products:user_id"")
+query:Filter(""users:id > 1"")
+query:AddGroupColumn(""users:id"")
+query:AddColumn(""users:id"")
+query:AddColumn(""COUNT(products:id)"", ""agg_val"")
+query:Sort(""agg_val"", ""DESC"")
+query:SetLimit(15)","retry_counter = 0
+while retry_counter < 2:
+    retry_counter += 1
+
+target_query = """"""
+query:SetTable(""users"")
+query:AddJoin(""products"", ""users:id = products:user_id"")
+query:Filter(""users:id > 1"")
+query:AddGroupColumn(""users:id"")
+query:AddColumn(""users:id"")
+query:AddColumn(""COUNT(products:id)"", ""agg_val"")
+query:Sort(""agg_val"", ""DESC"")
+query:SetLimit(15)
+""""""
+
+audit_trail = []
+audit_trail.append(f""Attempt {retry_counter} successful"")
+
+final_data = db.execute(target_query)"
+resp_1789670367882_tq11u,user_nfq8b0w74w,session_1789670360838_algp7,2026-09-17T18:39:27.882Z,1,Group & Aggregate Transformation,Google SQL with Python,python,pipe,Google SQL (Pipe Syntax),1,Option A (14 rows),Option B (15 rows),FALSE,2004,42,TRUE,1,2004,26,Male,Bachelor Degree,4 years,3–5 years,English,United States,No,,"SELECT users.id, COUNT(products.id) AS agg_val
+FROM users
+JOIN products ON users.id = products.user_id
+WHERE users.id > 1
+GROUP BY users.id
+ORDER BY agg_val DESC
+LIMIT 15;","FROM users
+|> JOIN products ON users.id = products.user_id
+|> WHERE users.id > 1
+|> AGGREGATE COUNT(products.id) AS agg_val GROUP BY users.id
+|> ORDER BY agg_val DESC
+|> LIMIT 15","retry_counter = 0
+while retry_counter < 2:
+    retry_counter += 1
+
+target_query = """"""
+FROM users
+|> JOIN products ON users.id = products.user_id
+|> WHERE users.id > 1
+|> AGGREGATE COUNT(products.id) AS agg_val GROUP BY users.id
+|> ORDER BY agg_val DESC
+|> LIMIT 15
+""""""
+
+audit_trail = []
+audit_trail.append(f""Attempt {retry_counter} successful"")
+
+final_data = db.execute(target_query)"
+resp_1789670397827_f4bhb,user_ebg6mwmeu6,session_1789670390808_cbofe,2026-09-17T18:39:57.827Z,1,Group & Aggregate Transformation,Google SQL with Python,python,pipe,Google SQL (Pipe Syntax),1,Option A (15 rows),Option A (15 rows),TRUE,2005,42,TRUE,1,2005,26,Male,Bachelor Degree,4 years,3–5 years,English,United States,No,,"SELECT users.id, COUNT(products.id) AS agg_val
+FROM users
+JOIN products ON users.id = products.user_id
+WHERE users.id > 1
+GROUP BY users.id
+ORDER BY agg_val DESC
+LIMIT 15;","FROM users
+|> JOIN products ON users.id = products.user_id
+|> WHERE users.id > 1
+|> AGGREGATE COUNT(products.id) AS agg_val GROUP BY users.id
+|> ORDER BY agg_val DESC
+|> LIMIT 15","retry_counter = 0
+while retry_counter < 2:
+    retry_counter += 1
+
+target_query = """"""
+FROM users
+|> JOIN products ON users.id = products.user_id
+|> WHERE users.id > 1
+|> AGGREGATE COUNT(products.id) AS agg_val GROUP BY users.id
+|> ORDER BY agg_val DESC
+|> LIMIT 15
+""""""
+
+audit_trail = []
+audit_trail.append(f""Attempt {retry_counter} successful"")
+
+final_data = db.execute(target_query)"
+resp_1789670778171_nmlaa,user_6mcb43iuod,session_1789670771710_hfzbo,2026-09-17T18:46:18.171Z,1,Group & Aggregate Transformation,Quorum with Javascript,javascript,quorum,Quorum Syntax,1,Option A (5 rows),Option D (15 rows),FALSE,2008,42,TRUE,1,2008,28,Female,Masters Degree,3.5,2,Spanish,Mexico,Prefer not to disclose,,"SELECT users.id, COUNT(products.id) AS agg_val
+FROM users
+JOIN products ON users.id = products.user_id
+WHERE users.id > 1
+GROUP BY users.id
+ORDER BY agg_val DESC
+LIMIT 15;","query:SetTable(""users"")
+query:AddJoin(""products"", ""users:id = products:user_id"")
+query:Filter(""users:id > 1"")
+query:AddGroupColumn(""users:id"")
+query:AddColumn(""users:id"")
+query:AddColumn(""COUNT(products:id)"", ""agg_val"")
+query:Sort(""agg_val"", ""DESC"")
+query:SetLimit(15)","let retryCounter = 0;
+while (retryCounter < 2) {
+  retryCounter++;
+}
+
+let targetQuery = `
+query:SetTable(""users"")
+query:AddJoin(""products"", ""users:id = products:user_id"")
+query:Filter(""users:id > 1"")
+query:AddGroupColumn(""users:id"")
+query:AddColumn(""users:id"")
+query:AddColumn(""COUNT(products:id)"", ""agg_val"")
+query:Sort(""agg_val"", ""DESC"")
+query:SetLimit(15)
+`;
+
+let auditTrail = [];
+auditTrail.push(`Attempt ${retryCounter} successful`);
+
+let finalData = db.execute(targetQuery);"
+resp_1789670864281_lc48y,user_s99koq0ybp,session_1789670857248_f69ut,2026-09-17T18:47:44.281Z,1,Group & Aggregate Transformation,Google SQL with Javascript,javascript,pipe,Google SQL (Pipe Syntax),1,Option A (5 rows),Option D (15 rows),FALSE,2007,42,TRUE,1,2007,26,Male,Bachelor Degree,4,3,English,United States,No,,"SELECT users.id, COUNT(products.id) AS agg_val
+FROM users
+JOIN products ON users.id = products.user_id
+WHERE users.id > 1
+GROUP BY users.id
+ORDER BY agg_val DESC
+LIMIT 15;","FROM users
+|> JOIN products ON users.id = products.user_id
+|> WHERE users.id > 1
+|> AGGREGATE COUNT(products.id) AS agg_val GROUP BY users.id
+|> ORDER BY agg_val DESC
+|> LIMIT 15","let retryCounter = 0;
+while (retryCounter < 2) {
+  retryCounter++;
+}
+
+let targetQuery = `
+FROM users
+|> JOIN products ON users.id = products.user_id
+|> WHERE users.id > 1
+|> AGGREGATE COUNT(products.id) AS agg_val GROUP BY users.id
+|> ORDER BY agg_val DESC
+|> LIMIT 15
+`;
+
+let auditTrail = [];
+auditTrail.push(`Attempt ${retryCounter} successful`);
+
+let finalData = db.execute(targetQuery);"
+resp_1789671179195_12ss2,user_6mcb43iuod,session_1789671172726_5x0lt,2026-09-17T18:52:59.196Z,1,Group & Aggregate Transformation,Quorum with Javascript,javascript,quorum,Quorum Syntax,1,Option A (15 rows),Option D (15 rows),FALSE,2004,42,TRUE,1,2004,28,Female,Masters Degree,3.5,2,Spanish,Mexico,Prefer not to disclose,,"SELECT users.id, COUNT(products.id) AS agg_val
+FROM users
+JOIN products ON users.id = products.user_id
+WHERE users.id > 1
+GROUP BY users.id
+ORDER BY agg_val DESC
+LIMIT 15;","query:SetTable(""users"")
+query:AddJoin(""products"", ""users:id = products:user_id"")
+query:Filter(""users:id > 1"")
+query:AddGroupColumn(""users:id"")
+query:AddColumn(""users:id"")
+query:AddColumn(""COUNT(products:id)"", ""agg_val"")
+query:Sort(""agg_val"", ""DESC"")
+query:SetLimit(15)","let retryCounter = 0;
+while (retryCounter < 2) {
+  retryCounter++;
+}
+
+let targetQuery = `
+query:SetTable(""users"")
+query:AddJoin(""products"", ""users:id = products:user_id"")
+query:Filter(""users:id > 1"")
+query:AddGroupColumn(""users:id"")
+query:AddColumn(""users:id"")
+query:AddColumn(""COUNT(products:id)"", ""agg_val"")
+query:Sort(""agg_val"", ""DESC"")
+query:SetLimit(15)
+`;
+
+let auditTrail = [];
+auditTrail.push(`Attempt ${retryCounter} successful`);
+
+let finalData = db.execute(targetQuery);"

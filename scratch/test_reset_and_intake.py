@@ -177,10 +177,14 @@ def main():
         (() => {
             document.getElementById('intake-age').value = '25';
             document.getElementById('intake-gender').selectedIndex = 1;
-            document.getElementById('intake-academic-standing').selectedIndex = 2;
+            if (document.getElementById('intake-academic-standing')) document.getElementById('intake-academic-standing').selectedIndex = 2;
+            if (document.getElementById('intake-education')) document.getElementById('intake-education').selectedIndex = 2;
             document.getElementById('intake-coding-exp').selectedIndex = 2;
             document.getElementById('intake-db-exp').selectedIndex = 2;
-            document.getElementById('intake-query-exp').selectedIndex = 1;
+            if (document.getElementById('intake-query-exp')) document.getElementById('intake-query-exp').selectedIndex = 1;
+            if (document.getElementById('intake-primary-language')) document.getElementById('intake-primary-language').selectedIndex = 1;
+            if (document.getElementById('intake-country')) document.getElementById('intake-country').selectedIndex = 1;
+            if (document.getElementById('intake-disability')) document.getElementById('intake-disability').selectedIndex = 1;
             document.getElementById('btn-start-experiment').click();
         })()
         """, 9)
@@ -224,9 +228,9 @@ def main():
         time.sleep(1.5)
 
         total_resp_after = eval_js(s, "window.app.analytics.getAllResponses().length", 18)
-        demo_after = eval_js(s, "window.app.analytics.getDemographics()", 19)
+        demo_after = eval_js(s, f"window.app.analytics.getDemographics('{pid}')", 19)
         print(f"  -> Total responses in analytics after Reset Test: {total_resp_after}")
-        print(f"  -> Demographics after Reset Test: {demo_after}")
+        print(f"  -> Previous participant demographics preserved after Reset Test: {demo_after}")
         assert total_resp_after == 2, f"Expected 2 responses to be preserved, but got {total_resp_after}!"
         assert demo_after is not None, "Demographics should be preserved!"
 

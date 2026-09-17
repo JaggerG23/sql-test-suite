@@ -1102,5 +1102,10 @@ body.admin-locked .app-container {
   gap: 8px;
 }
 
+.form-select option {
+  background: #181d2c;
+  color: #f1f5f9;
+}
+
 
 

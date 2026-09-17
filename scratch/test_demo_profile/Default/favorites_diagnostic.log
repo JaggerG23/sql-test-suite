@@ -1,0 +1,138 @@
+2026-09-17 18:21:27.819: [INFO] CurrentProfilePath: C:\Users\fragm\.gemini\antigravity-ide\scratch\sql-randomized-test-suite\scratch\test_demo_profile\Default
+2026-09-17 18:21:27.819: [INFO] Profiles total count: 1
+2026-09-17 18:21:27.819: [INFO] Profile: name=Profile 1 path=C:\Users\fragm\.gemini\antigravity-ide\scratch\sql-randomized-test-suite\scratch\test_demo_profile\Default lastActive=null
+2026-09-17 18:21:27.819: [INFO] LastUsedProfileDir: C:\Users\fragm\.gemini\antigravity-ide\scratch\sql-randomized-test-suite\scratch\test_demo_profile\Default
+2026-09-17 18:21:27.819: [INFO] VisibilityChanged: 0
+2026-09-17 18:21:27.828: [INFO] RecordSyncInitDuration has_sync_been_enabled: 0 state: 0
+2026-09-17 18:21:27.829: [INFO] RecordSyncInitDuration has_sync_been_enabled: 0 state: 0
+2026-09-17 18:21:27.829: [INFO] RecordSyncInitDuration has_sync_been_enabled: 0 state: 0
+2026-09-17 18:21:27.830: [INFO] RecordSyncInitDuration has_sync_been_enabled: 0 state: 0
+2026-09-17 18:21:27.830: [INFO] RecordSyncInitDuration has_sync_been_enabled: 0 state: 0
+2026-09-17 18:21:27.831: [INFO] RecordSyncInitDuration has_sync_been_enabled: 0 state: 0
+2026-09-17 18:21:27.831: [INFO] RecordSyncInitDuration has_sync_been_enabled: 0 state: 0
+2026-09-17 18:21:27.832: [INFO] RecordSyncInitDuration has_sync_been_enabled: 0 state: 0
+2026-09-17 18:21:27.832: [INFO] RecordSyncInitDuration has_sync_been_enabled: 0 state: 0
+2026-09-17 18:21:27.833: [INFO] RecordSyncInitDuration has_sync_been_enabled: 0 state: 0
+2026-09-17 18:21:27.843: [INFO] OnDoneLoading sync enabled: 0
+2026-09-17 18:21:27.843: [INFO] BookmarkModelLoaded, ids_reassigned: 0
+2026-09-17 18:21:27.843: [INFO] BookmarksLoadDropped droppedNodes=0
+2026-09-17 18:21:27.843: [INFO] BookmarksSnapshot Startup total=0 bar=0 other=0 mobile=0 showBar=0 showBarNTP=1
+2026-09-17 18:21:27.895: [INFO] RecordSyncInitDuration has_sync_been_enabled: 0 state: 0
+2026-09-17 18:21:29.590: [INFO] RecordSyncInitDuration has_sync_been_enabled: 0 state: 0
+2026-09-17 18:21:29.597: [INFO] RecordSyncInitDuration has_sync_been_enabled: 0 state: 3
+2026-09-17 18:21:29.600: [INFO] Primary account changed.
+2026-09-17 18:21:29.600: [INFO] OnPrimaryAccountChanged PrimaryAccountChangeEvent::Type::kSet
+2026-09-17 18:21:29.609: [INFO] RecordSyncInitDuration has_sync_been_enabled: 0 state: 3
+2026-09-17 18:21:32.103: [INFO] Sync initialization duration: 2422ms
+2026-09-17 18:32:03.103: [INFO] CurrentProfilePath: C:\Users\fragm\.gemini\antigravity-ide\scratch\sql-randomized-test-suite\scratch\test_demo_profile\Default
+2026-09-17 18:32:03.103: [INFO] Profiles total count: 1
+2026-09-17 18:32:03.103: [INFO] Profile: name=Profile 1 path=C:\Users\fragm\.gemini\antigravity-ide\scratch\sql-randomized-test-suite\scratch\test_demo_profile\Default lastActive=null
+2026-09-17 18:32:03.103: [INFO] LastUsedProfileDir: C:\Users\fragm\.gemini\antigravity-ide\scratch\sql-randomized-test-suite\scratch\test_demo_profile\Default
+2026-09-17 18:32:03.103: [INFO] VisibilityChanged: 0
+2026-09-17 18:32:03.117: [INFO] OnDoneLoading sync enabled: 0
+2026-09-17 18:32:03.117: [INFO] BookmarkModelLoaded, ids_reassigned: 0
+2026-09-17 18:32:03.117: [INFO] BookmarksLoadDropped droppedNodes=0
+2026-09-17 18:32:03.117: [INFO] BookmarksSnapshot Startup total=0 bar=0 other=0 mobile=0 showBar=0 showBarNTP=1
+2026-09-17 18:32:03.127: [INFO] RecordSyncInitDuration has_sync_been_enabled: 0 state: 3
+2026-09-17 18:32:03.162: [INFO] RecordSyncInitDuration has_sync_been_enabled: 0 state: 3
+2026-09-17 18:32:03.464: [INFO] RecordSyncInitDuration has_sync_been_enabled: 0 state: 3
+2026-09-17 18:32:03.465: [INFO] RecordSyncInitDuration has_sync_been_enabled: 0 state: 3
+2026-09-17 18:32:03.466: [INFO] RecordSyncInitDuration has_sync_been_enabled: 0 state: 3
+2026-09-17 18:32:03.471: [INFO] RecordSyncInitDuration has_sync_been_enabled: 0 state: 3
+2026-09-17 18:32:03.472: [INFO] RecordSyncInitDuration has_sync_been_enabled: 0 state: 3
+2026-09-17 18:32:03.472: [INFO] RecordSyncInitDuration has_sync_been_enabled: 0 state: 3
+2026-09-17 18:32:03.473: [INFO] RecordSyncInitDuration has_sync_been_enabled: 0 state: 5
+2026-09-17 18:32:03.475: [INFO] RecordSyncInitDuration has_sync_been_enabled: 0 state: 5
+2026-09-17 18:32:03.577: [INFO] RecordSyncInitDuration has_sync_been_enabled: 0 state: 5
+2026-09-17 18:32:03.580: [INFO] RecordSyncInitDuration has_sync_been_enabled: 0 state: 5
+2026-09-17 18:32:03.900: [INFO] RecordSyncInitDuration has_sync_been_enabled: 0 state: 5
+2026-09-17 18:32:04.121: [INFO] RecordSyncInitDuration has_sync_been_enabled: 0 state: 5
+2026-09-17 18:32:04.122: [INFO] RecordSyncInitDuration has_sync_been_enabled: 0 state: 6
+2026-09-17 18:32:04.122: [INFO] RecordSyncInitDuration has_sync_been_enabled: 0 state: 6
+2026-09-17 18:32:04.759: [INFO] RecordSyncInitDuration has_sync_been_enabled: 0 state: 6
+2026-09-17 18:32:04.760: [INFO] RecordSyncInitDuration has_sync_been_enabled: 0 state: 6
+2026-09-17 18:32:04.980: [INFO] RecordSyncInitDuration has_sync_been_enabled: 0 state: 6
+2026-09-17 18:38:24.612: [INFO] CurrentProfilePath: C:\Users\fragm\.gemini\antigravity-ide\scratch\sql-randomized-test-suite\scratch\test_demo_profile\Default
+2026-09-17 18:38:24.612: [INFO] Profiles total count: 1
+2026-09-17 18:38:24.612: [INFO] Profile: name=Profile 1 path=C:\Users\fragm\.gemini\antigravity-ide\scratch\sql-randomized-test-suite\scratch\test_demo_profile\Default lastActive=null
+2026-09-17 18:38:24.612: [INFO] LastUsedProfileDir: C:\Users\fragm\.gemini\antigravity-ide\scratch\sql-randomized-test-suite\scratch\test_demo_profile\Default
+2026-09-17 18:38:24.612: [INFO] VisibilityChanged: 0
+2026-09-17 18:38:24.634: [INFO] OnDoneLoading sync enabled: 0
+2026-09-17 18:38:24.634: [INFO] BookmarkModelLoaded, ids_reassigned: 0
+2026-09-17 18:38:24.634: [INFO] BookmarksLoadDropped droppedNodes=0
+2026-09-17 18:38:24.634: [INFO] BookmarksSnapshot Startup total=0 bar=0 other=0 mobile=0 showBar=0 showBarNTP=1
+2026-09-17 18:38:24.645: [INFO] RecordSyncInitDuration has_sync_been_enabled: 0 state: 3
+2026-09-17 18:38:24.679: [INFO] RecordSyncInitDuration has_sync_been_enabled: 0 state: 3
+2026-09-17 18:38:25.894: [INFO] RecordSyncInitDuration has_sync_been_enabled: 0 state: 3
+2026-09-17 18:38:25.896: [INFO] RecordSyncInitDuration has_sync_been_enabled: 0 state: 3
+2026-09-17 18:38:25.898: [INFO] RecordSyncInitDuration has_sync_been_enabled: 0 state: 3
+2026-09-17 18:38:25.902: [INFO] RecordSyncInitDuration has_sync_been_enabled: 0 state: 3
+2026-09-17 18:38:25.903: [INFO] RecordSyncInitDuration has_sync_been_enabled: 0 state: 3
+2026-09-17 18:38:25.904: [INFO] RecordSyncInitDuration has_sync_been_enabled: 0 state: 3
+2026-09-17 18:38:25.904: [INFO] RecordSyncInitDuration has_sync_been_enabled: 0 state: 5
+2026-09-17 18:38:25.906: [INFO] RecordSyncInitDuration has_sync_been_enabled: 0 state: 5
+2026-09-17 18:38:26.136: [INFO] RecordSyncInitDuration has_sync_been_enabled: 0 state: 5
+2026-09-17 18:38:26.139: [INFO] RecordSyncInitDuration has_sync_been_enabled: 0 state: 5
+2026-09-17 18:38:26.456: [INFO] RecordSyncInitDuration has_sync_been_enabled: 0 state: 5
+2026-09-17 18:38:26.724: [INFO] RecordSyncInitDuration has_sync_been_enabled: 0 state: 5
+2026-09-17 18:38:26.725: [INFO] RecordSyncInitDuration has_sync_been_enabled: 0 state: 6
+2026-09-17 18:38:26.726: [INFO] RecordSyncInitDuration has_sync_been_enabled: 0 state: 6
+2026-09-17 18:38:27.226: [INFO] RecordSyncInitDuration has_sync_been_enabled: 0 state: 6
+2026-09-17 18:38:27.227: [INFO] RecordSyncInitDuration has_sync_been_enabled: 0 state: 6
+2026-09-17 18:38:27.434: [INFO] RecordSyncInitDuration has_sync_been_enabled: 0 state: 6
+2026-09-17 18:46:09.653: [INFO] CurrentProfilePath: C:\Users\fragm\.gemini\antigravity-ide\scratch\sql-randomized-test-suite\scratch\test_demo_profile\Default
+2026-09-17 18:46:09.653: [INFO] Profiles total count: 1
+2026-09-17 18:46:09.653: [INFO] Profile: name=Profile 1 path=C:\Users\fragm\.gemini\antigravity-ide\scratch\sql-randomized-test-suite\scratch\test_demo_profile\Default lastActive=null
+2026-09-17 18:46:09.653: [INFO] LastUsedProfileDir: C:\Users\fragm\.gemini\antigravity-ide\scratch\sql-randomized-test-suite\scratch\test_demo_profile\Default
+2026-09-17 18:46:09.653: [INFO] VisibilityChanged: 0
+2026-09-17 18:46:09.674: [INFO] OnDoneLoading sync enabled: 0
+2026-09-17 18:46:09.674: [INFO] BookmarkModelLoaded, ids_reassigned: 0
+2026-09-17 18:46:09.674: [INFO] BookmarksLoadDropped droppedNodes=0
+2026-09-17 18:46:09.674: [INFO] BookmarksSnapshot Startup total=0 bar=0 other=0 mobile=0 showBar=0 showBarNTP=1
+2026-09-17 18:46:09.684: [INFO] RecordSyncInitDuration has_sync_been_enabled: 0 state: 3
+2026-09-17 18:46:09.709: [INFO] RecordSyncInitDuration has_sync_been_enabled: 0 state: 3
+2026-09-17 18:46:10.896: [INFO] RecordSyncInitDuration has_sync_been_enabled: 0 state: 3
+2026-09-17 18:46:10.897: [INFO] RecordSyncInitDuration has_sync_been_enabled: 0 state: 3
+2026-09-17 18:46:10.897: [INFO] RecordSyncInitDuration has_sync_been_enabled: 0 state: 3
+2026-09-17 18:46:10.901: [INFO] RecordSyncInitDuration has_sync_been_enabled: 0 state: 3
+2026-09-17 18:46:10.902: [INFO] RecordSyncInitDuration has_sync_been_enabled: 0 state: 3
+2026-09-17 18:46:10.902: [INFO] RecordSyncInitDuration has_sync_been_enabled: 0 state: 3
+2026-09-17 18:46:10.903: [INFO] RecordSyncInitDuration has_sync_been_enabled: 0 state: 5
+2026-09-17 18:46:10.904: [INFO] RecordSyncInitDuration has_sync_been_enabled: 0 state: 5
+2026-09-17 18:46:11.045: [INFO] RecordSyncInitDuration has_sync_been_enabled: 0 state: 5
+2026-09-17 18:46:11.048: [INFO] RecordSyncInitDuration has_sync_been_enabled: 0 state: 5
+2026-09-17 18:46:11.306: [INFO] RecordSyncInitDuration has_sync_been_enabled: 0 state: 5
+2026-09-17 18:46:11.726: [INFO] RecordSyncInitDuration has_sync_been_enabled: 0 state: 5
+2026-09-17 18:46:11.728: [INFO] RecordSyncInitDuration has_sync_been_enabled: 0 state: 6
+2026-09-17 18:46:11.731: [INFO] RecordSyncInitDuration has_sync_been_enabled: 0 state: 6
+2026-09-17 18:46:12.383: [INFO] RecordSyncInitDuration has_sync_been_enabled: 0 state: 6
+2026-09-17 18:46:12.385: [INFO] RecordSyncInitDuration has_sync_been_enabled: 0 state: 6
+2026-09-17 18:46:12.597: [INFO] RecordSyncInitDuration has_sync_been_enabled: 0 state: 6
+2026-09-17 18:52:50.931: [INFO] CurrentProfilePath: C:\Users\fragm\.gemini\antigravity-ide\scratch\sql-randomized-test-suite\scratch\test_demo_profile\Default
+2026-09-17 18:52:50.931: [INFO] Profiles total count: 1
+2026-09-17 18:52:50.931: [INFO] Profile: name=Profile 1 path=C:\Users\fragm\.gemini\antigravity-ide\scratch\sql-randomized-test-suite\scratch\test_demo_profile\Default lastActive=null
+2026-09-17 18:52:50.931: [INFO] LastUsedProfileDir: C:\Users\fragm\.gemini\antigravity-ide\scratch\sql-randomized-test-suite\scratch\test_demo_profile\Default
+2026-09-17 18:52:50.931: [INFO] VisibilityChanged: 0
+2026-09-17 18:52:50.984: [INFO] OnDoneLoading sync enabled: 0
+2026-09-17 18:52:50.984: [INFO] BookmarkModelLoaded, ids_reassigned: 0
+2026-09-17 18:52:50.984: [INFO] BookmarksLoadDropped droppedNodes=0
+2026-09-17 18:52:50.984: [INFO] BookmarksSnapshot Startup total=0 bar=0 other=0 mobile=0 showBar=0 showBarNTP=1
+2026-09-17 18:52:51.008: [INFO] RecordSyncInitDuration has_sync_been_enabled: 0 state: 3
+2026-09-17 18:52:51.069: [INFO] RecordSyncInitDuration has_sync_been_enabled: 0 state: 3
+2026-09-17 18:52:52.040: [INFO] RecordSyncInitDuration has_sync_been_enabled: 0 state: 3
+2026-09-17 18:52:52.041: [INFO] RecordSyncInitDuration has_sync_been_enabled: 0 state: 3
+2026-09-17 18:52:52.043: [INFO] RecordSyncInitDuration has_sync_been_enabled: 0 state: 3
+2026-09-17 18:52:52.053: [INFO] RecordSyncInitDuration has_sync_been_enabled: 0 state: 3
+2026-09-17 18:52:52.054: [INFO] RecordSyncInitDuration has_sync_been_enabled: 0 state: 3
+2026-09-17 18:52:52.055: [INFO] RecordSyncInitDuration has_sync_been_enabled: 0 state: 3
+2026-09-17 18:52:52.057: [INFO] RecordSyncInitDuration has_sync_been_enabled: 0 state: 5
+2026-09-17 18:52:52.059: [INFO] RecordSyncInitDuration has_sync_been_enabled: 0 state: 5
+2026-09-17 18:52:52.163: [INFO] RecordSyncInitDuration has_sync_been_enabled: 0 state: 5
+2026-09-17 18:52:52.175: [INFO] RecordSyncInitDuration has_sync_been_enabled: 0 state: 5
+2026-09-17 18:52:52.453: [INFO] RecordSyncInitDuration has_sync_been_enabled: 0 state: 5
+2026-09-17 18:52:52.819: [INFO] RecordSyncInitDuration has_sync_been_enabled: 0 state: 5
+2026-09-17 18:52:52.821: [INFO] RecordSyncInitDuration has_sync_been_enabled: 0 state: 6
+2026-09-17 18:52:52.823: [INFO] RecordSyncInitDuration has_sync_been_enabled: 0 state: 6
+2026-09-17 18:52:53.340: [INFO] RecordSyncInitDuration has_sync_been_enabled: 0 state: 6
+2026-09-17 18:52:53.344: [INFO] RecordSyncInitDuration has_sync_been_enabled: 0 state: 6
+2026-09-17 18:52:53.534: [INFO] RecordSyncInitDuration has_sync_been_enabled: 0 state: 6

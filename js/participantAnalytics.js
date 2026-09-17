@@ -838,9 +838,9 @@ class ParticipantAnalytics {
 
         const age = getVal(row, ['Age', 'age'], 17);
         const gender = getVal(row, ['Gender', 'gender'], 18);
-        const academic = getVal(row, ['Academic Standing', 'academicStanding'], 19);
+        const education = getVal(row, ['Highest Level of Education', 'Education', 'Academic Standing', 'academicStanding', 'education'], 19);
 
-        if (!demographics[pid] && (age || gender || academic)) {
+        if (!demographics[pid] && (age || gender || education)) {
           demographics[pid] = {
             participantId: pid,
             assignedGroup: assignedGroupVal || '',
@@ -848,10 +848,15 @@ class ParticipantAnalytics {
             hostLanguage: hostLangVal || '',
             age: age || '',
             gender: gender || '',
-            academicStanding: academic || '',
-            codingExp: getVal(row, ['Coding Experience', 'codingExp'], 20) || '',
+            education: education || '',
+            highestEducation: education || '',
+            academicStanding: education || '',
+            codingExp: getVal(row, ['Programming Experience', 'Coding Experience', 'codingExp'], 20) || '',
             dbExp: getVal(row, ['Database Experience', 'dbExp'], 21) || '',
-            queryExp: getVal(row, ['Query Writing Experience', 'queryExp'], 22) || '',
+            primaryLanguage: getVal(row, ['Primary Language', 'primaryLanguage'], 22) || '',
+            countryOfOrigin: getVal(row, ['Country of Origin', 'countryOfOrigin'], 23) || '',
+            disability: getVal(row, ['Disability Status', 'disability'], 24) || '',
+            queryExp: getVal(row, ['Query Writing Experience', 'queryExp']) || 'Completed via updated survey',
             timestamp: resp.timestamp || new Date().toISOString()
           };
         }
@@ -939,10 +944,12 @@ class ParticipantAnalytics {
       'Focus Lost Duration (ms)',
       'Age',
       'Gender',
-      'Academic Standing',
-      'Coding Experience',
+      'Highest Level of Education',
+      'Programming Experience',
       'Database Experience',
-      'Query Writing Experience',
+      'Primary Language',
+      'Country of Origin',
+      'Disability Status',
       'Final Thoughts',
       'Raw SQL Query',
       'Dialect SQL Query',
@@ -982,10 +989,12 @@ class ParticipantAnalytics {
       r.focusLostDurationMs || 0,
       demo.age || '',
       demo.gender || '',
-      demo.academicStanding || '',
+      demo.education || demo.highestEducation || demo.academicStanding || '',
       demo.codingExp || '',
       demo.dbExp || '',
-      demo.queryExp || '',
+      demo.primaryLanguage || '',
+      demo.countryOfOrigin || '',
+      demo.disability || '',
       thoughtsObj.thoughts || '',
       r.rawQuery || '',
       r.dialectSql || r.rawQuery || '',

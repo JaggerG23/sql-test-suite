@@ -31,9 +31,9 @@ CSV_HEADERS = [
     'Syntax Dialect ID', 'Syntax Dialect Name', 'Selected Key (1-4)', 'Selected Option',
     'Correct Option', 'Is Correct', 'Response Time (ms)', 'Random Seed',
     'Tab Focus Lost', 'Tab Switch Count', 'Focus Lost Duration (ms)',
-    'Age', 'Gender', 'Academic Standing', 'Coding Experience',
-    'Database Experience', 'Query Writing Experience', 'Final Thoughts',
-    'Raw SQL Query', 'Dialect SQL Query', 'Code Snippet'
+    'Age', 'Gender', 'Highest Level of Education', 'Programming Experience',
+    'Database Experience', 'Primary Language', 'Country of Origin', 'Disability Status',
+    'Final Thoughts', 'Raw SQL Query', 'Dialect SQL Query', 'Code Snippet'
 ]
 
 def parse_cookies(cookie_header):
@@ -121,8 +121,9 @@ def export_csv(db_data):
                 r.get('responseTimeMs', 0), r.get('seed', ''),
                 'TRUE' if r.get('tabFocusLost') else 'FALSE', r.get('tabSwitchCount', 0),
                 r.get('focusLostDurationMs', 0), demo.get('age', ''), demo.get('gender', ''),
-                demo.get('academicStanding', ''), demo.get('codingExp', ''),
-                demo.get('dbExp', ''), demo.get('queryExp', ''),
+                demo.get('education', demo.get('highestEducation', demo.get('academicStanding', ''))),
+                demo.get('codingExp', ''), demo.get('dbExp', ''),
+                demo.get('primaryLanguage', ''), demo.get('countryOfOrigin', ''), demo.get('disability', ''),
                 thought_obj.get('thoughts', ''), r.get('rawQuery', ''),
                 r.get('dialectSql', r.get('rawQuery', '')),
                 r.get('codeSnippet', r.get('jsCode', r.get('incompleteQuery', '')))
