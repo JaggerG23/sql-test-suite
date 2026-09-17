@@ -404,6 +404,12 @@ class ParticipantAnalytics {
   }
 
   logResponse(entry) {
+    const existingResponses = this.getParticipantResponses(this.participantId);
+    if (existingResponses.length >= 60) {
+      console.warn(`[ParticipantAnalytics] Participant ${this.participantId} has already completed the maximum of 60 questions. Dropping additional submission.`);
+      return null;
+    }
+
     const pst = this.getPSTDateTime();
     const assignedGroup = this.getAssignedGroup(this.participantId);
     const groupName = entry.assignedGroupName || entry.assignedGroup || (assignedGroup ? assignedGroup.name : 'Unknown');
@@ -411,6 +417,11 @@ class ParticipantAnalytics {
     const hostLang = entry.hostLanguage || (assignedGroup ? assignedGroup.hostLanguage : 'javascript');
     const activeDialectKey = entry.activeDialect || (assignedGroup ? assignedGroup.sqlDialect : 'pipe');
     const activeDialectLabel = entry.activeDialectName || (activeDialectKey === 'quorum' ? 'Quorum Syntax' : 'Google SQL (Pipe Syntax)');
+
+    const rawQ = parseInt(entry.questionNumber, 10);
+    const resolvedQNum = (!isNaN(rawQ) && rawQ >= 1 && rawQ <= 60)
+      ? rawQ
+      : Math.min(60, existingResponses.length + 1);
 
     const record = {
       id: 'resp_' + Date.now() + '_' + Math.random().toString(36).substring(2, 7),
@@ -424,7 +435,7 @@ class ParticipantAnalytics {
       assignedGroupId: groupId,
       assignedGroupName: groupName,
       hostLanguage: hostLang,
-      questionNumber: entry.questionNumber || (this.getParticipantResponses(this.participantId).length + 1),
+      questionNumber: resolvedQNum,
       questionCategory: entry.questionCategory || 'General',
       activeDialect: activeDialectKey,
       activeDialectName: activeDialectLabel,

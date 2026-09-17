@@ -113,7 +113,22 @@ class QueryExperimentApp {
       this.currentQuestionNumber = 'intake';
       await this.loadIncrementalQuestion('intake');
     } else {
-      await this.loadIncrementalQuestion(1);
+      const pid = this.analytics ? this.analytics.participantId : null;
+      const completedResponses = (pid && this.analytics && typeof this.analytics.getParticipantResponses === 'function')
+        ? this.analytics.getParticipantResponses(pid)
+        : [];
+      const completedCount = completedResponses.length;
+
+      if (this.humanResolver && this.humanResolver.stats) {
+        this.humanResolver.stats.totalAnswered = Math.min(60, completedCount);
+      }
+
+      if (completedCount >= 60) {
+        this.currentQuestionNumber = 'final_thoughts';
+        await this.loadIncrementalQuestion('final_thoughts');
+      } else {
+        await this.loadIncrementalQuestion(Math.min(60, completedCount + 1));
+      }
     }
     this.renderAnalyticsDashboard();
     if (!this.isParticipantView()) {
@@ -583,7 +598,8 @@ class QueryExperimentApp {
       return;
     }
 
-    if (targetQNum === 'final_thoughts' || (typeof targetQNum === 'number' && targetQNum > 60)) {
+    const isOver60 = (typeof targetQNum === 'number' && targetQNum > 60) || (parseInt(targetQNum, 10) > 60);
+    if (targetQNum === 'final_thoughts' || isOver60) {
       this.currentQuestionNumber = 'final_thoughts';
       const select = document.getElementById('question-jump-select');
       if (select) select.value = 'final_thoughts';
@@ -1012,6 +1028,12 @@ class QueryExperimentApp {
       btnCopy.addEventListener('click', handleCopy);
     }
 
+    // Dynamic app version tag synchronization
+    const versionBadge = document.getElementById('app-version-tag') || document.querySelector('.brand .badge');
+    if (versionBadge && window.studyConfig && typeof window.studyConfig.getVersion === 'function') {
+      versionBadge.textContent = window.studyConfig.getVersion();
+    }
+
     // Dev Reset Test button binding (controlled by studyConfig in participant view)
     const btnResetTest = document.getElementById('btn-reset-test');
     if (btnResetTest) {
@@ -1415,7 +1437,7 @@ class QueryExperimentApp {
                         })() : '-');
                         return `
                           <tr>
-                            <td><strong>Q${group.responses.length - idx}</strong></td>
+                            <td><strong>Q${r.questionNumber || (group.responses.length - idx)}</strong></td>
                             <td class="fs-xs text-muted" style="white-space: nowrap;">${timeFormatted}</td>
                             <td class="fs-xs text-dim">${r.sessionId ? r.sessionId.slice(-8) : '-'}</td>
                             <td><span class="badge" style="background: rgba(99, 102, 241, 0.15); border: 1px solid rgba(99, 102, 241, 0.3); color: #a5b4fc; font-size: 10px;">${this.escapeHTML(r.assignedGroupName || r.assignedGroup || group.assignedGroupName || '-')}</span></td>

@@ -12,6 +12,9 @@
 
   // Default configuration (can be customized here or via the Admin Dashboard UI)
   const defaultConfig = {
+    // Current application release version
+    VERSION: 'v1.0.14',
+
     // Optional central backend (e.g. 'https://my-study-backend.onrender.com' or '' for auto)
     BACKEND_API_URL: '',
     
@@ -50,6 +53,10 @@
           this.config.PARTICIPANT_RESET_BTN_ENABLED = savedResetBtn === 'true';
         }
       } catch (e) {}
+    }
+
+    getVersion() {
+      return this.config.VERSION || 'v1.0.14';
     }
 
     isParticipantResetButtonEnabled() {

@@ -164,6 +164,11 @@ class HumanResolver {
         return;
       }
 
+      // Block answering shortcuts if test is finished or at final thoughts
+      if (this.app && (this.app.currentQuestionNumber === 'final_thoughts' || (this.stats && this.stats.totalAnswered >= 60))) {
+        return;
+      }
+
       // Handle Keys 1, 2, 3, 4
       if (['1', '2', '3', '4'].includes(e.key)) {
         e.preventDefault();
@@ -483,6 +488,8 @@ class HumanResolver {
   }
 
   renderFinalThoughtsScreen() {
+    this.currentQuestion = null;
+    this.isAnswered = true;
     this.updateNavCounter();
     const container = document.getElementById('human-challenge-container');
     if (!container) return;
@@ -563,7 +570,7 @@ class HumanResolver {
       return;
     }
 
-    if (targetQNum === 'final_thoughts' || targetQNum > 60) {
+    if (targetQNum === 'final_thoughts' || targetQNum > 60 || (this.stats && this.stats.totalAnswered >= 60 && !this.adminPreviewGroup)) {
       this.renderFinalThoughtsScreen();
       return;
     }
@@ -576,7 +583,7 @@ class HumanResolver {
       this.intakeCompleted = true;
     }
 
-    const qNum = targetQNum || (this.stats ? this.stats.totalAnswered + 1 : 1);
+    const qNum = Math.min(60, Math.max(1, parseInt(targetQNum, 10) || (this.stats ? this.stats.totalAnswered + 1 : 1)));
 
     this.currentSchema = schema;
     this.currentRawQuery = query;
@@ -890,6 +897,9 @@ class HumanResolver {
       return;
     }
     if (this.isAnswered || !this.currentQuestion) return;
+    if (this.app && (this.app.currentQuestionNumber === 'final_thoughts' || (this.stats && this.stats.totalAnswered >= 60))) {
+      return;
+    }
 
     this.isAnswered = true;
     this.selectedOptionIndex = index;
@@ -909,9 +919,11 @@ class HumanResolver {
     // Log telemetry to analytics storage (stored persistently in localStorage)
     if (this.app.analytics) {
       const responseTimeMs = q.startTime ? (Date.now() - q.startTime) : 0;
-      const currentQNum = (this.app.currentQuestionNumber && typeof this.app.currentQuestionNumber === 'number') 
-        ? this.app.currentQuestionNumber 
-        : (this.totalAnswered + 1);
+      const curQ = this.app.currentQuestionNumber;
+      const parsedQ = (typeof curQ === 'number') ? curQ : parseInt(curQ, 10);
+      const currentQNum = (!isNaN(parsedQ) && parsedQ >= 1 && parsedQ <= 60)
+        ? parsedQ
+        : Math.min(60, (this.stats ? this.stats.totalAnswered + 1 : 1));
 
       const assignedGroup = (this.app.analytics && typeof this.app.analytics.getAssignedGroup === 'function')
         ? this.app.analytics.getAssignedGroup()
