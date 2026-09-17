@@ -8,6 +8,7 @@
 (function() {
   const LOCAL_STORAGE_KEY_CLOUD = 'sql_study_cloud_webhook_url';
   const LOCAL_STORAGE_KEY_BACKEND = 'sql_study_backend_api_url';
+  const LOCAL_STORAGE_KEY_RESET_BTN = 'sql_study_participant_reset_btn_enabled';
 
   // Default configuration (can be customized here or via the Admin Dashboard UI)
   const defaultConfig = {
@@ -16,13 +17,24 @@
     
     // Optional Google Apps Script Web App URL or REST Webhook for 100% free serverless logging
     // e.g. 'https://script.google.com/macros/s/AKfycby.../exec'
-    CLOUD_WEBHOOK_URL: ''
+    CLOUD_WEBHOOK_URL: '',
+
+    // Toggle participant view "Reset Test" button visibility
+    PARTICIPANT_RESET_BTN_ENABLED: true
   };
 
   class StudyConfigManager {
     constructor() {
       this.config = { ...defaultConfig };
       this.loadPersistedConfig();
+
+      if (typeof window !== 'undefined') {
+        window.addEventListener('storage', (e) => {
+          if (e.key === LOCAL_STORAGE_KEY_RESET_BTN || e.key === LOCAL_STORAGE_KEY_CLOUD || e.key === LOCAL_STORAGE_KEY_BACKEND) {
+            this.loadPersistedConfig();
+          }
+        });
+      }
     }
 
     loadPersistedConfig() {
@@ -32,6 +44,32 @@
 
         const savedBackend = localStorage.getItem(LOCAL_STORAGE_KEY_BACKEND);
         if (savedBackend) this.config.BACKEND_API_URL = savedBackend.trim();
+
+        const savedResetBtn = localStorage.getItem(LOCAL_STORAGE_KEY_RESET_BTN);
+        if (savedResetBtn !== null) {
+          this.config.PARTICIPANT_RESET_BTN_ENABLED = savedResetBtn === 'true';
+        }
+      } catch (e) {}
+    }
+
+    isParticipantResetButtonEnabled() {
+      return this.config.PARTICIPANT_RESET_BTN_ENABLED !== false;
+    }
+
+    setParticipantResetButtonEnabled(enabled) {
+      this.config.PARTICIPANT_RESET_BTN_ENABLED = Boolean(enabled);
+      try {
+        localStorage.setItem(LOCAL_STORAGE_KEY_RESET_BTN, String(this.config.PARTICIPANT_RESET_BTN_ENABLED));
+        if ('BroadcastChannel' in window) {
+          try {
+            const ch = new BroadcastChannel('sql_study_telemetry_channel');
+            ch.postMessage({
+              type: 'CONFIG_UPDATED',
+              key: 'PARTICIPANT_RESET_BTN_ENABLED',
+              value: this.config.PARTICIPANT_RESET_BTN_ENABLED
+            });
+          } catch (err) {}
+        }
       } catch (e) {}
     }
 

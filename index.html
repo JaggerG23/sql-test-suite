@@ -198,7 +198,16 @@
                 <h3><i class="fa-solid fa-chart-line text-accent"></i> Participant Answer Logs & Telemetry Storage</h3>
                 <span id="analytics-total-badge" class="badge badge-info">0 Responses Stored</span>
               </div>
-              <div class="d-flex gap-2 flex-wrap" style="display:flex; gap:8px; flex-wrap: wrap;">
+              <div class="d-flex gap-2 flex-wrap align-center" style="display:flex; gap:8px; flex-wrap: wrap; align-items: center;">
+                <!-- Toggle Participant Reset Button -->
+                <div class="d-flex align-center gap-1" style="background: rgba(239, 68, 68, 0.12); border: 1px solid rgba(239, 68, 68, 0.35); padding: 4px 10px; border-radius: 6px; font-size: 11.5px; color: #fca5a5; display: inline-flex; align-items: center; gap: 6px;">
+                  <label for="toggle-participant-reset-btn" style="margin: 0; cursor: pointer; font-weight: 600; display: flex; align-items: center; gap: 5px; user-select: none;">
+                    <i class="fa-solid fa-rotate-left"></i> Participant Reset Button:
+                  </label>
+                  <input type="checkbox" id="toggle-participant-reset-btn" style="cursor: pointer; accent-color: var(--color-danger); width: 15px; height: 15px;" checked title="Toggle whether participants see the 'Reset Test' button">
+                  <span id="label-participant-reset-btn-status" style="font-weight: 700; font-size: 11px; color: #ef4444; margin-left: 2px;">Visible</span>
+                </div>
+
                 <button id="btn-import-telemetry" class="btn btn-sm btn-primary"><i class="fa-solid fa-file-import"></i> Import Data</button>
 
                 <button id="btn-export-csv" class="btn btn-sm btn-success"><i class="fa-solid fa-file-csv"></i> Export CSV Data</button>
@@ -304,17 +313,17 @@
   </div>
 
   <!-- JS Module Scripts -->
-  <script src="js/config.js?v=18"></script>
-  <script src="js/adminAuth.js?v=18"></script>
-  <script src="js/schemaGenerator.js?v=18"></script>
-  <script src="js/queryGenerator.js?v=18"></script>
-  <script src="js/syntaxDialects.js?v=18"></script>
-  <script src="js/quizGenerator.js?v=18"></script>
-  <script src="js/participantAnalytics.js?v=18"></script>
-  <script src="js/engines/sqliteEngine.js?v=18"></script>
-  <script src="js/engines/customJsEngine.js?v=18"></script>
-  <script src="js/engines/optimizerEngine.js?v=18"></script>
-  <script src="js/humanResolver.js?v=18"></script>
-  <script src="js/app.js?v=18"></script>
+  <script src="js/config.js?v=19"></script>
+  <script src="js/adminAuth.js?v=19"></script>
+  <script src="js/schemaGenerator.js?v=19"></script>
+  <script src="js/queryGenerator.js?v=19"></script>
+  <script src="js/syntaxDialects.js?v=19"></script>
+  <script src="js/quizGenerator.js?v=19"></script>
+  <script src="js/participantAnalytics.js?v=19"></script>
+  <script src="js/engines/sqliteEngine.js?v=19"></script>
+  <script src="js/engines/customJsEngine.js?v=19"></script>
+  <script src="js/engines/optimizerEngine.js?v=19"></script>
+  <script src="js/humanResolver.js?v=19"></script>
+  <script src="js/app.js?v=19"></script>
 </body>
 </html>

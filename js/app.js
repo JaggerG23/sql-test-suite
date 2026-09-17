@@ -1012,14 +1012,34 @@ class QueryExperimentApp {
       btnCopy.addEventListener('click', handleCopy);
     }
 
-    // Dev Reset Test button binding (controlled by window.ENABLE_DEV_RESET)
+    // Dev Reset Test button binding (controlled by studyConfig in participant view)
     const btnResetTest = document.getElementById('btn-reset-test');
     if (btnResetTest) {
-      if (!window.ENABLE_DEV_RESET) {
-        btnResetTest.style.display = 'none';
-      } else {
-        btnResetTest.style.display = 'inline-flex';
-        btnResetTest.addEventListener('click', () => this.resetParticipantTest());
+      const updateResetBtnVisibility = () => {
+        const isPart = this.isParticipantView();
+        if (isPart) {
+          const isEnabled = window.studyConfig ? window.studyConfig.isParticipantResetButtonEnabled() : true;
+          btnResetTest.style.display = isEnabled ? 'inline-flex' : 'none';
+        } else {
+          btnResetTest.style.display = 'inline-flex';
+        }
+      };
+
+      updateResetBtnVisibility();
+      btnResetTest.addEventListener('click', () => this.resetParticipantTest());
+
+      // Live updates across tabs / storage events
+      window.addEventListener('storage', (e) => {
+        if (e.key === 'sql_study_participant_reset_btn_enabled') {
+          updateResetBtnVisibility();
+        }
+      });
+      if (this.analytics && this.analytics.channel) {
+        this.analytics.channel.addEventListener('message', (ev) => {
+          if (ev.data && ev.data.type === 'CONFIG_UPDATED' && ev.data.key === 'PARTICIPANT_RESET_BTN_ENABLED') {
+            updateResetBtnVisibility();
+          }
+        });
       }
     }
 
@@ -1045,6 +1065,40 @@ class QueryExperimentApp {
       btnClear.addEventListener('click', () => {
         this.analytics.clearAllResponses();
         this.renderAnalyticsDashboard();
+      });
+    }
+
+    // Admin Dashboard Toggle for Participant View Reset Button
+    const toggleResetBtn = document.getElementById('toggle-participant-reset-btn');
+    const labelResetStatus = document.getElementById('label-participant-reset-btn-status');
+    if (toggleResetBtn) {
+      const updateToggleUI = () => {
+        const isEnabled = window.studyConfig ? window.studyConfig.isParticipantResetButtonEnabled() : true;
+        toggleResetBtn.checked = isEnabled;
+        if (labelResetStatus) {
+          labelResetStatus.textContent = isEnabled ? 'Visible' : 'Hidden';
+          labelResetStatus.style.color = isEnabled ? '#ef4444' : '#94a3b8';
+        }
+      };
+
+      updateToggleUI();
+
+      toggleResetBtn.addEventListener('change', (e) => {
+        const checked = e.target.checked;
+        if (window.studyConfig) {
+          window.studyConfig.setParticipantResetButtonEnabled(checked);
+        }
+        if (labelResetStatus) {
+          labelResetStatus.textContent = checked ? 'Visible' : 'Hidden';
+          labelResetStatus.style.color = checked ? '#ef4444' : '#94a3b8';
+        }
+      });
+
+      // Synchronize across open admin tabs
+      window.addEventListener('storage', (e) => {
+        if (e.key === 'sql_study_participant_reset_btn_enabled') {
+          updateToggleUI();
+        }
       });
     }
 
