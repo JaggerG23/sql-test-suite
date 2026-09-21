@@ -1129,6 +1129,57 @@ body.admin-locked .app-container {
 .gap-2 { gap: 8px; }
 .gap-3 { gap: 12px; }
 
+/* Admin Group Preview Side-by-Side Layout */
+.admin-preview-layout {
+  display: grid;
+  grid-template-columns: 370px 1fr;
+  gap: 20px;
+  align-items: start;
+}
+
+@media (max-width: 1100px) {
+  .admin-preview-layout {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* Admin Question Grid Buttons */
+.admin-qgrid-btn {
+  font-size: 11px;
+  padding: 5px 0;
+  border-radius: 5px;
+  cursor: pointer;
+  font-weight: 600;
+  border: 1.5px solid rgba(255, 255, 255, 0.1);
+  background: rgba(0, 0, 0, 0.28);
+  color: #64748b;
+  transition: all 0.15s ease;
+  width: 100%;
+  outline: none;
+}
+
+.admin-qgrid-btn:hover:not(.active) {
+  background: rgba(139, 92, 246, 0.22) !important;
+  color: #a78bfa !important;
+  border-color: rgba(139, 92, 246, 0.5) !important;
+}
+
+.admin-qgrid-btn.active {
+  border: 1.5px solid rgba(139, 92, 246, 0.85) !important;
+  background: rgba(139, 92, 246, 0.38) !important;
+  color: #c4b5fd !important;
+  box-shadow: 0 0 10px rgba(139, 92, 246, 0.3);
+}
+
+.admin-qgrid-btn:focus {
+  outline: none;
+}
+
+.admin-qgrid-btn:focus-visible {
+  outline: 2px solid rgba(139, 92, 246, 0.9);
+  outline-offset: 1px;
+}
+
 
 
 

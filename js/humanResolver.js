@@ -45,7 +45,7 @@ class HumanResolver {
 
     // Real-time listener for /index.html visits: forces active participant to fill demographics again
     const handleIndexVisitEvent = () => {
-      if (!this.hasCompletedDemographics()) {
+      if (this.isParticipantView() && !this.hasCompletedDemographics()) {
         this.intakeCompleted = false;
         if (this.app) this.app.currentQuestionNumber = 'intake';
         this.renderIntakeScreen();
@@ -79,19 +79,26 @@ class HumanResolver {
       return this.app.isParticipantView();
     }
     if (typeof document !== 'undefined') {
-      if (document.getElementById('tab-generator')) return false;
-      if (document.title && document.title.includes('Participant')) return true;
-      if (document.getElementById('participant-id-input')) return true;
-      if (document.getElementById('human-challenge-container')) return true;
+      if (document.getElementById('admin-interactive-menu') || document.getElementById('admin-sidebar-panel') || document.getElementById('btn-admin-logout')) {
+        return false;
+      }
+      if (document.title && document.title.toLowerCase().includes('admin')) {
+        return false;
+      }
+      if (document.title && document.title.toLowerCase().includes('participant')) {
+        return true;
+      }
     }
     if (typeof window !== 'undefined' && window.location && window.location.pathname) {
       const p = window.location.pathname.toLowerCase();
-      if (p.includes('participant') || p === '/' || p.endsWith('/')) return true;
+      if (p.includes('participant')) return true;
     }
     return false;
   }
 
   hasCompletedDemographics(pid) {
+    if (!this.isParticipantView()) return true;
+
     if (this.app && typeof this.app.hasCompletedDemographics === 'function') {
       return this.app.hasCompletedDemographics(pid);
     }
@@ -585,7 +592,7 @@ class HumanResolver {
       return;
     }
 
-    if (!this.hasCompletedDemographics()) {
+    if (this.isParticipantView() && !this.hasCompletedDemographics()) {
       this.intakeCompleted = false;
       this.renderIntakeScreen();
       return;
@@ -618,6 +625,7 @@ class HumanResolver {
       return;
     }
 
+    this.currentQuestion.qNum = qNum;
     this.currentQuestion.startTime = Date.now();
     this.isAnswered = false;
     this.selectedOptionIndex = null;
@@ -702,6 +710,9 @@ class HumanResolver {
     if (!container || !this.currentQuestion) return;
 
     const q = this.currentQuestion;
+    const qNum = (q && q.qNum) || this.app.currentQuestionNumber || 1;
+    const bIdx = Math.floor((parseInt(qNum, 10) - 1) / 6) + 1;
+    const vIdx = ((parseInt(qNum, 10) - 1) % 6) + 1;
     const activeDialects = this.app.syntaxDialects.getActiveDialects();
     const currentDialectIdx = this.app.syntaxDialects.currentSelectedDialectIndex;
     const isParticipantPage = this.isParticipantView();
@@ -727,7 +738,12 @@ class HumanResolver {
           <!-- 1. TOP FULL-WIDTH ROW: Input Schema Reference with Distinct Divider Line -->
           <div class="quiz-schema-top-bar p-2" style="border: 1px solid rgba(255, 255, 255, 0.1); border-bottom: 2px solid var(--color-accent); border-radius: 6px; background: rgba(14, 18, 28, 0.8); width: 100%; box-shadow: 0 4px 12px rgba(0,0,0,0.3);">
             <div class="d-flex justify-between align-center mb-1 pb-1" style="border-bottom: 1px solid rgba(255,255,255,0.06);">
-              <strong style="color: var(--color-accent); font-size: 11px;"><i class="fa-solid fa-table-cells text-accent"></i> Input Schema Reference (${this.app.currentSchema ? this.app.currentSchema.tables.length : 0} Tables)</strong>
+              <div class="d-flex align-center gap-2">
+                <span class="badge" style="font-size: 11px; font-weight: 800; padding: 2px 9px; border-radius: 4px; background: rgba(99, 102, 241, 0.25); border: 1px solid rgba(99, 102, 241, 0.55); color: #c7d2fe; letter-spacing: 0.3px;">
+                  <i class="fa-solid fa-cube"></i> Question ${qNum} / 60 <span style="opacity: 0.65; font-weight: 500;">(Block ${bIdx}.${vIdx})</span>
+                </span>
+                <strong style="color: var(--color-accent); font-size: 11px;"><i class="fa-solid fa-table-cells text-accent"></i> Input Schema Reference (${this.app.currentSchema ? this.app.currentSchema.tables.length : 0} Tables)</strong>
+              </div>
             </div>
             ${this.renderCompactSchemaHTML(this.app.currentSchema)}
           </div>
@@ -764,9 +780,14 @@ class HumanResolver {
               
               <!-- Prompt Banner -->
               <div class="prompt-bar p-1 px-2 d-flex justify-between align-center" style="background: rgba(0,0,0,0.25); border-radius: 5px; border-left: 3px solid var(--color-accent);">
-                <span class="font-weight-bold fs-xs" style="color: var(--text-main); font-size: 11.5px;">
-                  <i class="fa-solid fa-circle-question text-accent"></i> ${q.prompt}
-                </span>
+                <div class="d-flex align-center gap-2">
+                  <span class="badge" style="background: rgba(16, 185, 129, 0.2); border: 1px solid rgba(16, 185, 129, 0.4); color: #6ee7b7; font-weight: 700; font-size: 11px; padding: 1px 7px; border-radius: 4px;">
+                    Q${qNum}
+                  </span>
+                  <span class="font-weight-bold fs-xs" style="color: var(--text-main); font-size: 11.5px;">
+                    <i class="fa-solid fa-circle-question text-accent"></i> ${q.prompt}
+                  </span>
+                </div>
                 <span class="text-muted fs-xs" style="font-size: 10.5px;">Select <strong>1–4</strong>, then press <kbd style="font-size: 9.5px; padding: 1px 4px;">ENTER</kbd></span>
               </div>
 
@@ -925,7 +946,7 @@ class HumanResolver {
   }
 
   selectOption(index) {
-    if (!this.hasCompletedDemographics()) {
+    if (this.isParticipantView() && !this.hasCompletedDemographics()) {
       this.intakeCompleted = false;
       this.renderIntakeScreen();
       return;

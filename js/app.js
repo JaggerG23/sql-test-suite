@@ -22,6 +22,7 @@ class QueryExperimentApp {
     this.currentSchema = null;
     this.currentQuery = '';
     this.batchResults = [];
+    this._loadQuestionCounter = 0;
 
     this.init();
   }
@@ -35,7 +36,7 @@ class QueryExperimentApp {
 
   isParticipantView() {
     if (typeof document !== 'undefined') {
-      if (document.getElementById('tab-admin-preview') || document.getElementById('admin-sidebar-panel') || document.getElementById('btn-admin-logout')) {
+      if (document.getElementById('admin-interactive-menu') || document.getElementById('admin-sidebar-panel') || document.getElementById('btn-admin-logout')) {
         return false;
       }
       if (document.title && document.title.toLowerCase().includes('admin')) {
@@ -53,6 +54,9 @@ class QueryExperimentApp {
   }
 
   hasCompletedDemographics(pid) {
+    // In the admin dashboard, demographics are never required to preview questions
+    if (!this.isParticipantView()) return true;
+
     if (!this.analytics) return false;
     const targetPid = pid || this.analytics.participantId;
     const demo = this.analytics.getDemographics(targetPid);
@@ -81,12 +85,6 @@ class QueryExperimentApp {
   async init() {
     this.seed = 42;
     this.currentQuestionNumber = 1;
-    const seedInput = document.getElementById('seed-input');
-    if (seedInput) {
-      seedInput.value = 42;
-      seedInput.setAttribute('disabled', 'disabled');
-      seedInput.setAttribute('title', 'Seed randomization disabled');
-    }
     this.bindEvents();
     this.initParticipantUI();
     this.populateQuestionJumpDropdown();
@@ -109,7 +107,7 @@ class QueryExperimentApp {
       }
     }
 
-    if (!this.hasCompletedDemographics()) {
+    if (this.isParticipantView() && !this.hasCompletedDemographics()) {
       this.currentQuestionNumber = 'intake';
       await this.loadIncrementalQuestion('intake');
     } else {
@@ -193,20 +191,7 @@ class QueryExperimentApp {
       });
     }
 
-    // Top Bar Seed
-    const seedInput = document.getElementById('seed-input');
-    if (seedInput) {
-      seedInput.addEventListener('change', (e) => {
-        this.seed = parseInt(e.target.value, 10) || 42;
-        this.loadIncrementalQuestion(this.currentQuestionNumber || 1);
-      });
-    }
 
-    const btnRandSeed = document.getElementById('btn-randomize-seed');
-    if (btnRandSeed) {
-      btnRandSeed.setAttribute('disabled', 'disabled');
-      btnRandSeed.setAttribute('title', 'Seed randomization disabled');
-    }
 
 
 
@@ -311,6 +296,7 @@ class QueryExperimentApp {
         document.getElementById(targetTab).classList.add('active');
 
         if (targetTab === 'tab-human') {
+          this.syncChallengeContainerLocation();
           if (!this.hasCompletedDemographics()) {
             this.currentQuestionNumber = 'intake';
             this.loadIncrementalQuestion('intake');
@@ -365,44 +351,36 @@ class QueryExperimentApp {
         const qNum = (blockIdx - 1) * 6 + v;
         const btn = document.createElement('button');
         btn.id = `admin-qgrid-btn-${qNum}`;
+        btn.className = 'admin-qgrid-btn';
         btn.title = `Q${qNum} — Block ${blockIdx}, variation ${v}`;
         btn.textContent = qNum;
         btn.dataset.qnum = qNum;
 
-        const isActive = (qNum === this.currentQuestionNumber);
-        btn.style.cssText = [
-          'font-size: 11px',
-          'padding: 5px 0',
-          'border-radius: 5px',
-          'cursor: pointer',
-          'font-weight: 600',
-          'border: 1.5px solid ' + (isActive ? 'rgba(139,92,246,0.7)' : 'rgba(255,255,255,0.1)'),
-          'background: ' + (isActive ? 'rgba(139,92,246,0.35)' : 'rgba(0,0,0,0.3)'),
-          'color: ' + (isActive ? '#c4b5fd' : '#64748b'),
-          'transition: all 0.15s',
-          'width: 100%'
-        ].join(';');
+        const isActive = (qNum === this.currentQuestionNumber || qNum === parseInt(this.currentQuestionNumber, 10));
+        if (isActive) {
+          btn.classList.add('active');
+        }
 
-        btn.addEventListener('mouseenter', () => {
-          if (parseInt(btn.dataset.qnum) !== this.currentQuestionNumber) {
-            btn.style.background = 'rgba(139,92,246,0.18)';
-            btn.style.color = '#a78bfa';
-            btn.style.borderColor = 'rgba(139,92,246,0.45)';
-          }
-        });
-        btn.addEventListener('mouseleave', () => {
-          if (parseInt(btn.dataset.qnum) !== this.currentQuestionNumber) {
-            btn.style.background = 'rgba(0,0,0,0.3)';
-            btn.style.color = '#64748b';
-            btn.style.borderColor = 'rgba(255,255,255,0.1)';
-          }
-        });
-
-        // Click handled by event delegation in bindAdminGroupControls()
-
+        // Native CSS classes handle hover (:hover:not(.active)) and active state
         row.appendChild(btn);
       }
       grid.appendChild(row);
+    }
+
+    // Ensure state is cleanly synchronized
+    this.syncAdminQuestionGrid(this.currentQuestionNumber || 1);
+  }
+
+  /**
+   * Ensures #human-challenge-container is mounted in the stage.
+   */
+  syncChallengeContainerLocation() {
+    const container = document.getElementById('human-challenge-container');
+    if (!container) return;
+
+    const targetStage = document.getElementById('admin-preview-stage') || document.getElementById('human-stage');
+    if (targetStage && container.parentElement !== targetStage) {
+      targetStage.appendChild(container);
     }
   }
 
@@ -410,13 +388,72 @@ class QueryExperimentApp {
    * Updates the active highlight in the question grid to match currentQuestionNumber.
    */
   syncAdminQuestionGrid(activeQNum) {
+    const targetQ = (activeQNum === 'intake' || activeQNum === 'final_thoughts')
+      ? activeQNum
+      : parseInt(activeQNum, 10);
+
+    // Clear focus from any active button to avoid browser focus outlines lingering
+    if (typeof document !== 'undefined' && document.activeElement && typeof document.activeElement.blur === 'function') {
+      const activeTag = (document.activeElement.tagName || '').toLowerCase();
+      if (activeTag === 'button') {
+        document.activeElement.blur();
+      }
+    }
+
     for (let q = 1; q <= 60; q++) {
       const btn = document.getElementById(`admin-qgrid-btn-${q}`);
       if (!btn) continue;
-      const isActive = (q === activeQNum);
-      btn.style.border = '1px solid ' + (isActive ? 'rgba(139,92,246,0.7)' : 'rgba(255,255,255,0.1)');
-      btn.style.background = isActive ? 'rgba(139,92,246,0.35)' : 'rgba(0,0,0,0.25)';
-      btn.style.color = isActive ? '#c4b5fd' : '#64748b';
+      const isActive = (q === targetQ);
+      btn.classList.toggle('active', isActive);
+
+      // Wipe out any lingering inline styles so CSS classes rule completely
+      btn.style.border = '';
+      btn.style.background = '';
+      btn.style.color = '';
+      btn.style.borderColor = '';
+    }
+
+    const btnIntake = document.getElementById('admin-qgrid-btn-intake');
+    if (btnIntake) {
+      const isIntake = (targetQ === 'intake');
+      btnIntake.classList.toggle('active', isIntake);
+      btnIntake.style.border = isIntake ? '1.5px solid rgba(99, 102, 241, 0.9)' : '1.5px solid rgba(99, 102, 241, 0.4)';
+      btnIntake.style.background = isIntake ? 'rgba(99, 102, 241, 0.35)' : 'rgba(99, 102, 241, 0.15)';
+      btnIntake.style.color = isIntake ? '#ffffff' : '#c7d2fe';
+    }
+
+    const btnFinal = document.getElementById('admin-qgrid-btn-final_thoughts');
+    if (btnFinal) {
+      const isFinal = (targetQ === 'final_thoughts');
+      btnFinal.classList.toggle('active', isFinal);
+      btnFinal.style.border = isFinal ? '1.5px solid rgba(245, 158, 11, 0.9)' : '1.5px solid rgba(245, 158, 11, 0.35)';
+      btnFinal.style.background = isFinal ? 'rgba(245, 158, 11, 0.35)' : 'rgba(245, 158, 11, 0.12)';
+      btnFinal.style.color = isFinal ? '#ffffff' : '#fde68a';
+    }
+
+    const select = document.getElementById('question-jump-select');
+    if (select && activeQNum !== undefined && activeQNum !== null) {
+      select.value = activeQNum;
+    }
+
+    const stageBadge = document.getElementById('admin-preview-stage-badge');
+    if (stageBadge) {
+      if (activeQNum === 'intake') {
+        stageBadge.textContent = 'Previewing: Pre-Experiment Questionnaire';
+        stageBadge.style.color = '#c7d2fe';
+        stageBadge.style.borderColor = 'rgba(99, 102, 241, 0.4)';
+      } else if (activeQNum === 'final_thoughts') {
+        stageBadge.textContent = 'Previewing: Final Thoughts & Conclusion';
+        stageBadge.style.color = '#fde68a';
+        stageBadge.style.borderColor = 'rgba(245, 158, 11, 0.4)';
+      } else {
+        const qNum = parseInt(activeQNum, 10) || 1;
+        const bIdx = Math.floor((qNum - 1) / 6) + 1;
+        const vIdx = ((qNum - 1) % 6) + 1;
+        stageBadge.textContent = `Previewing: Question ${qNum} / 60 (Block ${bIdx}.${vIdx})`;
+        stageBadge.style.color = '#a78bfa';
+        stageBadge.style.borderColor = 'rgba(139, 92, 246, 0.4)';
+      }
     }
   }
 
@@ -471,12 +508,12 @@ class QueryExperimentApp {
     if (label) label.textContent = GROUP_LABELS[groupId] || groupId;
 
     // Re-render current question with chosen group's dialect + host language
+    this.syncChallengeContainerLocation();
     this.humanResolver.switchGroup(groupId);
   }
 
   /**
-   * Binds admin group buttons via event delegation so clicks work even
-   * when tab-admin-preview is hidden (display:none) at init time.
+   * Binds admin group buttons via event delegation.
    * Called once from init() on the admin dashboard.
    */
   bindAdminGroupControls() {
@@ -493,15 +530,19 @@ class QueryExperimentApp {
       if (qBtn && qBtn.dataset.qnum) {
         const qNum = parseInt(qBtn.dataset.qnum, 10);
         if (qNum >= 1 && qNum <= 60) {
+          this.syncAdminQuestionGrid(qNum);
           this.loadIncrementalQuestion(qNum);
-          // Auto-switch to Participant Test Suite tab
-          document.querySelectorAll('.nav-tab').forEach(t => t.classList.remove('active'));
-          document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
-          const humanTab = document.querySelector('[data-tab="tab-human"]');
-          if (humanTab) humanTab.classList.add('active');
-          const humanContent = document.getElementById('tab-human');
-          if (humanContent) humanContent.classList.add('active');
         }
+      }
+
+      // Handle dedicated intake and final thoughts buttons
+      if (e.target.closest('#admin-qgrid-btn-intake')) {
+        this.syncAdminQuestionGrid('intake');
+        this.loadIncrementalQuestion('intake');
+      }
+      if (e.target.closest('#admin-qgrid-btn-final_thoughts')) {
+        this.syncAdminQuestionGrid('final_thoughts');
+        this.loadIncrementalQuestion('final_thoughts');
       }
     });
   }
@@ -586,11 +627,21 @@ class QueryExperimentApp {
 
   async loadIncrementalQuestion(targetQNum) {
     const isParticipantPage = this.isParticipantView();
+    this.syncChallengeContainerLocation();
+
+    // Immediately update grid highlight so user gets instant visual confirmation
+    // and older button highlights are immediately removed
+    if (!this.isParticipantView()) {
+      this.syncAdminQuestionGrid(targetQNum);
+    }
+
+    const currentReq = ++this._loadQuestionCounter;
 
     if (targetQNum === 'intake') {
       this.currentQuestionNumber = 'intake';
       const select = document.getElementById('question-jump-select');
       if (select) select.value = 'intake';
+      this.syncAdminQuestionGrid('intake');
       if (this.humanResolver) {
         this.humanResolver.intakeCompleted = false;
         this.humanResolver.renderIntakeScreen();
@@ -603,12 +654,13 @@ class QueryExperimentApp {
       this.currentQuestionNumber = 'final_thoughts';
       const select = document.getElementById('question-jump-select');
       if (select) select.value = 'final_thoughts';
+      this.syncAdminQuestionGrid('final_thoughts');
       if (this.humanResolver) this.humanResolver.renderFinalThoughtsScreen();
       return;
     }
 
-    // Check if intake form has been completed (Mandatory before anyone can see or take the study)
-    if (!this.hasCompletedDemographics()) {
+    // Check if intake form has been completed (Mandatory only on participant page /participants.html)
+    if (this.isParticipantView() && !this.hasCompletedDemographics()) {
       this.currentQuestionNumber = 'intake';
       const select = document.getElementById('question-jump-select');
       if (select) select.value = 'intake';
@@ -643,6 +695,11 @@ class QueryExperimentApp {
       this.renderSchemaPreview();
     }
 
+    // Check if a newer question request was initiated while waiting for schema loading
+    if (currentReq !== this._loadQuestionCounter) {
+      return;
+    }
+
     this.queryGenerator = new QueryGenerator(blockSeed);
     this.currentQuery = this.queryGenerator.generateIncrementalQuery(this.currentSchema, 'medium', true, variationIndex);
 
@@ -662,7 +719,7 @@ class QueryExperimentApp {
     this.humanResolver.startNewChallenge(this.currentSchema, this.currentQuery, groundTruth, qNum);
 
     // Admin-only: sync sidebar question grid highlight
-    if (!this.isParticipantView()) {
+    if (!this.isParticipantView() && currentReq === this._loadQuestionCounter) {
       this.syncAdminQuestionGrid(qNum);
 
       // Re-apply the currently selected admin preview group (if any) so the

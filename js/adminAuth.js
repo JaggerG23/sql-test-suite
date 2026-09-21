@@ -187,15 +187,21 @@ class AdminAuthManager {
     const originalFetch = window.fetch;
     const self = this;
     window.fetch = function(resource, config = {}) {
-      config.headers = config.headers || {};
-      const token = self.getToken();
-      if (token) {
-        if (config.headers instanceof Headers) {
-          config.headers.set('X-Admin-Token', token);
-        } else if (Array.isArray(config.headers)) {
-          config.headers.push(['X-Admin-Token', token]);
-        } else {
-          config.headers['X-Admin-Token'] = token;
+      const urlStr = typeof resource === 'string' ? resource : (resource && resource.url ? resource.url : '');
+      const isExternal = urlStr.startsWith('http://') || urlStr.startsWith('https://');
+      const isSameOrigin = typeof window !== 'undefined' && window.location && urlStr.startsWith(window.location.origin);
+
+      if (!isExternal || isSameOrigin) {
+        config.headers = config.headers || {};
+        const token = self.getToken();
+        if (token) {
+          if (config.headers instanceof Headers) {
+            config.headers.set('X-Admin-Token', token);
+          } else if (Array.isArray(config.headers)) {
+            config.headers.push(['X-Admin-Token', token]);
+          } else {
+            config.headers['X-Admin-Token'] = token;
+          }
         }
       }
       return originalFetch(resource, config);
