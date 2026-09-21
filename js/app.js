@@ -1341,7 +1341,65 @@ class QueryExperimentApp {
       });
 
       const userGroups = this.analytics.getResponsesGroupedByParticipant();
-      const uids = Object.keys(userGroups);
+
+      const parseTime = (item) => {
+        if (!item) return 0;
+        if (typeof item === 'number') return item;
+        if (typeof item === 'string') {
+          const d = new Date(item).getTime();
+          return isNaN(d) ? 0 : d;
+        }
+        if (typeof item === 'object') {
+          if (item.timestamp) {
+            const d = new Date(item.timestamp).getTime();
+            if (!isNaN(d)) return d;
+          }
+          if (item.timestampPST) {
+            const d = new Date(item.timestampPST).getTime();
+            if (!isNaN(d)) return d;
+          }
+          if (item.datePST && item.timePST) {
+            const d = new Date(`${item.datePST} ${item.timePST}`).getTime();
+            if (!isNaN(d)) return d;
+          }
+          if (typeof item.id === 'string' && item.id.startsWith('resp_')) {
+            const parts = item.id.split('_');
+            const num = parseInt(parts[1], 10);
+            if (!isNaN(num) && num > 1000000000000) return num;
+          }
+        }
+        return 0;
+      };
+
+      const getGroupLatestTime = (group) => {
+        let maxTime = 0;
+        if (group.lastActive) {
+          const t = parseTime(group.lastActive);
+          if (t > maxTime) maxTime = t;
+        }
+        if (group.demographics && group.demographics.timestamp) {
+          const t = parseTime(group.demographics.timestamp);
+          if (t > maxTime) maxTime = t;
+        }
+        if (group.finalThoughts && group.finalThoughts.timestamp) {
+          const t = parseTime(group.finalThoughts.timestamp);
+          if (t > maxTime) maxTime = t;
+        }
+        if (group.responses && group.responses.length > 0) {
+          for (const r of group.responses) {
+            const t = parseTime(r);
+            if (t > maxTime) maxTime = t;
+          }
+        }
+        return maxTime;
+      };
+
+      // Sort user folders so that the participant with the newest entries is at the top
+      const uids = Object.keys(userGroups).sort((a, b) => {
+        const timeDiff = getGroupLatestTime(userGroups[b]) - getGroupLatestTime(userGroups[a]);
+        if (timeDiff !== 0) return timeDiff;
+        return a.localeCompare(b);
+      });
 
       if (uids.length === 0) {
         foldersContainer.innerHTML = `
@@ -1430,7 +1488,11 @@ class QueryExperimentApp {
                       </tr>
                     </thead>
                     <tbody>
-                      ${group.responses.slice().reverse().map((r, idx) => {
+                      ${(group.responses || []).slice().sort((a, b) => {
+                        const timeDiff = parseTime(b) - parseTime(a);
+                        if (timeDiff !== 0) return timeDiff;
+                        return (b.questionNumber || 0) - (a.questionNumber || 0);
+                      }).map((r, idx) => {
                         const timeFormatted = r.timestampPST || (r.timestamp ? (() => {
                           const d = new Date(r.timestamp);
                           return `${d.toLocaleDateString('en-US', { timeZone: 'America/Los_Angeles' })} ${d.toLocaleTimeString('en-US', { timeZone: 'America/Los_Angeles' })} PST`;

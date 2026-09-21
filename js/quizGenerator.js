@@ -42,7 +42,7 @@ class QuizGenerator {
 
     return {
       type: questionType,
-      title: 'Embedded Query Execution Challenge',
+      title: 'Embedded Query Execution Question',
       prompt: 'Select the correct final table output:',
       codeSnippet: codeSnippet,
       jsCode: codeSnippet, // For backward compatibility with existing views

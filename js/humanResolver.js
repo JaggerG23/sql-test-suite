@@ -169,21 +169,28 @@ class HumanResolver {
         return;
       }
 
-      // Handle Keys 1, 2, 3, 4
+      // Handle Keys 1, 2, 3, 4 (Choice selection)
       if (['1', '2', '3', '4'].includes(e.key)) {
         e.preventDefault();
         const optionIndex = parseInt(e.key, 10) - 1;
         this.selectOption(optionIndex);
-      } else if (e.code === 'Numpad1') { this.selectOption(0); }
-      else if (e.code === 'Numpad2') { this.selectOption(1); }
-      else if (e.code === 'Numpad3') { this.selectOption(2); }
-      else if (e.code === 'Numpad4') { this.selectOption(3); }
-      // Handle Space to advance to next question if answered
-      else if (e.code === 'Space' || e.key === ' ') {
-        if (this.isAnswered) {
+      } else if (e.code === 'Numpad1') { e.preventDefault(); this.selectOption(0); }
+      else if (e.code === 'Numpad2') { e.preventDefault(); this.selectOption(1); }
+      else if (e.code === 'Numpad3') { e.preventDefault(); this.selectOption(2); }
+      else if (e.code === 'Numpad4') { e.preventDefault(); this.selectOption(3); }
+      // Handle Enter to submit chosen answer or advance to next question
+      else if (e.key === 'Enter' || e.code === 'Enter' || e.code === 'NumpadEnter') {
+        if (!this.isAnswered && this.selectedOptionIndex !== null) {
+          e.preventDefault();
+          this.submitAnswer();
+        } else if (this.isAnswered) {
           e.preventDefault();
           this.nextQuestion();
         }
+      }
+      // Prevent Space bar from scrolling page (all quiz functionality removed)
+      else if (e.code === 'Space' || e.key === ' ') {
+        e.preventDefault();
       }
     });
   }
@@ -230,9 +237,12 @@ class HumanResolver {
             <p style="margin: 0 0 8px 0; font-weight: 700; color: var(--text-main); font-size: 13.5px;">
               <i class="fa-solid fa-circle-info text-primary"></i> What you will be doing:
             </p>
-            <p style="margin: 0 0 12px 0;">
-              In this study, you'll be given 60 unique SQL queries with multiple choice answers. Your task is to read the code and answer each question with the expected output using the <strong><strong>1, 2, 3, or 4</strong></strong> keys on a keyboard or by clicking using a mouse. 
+            <p style="margin: 0 0 10px 0;">
+              In this study, you'll be given 60 unique SQL queries with multiple choice answers. Your task is to read the code and answer each question with the expected output using the <strong>1, 2, 3, or 4</strong> keys on a keyboard or by clicking using a mouse. 
             </p>
+            <div style="background: rgba(239, 68, 68, 0.12); border: 1px solid rgba(239, 68, 68, 0.35); border-left: 4px solid #ef4444; border-radius: 6px; padding: 8px 12px; margin-bottom: 12px; font-size: 12px; color: #fca5a5; font-weight: 600;">
+              <i class="fa-solid fa-triangle-exclamation" style="margin-right: 6px; color: #ef4444;"></i> Do not use the back arrow or refresh button while doing this study.
+            </div>
 
             <div style="background: rgba(0,0,0,0.3); border: 1px solid rgba(255,255,255,0.08); border-radius: 6px; padding: 12px; margin-top: 10px;">
               <p style="margin: 0 0 8px 0; font-weight: 700; color: var(--color-accent); font-size: 12px;">
@@ -245,7 +255,7 @@ class HumanResolver {
                 <li><strong>Question Data:</strong> Question Category, Raw SQL Query</li>
                 <li><strong>Performance Metrics:</strong> Option Selected (1-4), Answer Accuracy</li>
                 <li><strong>Timing:</strong> Response Duration per Question</li>
-                <li><strong>Tab Focus:</strong> Number of times you tab away while taking the study and for how long</li>
+                <li><strong>Tab Focus:</strong> Number of times you tab away while doing this study and for how long</li>
                 <li><strong>Qualitative Feedback:</strong> Optional Final Thoughts & Comments</li>
               </ul>
             </div>
@@ -702,6 +712,17 @@ class HumanResolver {
     container.innerHTML = `
       <div class="card quiz-card glow-card compact-view" style="padding: 0;">
         <div class="card-body p-2" style="display: flex; flex-direction: column; gap: 8px;">
+
+          <!-- Instructions Banner Above Input Schema -->
+          <div class="quiz-instructions-banner" style="padding: 10px 16px; background: rgba(99, 102, 241, 0.1); border: 1px solid rgba(99, 102, 241, 0.3); border-left: 4px solid var(--color-primary); border-radius: 6px; font-size: 11.5px; line-height: 1.6; color: #e2e8f0; display: flex; align-items: flex-start; gap: 10px; box-sizing: border-box;">
+            <i class="fa-solid fa-circle-info text-accent" style="font-size: 13px; margin-top: 3px; flex-shrink: 0;"></i>
+            <div style="flex: 1; min-width: 0;">
+              Please read the query and choose what you believe the resulting table would look like using hotkeys <kbd style="background: rgba(255,255,255,0.15); border: 1px solid rgba(255,255,255,0.25); border-radius: 3px; padding: 1px 5px; font-weight: 700; font-size: 10.5px;">1</kbd>–<kbd style="background: rgba(255,255,255,0.15); border: 1px solid rgba(255,255,255,0.25); border-radius: 3px; padding: 1px 5px; font-weight: 700; font-size: 10.5px;">4</kbd>, push <kbd style="background: rgba(255,255,255,0.15); border: 1px solid rgba(255,255,255,0.25); border-radius: 3px; padding: 1px 5px; font-weight: 700; font-size: 10.5px;">ENTER</kbd> to submit your answer, then push <kbd style="background: rgba(255,255,255,0.15); border: 1px solid rgba(255,255,255,0.25); border-radius: 3px; padding: 1px 5px; font-weight: 700; font-size: 10.5px;">ENTER</kbd> again to move to the next question. Alternatively, use your mouse to click between the four choices to answer.
+              <span style="color: #fca5a5; font-weight: 600; margin-left: 6px; display: inline-block;">
+                <i class="fa-solid fa-triangle-exclamation" style="color: #ef4444; margin-right: 4px;"></i>Do not use the back arrow or refresh button while doing this study.
+              </span>
+            </div>
+          </div>
           
           <!-- 1. TOP FULL-WIDTH ROW: Input Schema Reference with Distinct Divider Line -->
           <div class="quiz-schema-top-bar p-2" style="border: 1px solid rgba(255, 255, 255, 0.1); border-bottom: 2px solid var(--color-accent); border-radius: 6px; background: rgba(14, 18, 28, 0.8); width: 100%; box-shadow: 0 4px 12px rgba(0,0,0,0.3);">
@@ -746,13 +767,13 @@ class HumanResolver {
                 <span class="font-weight-bold fs-xs" style="color: var(--text-main); font-size: 11.5px;">
                   <i class="fa-solid fa-circle-question text-accent"></i> ${q.prompt}
                 </span>
-                <span class="text-muted fs-xs" style="font-size: 10.5px;">Press <strong>1, 2, 3, or 4</strong></span>
+                <span class="text-muted fs-xs" style="font-size: 10.5px;">Select <strong>1–4</strong>, then press <kbd style="font-size: 9.5px; padding: 1px 4px;">ENTER</kbd></span>
               </div>
 
               <!-- 4 Candidate Output Tables (2x2 Grid Capped to NOT exceed Coding Box height) -->
               <div class="quiz-options-grid" style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px; max-height: 340px;">
                 ${q.options.map((opt, idx) => `
-                  <div class="quiz-option-card table-option-card" id="opt-btn-${idx}" data-idx="${idx}" style="cursor: pointer; border: 1px solid rgba(255,255,255,0.1); border-radius: 6px; background: rgba(18, 24, 38, 0.7); overflow: hidden; display: flex; flex-direction: column; max-height: 165px;">
+                  <div class="quiz-option-card table-option-card" id="opt-btn-${idx}" data-idx="${idx}" style="cursor: pointer; border: 1px solid rgba(255,255,255,0.1); border-radius: 6px; background: rgba(18, 24, 38, 0.7); overflow: hidden; display: flex; flex-direction: column; max-height: 165px; transition: border-color 0.15s ease, background 0.15s ease;">
                     <div class="opt-header p-1 px-2 d-flex justify-between align-center" style="border-bottom: 1px solid rgba(255,255,255,0.08); background: rgba(0,0,0,0.3); font-size: 10.5px; min-height: 26px;">
                       <div class="d-flex align-center gap-1" style="width: 100%; justify-content: center;">
                         <kbd style="background: var(--color-primary); color: #fff; padding: 1px 5px; font-size: 9.5px; font-weight: 700; border-radius: 3px;">${idx + 1}</kbd>
@@ -772,11 +793,18 @@ class HumanResolver {
               <!-- Bottom Feedback & Action Button -->
               <div id="quiz-feedback-box" class="quiz-feedback-box p-1 px-2" style="display: none; font-size: 11px; border-radius: 5px;"></div>
 
-              <div class="quiz-footer d-flex justify-between align-center mt-auto" style="padding-top: 2px;">
-                <span class="text-muted fs-xs" style="font-size: 10px;"><i class="fa-solid fa-circle-info"></i> Hotkeys: <strong>1, 2, 3, 4</strong> | <kbd style="font-size: 9px; padding: 1px 4px;">Space</kbd> Next</span>
-                <button id="btn-next-question" class="btn btn-primary btn-sm" ${!this.isAnswered ? 'disabled' : ''} style="padding: 3px 10px; font-size: 11.5px;">
-                  Next Challenge <i class="fa-solid fa-arrow-right"></i>
-                </button>
+              <div class="quiz-footer" style="padding-top: 4px; margin-top: auto; display: flex; flex-direction: row; justify-content: space-between; align-items: center; flex-wrap: nowrap; gap: 8px; width: 100%; box-sizing: border-box;">
+                <span class="text-muted fs-xs" style="font-size: 10px; white-space: nowrap; flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis;">
+                  <i class="fa-solid fa-circle-info"></i> Hotkeys: <strong>1–4</strong> | <kbd style="font-size: 9px; padding: 1px 4px;">ENTER</kbd> Submit / Next
+                </span>
+                <div style="display: inline-flex; align-items: center; gap: 6px; flex-shrink: 0; white-space: nowrap;">
+                  <button id="btn-submit-answer" class="btn btn-primary btn-sm" disabled style="padding: 3px 10px; font-size: 11px; white-space: nowrap; margin: 0; display: inline-flex; align-items: center; gap: 4px;">
+                    Submit Answer <i class="fa-solid fa-check"></i>
+                  </button>
+                  <button id="btn-next-question" class="btn btn-primary btn-sm" style="display: none; padding: 3px 10px; font-size: 11px; white-space: nowrap; margin: 0; align-items: center; gap: 4px;">
+                    Next Question <i class="fa-solid fa-arrow-right"></i>
+                  </button>
+                </div>
               </div>
             </div>
 
@@ -822,6 +850,12 @@ class HumanResolver {
         btn.addEventListener('click', () => this.selectOption(idx));
       }
     });
+
+    // Submit answer button
+    const btnSubmit = document.getElementById('btn-submit-answer');
+    if (btnSubmit) {
+      btnSubmit.addEventListener('click', () => this.submitAnswer());
+    }
 
     // Group preview selector buttons in Admin Mode
     document.querySelectorAll('.group-tab').forEach(tab => {
@@ -901,9 +935,61 @@ class HumanResolver {
       return;
     }
 
-    this.isAnswered = true;
     this.selectedOptionIndex = index;
+    const q = this.currentQuestion;
 
+    // Highlight the selected option card, reset others, keep all interactive
+    q.options.forEach((opt, idx) => {
+      const card = document.getElementById(`opt-btn-${idx}`);
+      const icon = document.getElementById(`opt-icon-${idx}`);
+      if (!card) return;
+
+      if (idx === index) {
+        card.style.border = '2px solid var(--color-accent)';
+        card.style.background = 'rgba(99, 102, 241, 0.2)';
+        card.style.opacity = '1';
+        if (icon) icon.innerHTML = '';
+      } else {
+        card.style.border = '1px solid rgba(255, 255, 255, 0.1)';
+        card.style.background = 'rgba(18, 24, 38, 0.7)';
+        card.style.opacity = '1';
+        if (icon) icon.innerHTML = '';
+      }
+    });
+
+    // Enable the Submit button
+    const btnSubmit = document.getElementById('btn-submit-answer');
+    if (btnSubmit) {
+      btnSubmit.removeAttribute('disabled');
+    }
+
+    // Update feedback box to indicate current selection & instructions to push ENTER or click Submit
+    const feedbackBox = document.getElementById('quiz-feedback-box');
+    if (feedbackBox) {
+      feedbackBox.style.display = 'block';
+      feedbackBox.className = 'quiz-feedback-box p-1 px-2';
+      feedbackBox.style.background = 'rgba(99, 102, 241, 0.12)';
+      feedbackBox.style.border = '1px solid rgba(99, 102, 241, 0.3)';
+      feedbackBox.style.color = '#e2e8f0';
+      feedbackBox.innerHTML = `
+        <div style="display: flex; align-items: center; gap: 8px; font-size: 11px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; line-height: 1.4;">
+          <i class="fa-solid fa-hand-pointer text-accent" style="flex-shrink: 0; font-size: 11px;"></i>
+          <span style="white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">
+            Selected: <strong>Option ${String.fromCharCode(65 + index)}</strong> &mdash; Push <kbd style="background: rgba(255,255,255,0.18); border: 1px solid rgba(255,255,255,0.3); border-radius: 3px; padding: 1px 5px; color: #fff; font-size: 10px;">ENTER</kbd> or click 'Submit Answer' to confirm.
+          </span>
+        </div>
+      `;
+    }
+  }
+
+  submitAnswer() {
+    if (this.isAnswered || this.selectedOptionIndex === null || !this.currentQuestion) return;
+    if (this.app && (this.app.currentQuestionNumber === 'final_thoughts' || (this.stats && this.stats.totalAnswered >= 60))) {
+      return;
+    }
+
+    this.isAnswered = true;
+    const index = this.selectedOptionIndex;
     const q = this.currentQuestion;
     const isCorrect = (index === q.correctIndex);
     const chosenOpt = q.options[index];
@@ -962,7 +1048,7 @@ class HumanResolver {
     this.stats.totalAnswered++;
     this.updateNavCounter();
 
-    // Update Option UI cards
+    // Lock option cards visually
     q.options.forEach((opt, idx) => {
       const card = document.getElementById(`opt-btn-${idx}`);
       const icon = document.getElementById(`opt-icon-${idx}`);
@@ -971,31 +1057,45 @@ class HumanResolver {
       if (idx === index) {
         card.style.border = '2px solid #94a3b8';
         card.style.background = 'rgba(255, 255, 255, 0.1)';
-        if (icon) icon.innerHTML = '<i class="fa-solid fa-circle-info" style="color: #94a3b8;"></i>';
+        card.style.opacity = '1';
+        if (icon) icon.innerHTML = '';
       } else {
-        card.style.opacity = '0.5';
+        card.style.border = '1px solid rgba(255, 255, 255, 0.05)';
+        card.style.background = 'rgba(18, 24, 38, 0.4)';
+        card.style.opacity = '0.45';
+        if (icon) icon.innerHTML = '';
       }
+      card.style.cursor = 'default';
     });
 
-    // Enable next question button
-    const btnNext = document.getElementById('btn-next-question');
-    if (btnNext) btnNext.removeAttribute('disabled');
+    // Hide Submit button, show & enable Next Question button
+    const btnSubmit = document.getElementById('btn-submit-answer');
+    if (btnSubmit) {
+      btnSubmit.style.display = 'none';
+    }
 
-    // Show Feedback Box
+    const btnNext = document.getElementById('btn-next-question');
+    if (btnNext) {
+      btnNext.style.display = 'inline-flex';
+      btnNext.removeAttribute('disabled');
+      btnNext.focus();
+    }
+
+    // Show Feedback Box confirming answer submission
     const feedbackBox = document.getElementById('quiz-feedback-box');
     if (feedbackBox) {
       feedbackBox.style.display = 'block';
-
-      feedbackBox.className = `quiz-feedback-box p-1 px-2`;
+      feedbackBox.className = 'quiz-feedback-box p-1 px-2';
       feedbackBox.style.background = 'rgba(255, 255, 255, 0.1)';
       feedbackBox.style.border = '1px solid rgba(255, 255, 255, 0.2)';
       feedbackBox.style.color = '#cbd5e1';
       feedbackBox.innerHTML = `
-        <div class="d-flex align-center gap-2">
-          <div class="fb-icon" style="font-size: 14px; color: #94a3b8;"><i class="fa-solid fa-circle-info"></i></div>
-          <div>
-            <h4 class="m-0" style="font-size: 11.5px; color: #cbd5e1;">Answer Recorded</h4>
+        <div style="display: flex; align-items: center; justify-content: space-between; font-size: 11px; white-space: nowrap; gap: 8px; line-height: 1.4;">
+          <div style="display: flex; align-items: center; gap: 6px; white-space: nowrap;">
+            <div class="fb-icon" style="font-size: 12px; color: #94a3b8;"><i class="fa-solid fa-circle-check"></i></div>
+            <h4 class="m-0" style="font-size: 11px; color: #cbd5e1; white-space: nowrap; font-weight: 600;">Answer Recorded: Option ${String.fromCharCode(65 + index)}</h4>
           </div>
+          <span class="text-muted" style="font-size: 10px; white-space: nowrap;">Push <kbd style="font-size: 9px; padding: 1px 4px; background: rgba(255,255,255,0.15); border-radius: 3px;">ENTER</kbd> to move to the next question</span>
         </div>
       `;
     }
@@ -1048,17 +1148,18 @@ class HumanResolver {
       <div class="compact-schema-grid" style="display: grid; grid-template-columns: repeat(${Math.min(schema.tables.length, 5)}, 1fr); gap: 10px;">
         ${schema.tables.map(tbl => `
           <div class="schema-tbl-card p-1 px-2" style="background: rgba(0,0,0,0.35); border: 1px solid rgba(255,255,255,0.06); border-radius: 4px;">
-            <div class="d-flex justify-between align-center" style="font-size: 10.5px;">
+            <div class="d-flex justify-between align-center mb-1 pb-1" style="font-size: 10.5px; border-bottom: 1px solid rgba(255,255,255,0.06);">
               <strong style="color: var(--color-accent); font-family: var(--font-mono);">
                 <i class="fa-solid fa-table text-primary"></i> ${tbl.name}
               </strong>
               <span class="text-muted" style="font-size: 9px;">(${tbl.rows.length} rows, ${tbl.columns.length} cols)</span>
             </div>
-            <div class="col-badges mt-1" style="display: flex; flex-wrap: wrap; gap: 2px; font-family: var(--font-mono);">
+            <div class="col-badges mt-1" style="display: flex; flex-direction: column; gap: 3px; font-family: var(--font-mono);">
               ${tbl.columns.map(c => `
-                <span style="background: rgba(255,255,255,0.05); padding: 1px 4px; border-radius: 3px; border: 1px solid rgba(255,255,255,0.07); font-size: 9px;">
-                  ${c.pk ? '🔑 ' : ''}<strong>${c.name}</strong> <span style="color:var(--color-primary);">${c.type}</span>
-                </span>
+                <div style="display: flex; justify-content: space-between; align-items: center; background: rgba(255,255,255,0.05); padding: 2px 6px; border-radius: 3px; border: 1px solid rgba(255,255,255,0.07); font-size: 9.5px;">
+                  <span>${c.pk ? '🔑 ' : ''}<strong>${c.name}</strong></span>
+                  <span style="color: var(--color-primary); font-size: 8.5px; margin-left: 6px;">${c.type}</span>
+                </div>
               `).join('')}
             </div>
           </div>

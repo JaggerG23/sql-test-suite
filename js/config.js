@@ -13,7 +13,7 @@
   // Default configuration (can be customized here or via the Admin Dashboard UI)
   const defaultConfig = {
     // Current application release version
-    VERSION: 'v1.0.14',
+    VERSION: 'v1.0.15',
 
     // Optional central backend (e.g. 'https://my-study-backend.onrender.com' or '' for auto)
     BACKEND_API_URL: '',
@@ -56,7 +56,7 @@
     }
 
     getVersion() {
-      return this.config.VERSION || 'v1.0.14';
+      return this.config.VERSION || 'v1.0.15';
     }
 
     isParticipantResetButtonEnabled() {

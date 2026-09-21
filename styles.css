@@ -1107,5 +1107,28 @@ body.admin-locked .app-container {
   color: #f1f5f9;
 }
 
+/* Common Utility Helpers */
+.d-flex { display: flex; }
+.justify-between { justify-content: space-between; }
+.justify-center { justify-content: center; }
+.align-center { align-items: center; }
+.flex-wrap { flex-wrap: wrap; }
+.flex-nowrap { flex-wrap: nowrap; }
+.flex-column { flex-direction: column; }
+.p-0 { padding: 0 !important; }
+.p-1 { padding: 4px 8px; }
+.p-2 { padding: 8px 12px; }
+.p-3 { padding: 12px 16px; }
+.px-2 { padding-left: 8px; padding-right: 8px; }
+.py-1 { padding-top: 4px; padding-bottom: 4px; }
+.m-0 { margin: 0 !important; }
+.mt-auto { margin-top: auto; }
+.mb-1 { margin-bottom: 4px; }
+.mb-2 { margin-bottom: 8px; }
+.gap-1 { gap: 4px; }
+.gap-2 { gap: 8px; }
+.gap-3 { gap: 12px; }
+
+
 
 

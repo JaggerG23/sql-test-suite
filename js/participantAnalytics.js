@@ -697,6 +697,38 @@ class ParticipantAnalytics {
         g.assignedGroupName = g.demographics.assignedGroupName;
         g.assignedGroup = g.demographics.assignedGroupName;
       }
+      // Sort responses by the time they were taken, with newest entries at the top
+      g.responses.sort((a, b) => {
+        const parseTime = (item) => {
+          if (!item) return 0;
+          if (typeof item === 'number') return item;
+          if (typeof item === 'string') {
+            const d = new Date(item).getTime();
+            return isNaN(d) ? 0 : d;
+          }
+          if (item.timestamp) {
+            const d = new Date(item.timestamp).getTime();
+            if (!isNaN(d)) return d;
+          }
+          if (item.timestampPST) {
+            const d = new Date(item.timestampPST).getTime();
+            if (!isNaN(d)) return d;
+          }
+          if (item.datePST && item.timePST) {
+            const d = new Date(`${item.datePST} ${item.timePST}`).getTime();
+            if (!isNaN(d)) return d;
+          }
+          if (typeof item.id === 'string' && item.id.startsWith('resp_')) {
+            const parts = item.id.split('_');
+            const num = parseInt(parts[1], 10);
+            if (!isNaN(num) && num > 1000000000000) return num;
+          }
+          return 0;
+        };
+        const diff = parseTime(b) - parseTime(a);
+        if (diff !== 0) return diff;
+        return (b.questionNumber || 0) - (a.questionNumber || 0);
+      });
     });
 
     return groups;
