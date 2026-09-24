@@ -17,13 +17,21 @@
  */
 
 const CSV_HEADERS = [
-  'Response ID', 'Participant ID', 'Session ID', 'Timestamp (ISO)', 'Question Number',
-  'Question Category', 'Assigned Group', 'Host Language', 'Syntax Dialect ID',
-  'Syntax Dialect Name', 'Selected Key (1-4)', 'Selected Option', 'Correct Option',
-  'Is Correct', 'Response Time (ms)', 'Random Seed', 'Tab Focus Lost', 'Tab Switch Count',
-  'Focus Lost Duration (ms)', 'Age', 'Gender', 'Academic Standing', 'Coding Experience',
-  'Database Experience', 'Query Writing Experience', 'Final Thoughts', 'Raw SQL Query',
-  'Dialect SQL Query', 'Code Snippet'
+  'response_id', 'participant_id', 'session_id', 'timestamp_iso',
+  'question_number', 'trial_block', 'question_category',
+  'assigned_group', 'assigned_group_id', 'host_language',
+  'syntax_dialect_id', 'syntax_dialect_name',
+  'is_correct', 'response_time_ms', 'response_time_s', 'log_response_time',
+  'tab_focus_lost', 'valid_trial', 'tab_switch_count', 'focus_lost_duration_ms',
+  'selected_key', 'selected_option', 'correct_option',
+  'age', 'gender', 'gender_label', 'gender_male', 'gender_female',
+  'education', 'education_label', 'has_college_degree',
+  'coding_exp_years', 'has_coding_exp',
+  'db_exp_years', 'has_db_exp',
+  'primary_language', 'is_english_primary',
+  'country_of_origin', 'is_country_us',
+  'disability_status', 'has_disability',
+  'final_thoughts', 'raw_query', 'dialect_sql', 'code_snippet'
 ];
 
 function setupSheet() {
@@ -81,40 +89,135 @@ function doPost(e) {
     Object.assign(db.finalThoughts, finalThoughts);
     prop.setProperty('TELEMETRY_BACKUP_JSON', JSON.stringify(db));
 
+    // Helper parser for Google Sheets row formatting
+    const parseNum = (val) => {
+      if (val === null || val === undefined || val === '') return 0.0;
+      if (typeof val === 'number') return val;
+      const s = String(val).trim().toLowerCase();
+      if (s.indexOf('none') !== -1 || s.indexOf('no ') === 0) return 0.0;
+      if (s.indexOf('< 1') !== -1 || s.indexOf('<1') !== -1) return 0.5;
+      const match = s.match(/(\d+(?:\.\d+)?)/);
+      return match ? parseFloat(match[1]) : 0.0;
+    };
+
+    const toBinary = (val) => {
+      if (val === true || val === 1 || String(val).trim().toUpperCase() === 'TRUE' || String(val).trim() === '1') return 1;
+      return 0;
+    };
+
+    const parseEdu = (val) => {
+      const labels = { 0: 'High School / GED', 1: 'Some college / university', 2: 'Associate Degree', 3: 'Bachelor Degree', 4: 'Masters Degree', 5: 'Ph. D.', 6: 'Other' };
+      if (val === null || val === undefined || val === '') return { code: '', label: '', degree: 0 };
+      const s = String(val).trim().toLowerCase();
+      if (/^\d+$/.test(s)) {
+        const c = parseInt(s, 10);
+        return { code: c, label: labels[c] || 'Other', degree: (c >= 3 && c <= 5) ? 1 : 0 };
+      }
+      let c = 6;
+      if (s.indexOf('ph') !== -1 || s.indexOf('doctor') !== -1) c = 5;
+      else if (s.indexOf('master') !== -1) c = 4;
+      else if (s.indexOf('bachelor') !== -1 || s.indexOf('junior') !== -1 || s.indexOf('senior') !== -1) c = 3;
+      else if (s.indexOf('associate') !== -1) c = 2;
+      else if (s.indexOf('some college') !== -1 || s.indexOf('freshman') !== -1 || s.indexOf('undergrad') !== -1) c = 1;
+      else if (s.indexOf('high school') !== -1 || s.indexOf('ged') !== -1) c = 0;
+      return { code: c, label: labels[c] || 'Other', degree: (c >= 3 && c <= 5) ? 1 : 0 };
+    };
+
+    const parseGender = (val) => {
+      const labels = { 0: 'Male', 1: 'Female', 2: 'Non-binary', 3: 'Other', 4: 'Prefer not to say' };
+      if (val === null || val === undefined || val === '') return { code: '', label: '', isMale: 0, isFemale: 0 };
+      const s = String(val).trim().toLowerCase();
+      if (/^\d+$/.test(s)) {
+        const c = parseInt(s, 10);
+        return { code: c, label: labels[c] || 'Other', isMale: c === 0 ? 1 : 0, isFemale: c === 1 ? 1 : 0 };
+      }
+      let c = 3;
+      if (s === 'male' || s === 'm') c = 0;
+      else if (s === 'female' || s === 'f') c = 1;
+      else if (s.indexOf('non-binary') !== -1 || s.indexOf('nonbinary') !== -1) c = 2;
+      else if (s.indexOf('prefer not') !== -1) c = 4;
+      return { code: c, label: labels[c] || 'Other', isMale: c === 0 ? 1 : 0, isFemale: c === 1 ? 1 : 0 };
+    };
+
     // Append response rows to sheet
     responses.forEach(r => {
       const pid = r.participantId || '';
       const demo = demographics[pid] || db.demographics[pid] || {};
       const thoughts = finalThoughts[pid] || db.finalThoughts[pid] || {};
 
+      const isCorrectVal = toBinary(r.isCorrect);
+      const rtMs = parseInt(r.responseTimeMs, 10) || 0;
+      const rtS = Math.round((rtMs / 1000.0) * 1000) / 1000;
+      const logRt = Math.round(Math.log(Math.max(rtMs, 1.0)) * 10000) / 10000;
+      const tabFocusLostVal = toBinary(r.tabFocusLost);
+      const validTrialVal = tabFocusLostVal === 0 ? 1 : 0;
+      const qNum = parseInt(r.questionNumber, 10) || 1;
+      const trialBlock = qNum <= 15 ? 1 : (qNum <= 30 ? 2 : (qNum <= 45 ? 3 : 4));
+
+      const assignedGroupName = r.assignedGroupName || r.assignedGroup || demo.assignedGroupName || demo.assignedGroup || '';
+      let assignedGroupId = r.assignedGroupId || demo.assignedGroupId || '';
+      if (!assignedGroupId && assignedGroupName) {
+        const agLower = String(assignedGroupName).toLowerCase();
+        if (agLower.indexOf('group a') !== -1) assignedGroupId = 'group_a';
+        else if (agLower.indexOf('group b') !== -1) assignedGroupId = 'group_b';
+        else if (agLower.indexOf('group c') !== -1) assignedGroupId = 'group_c';
+        else if (agLower.indexOf('group d') !== -1) assignedGroupId = 'group_d';
+        else assignedGroupId = agLower.replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, '');
+      }
+
+      const genderInfo = parseGender(demo.gender);
+      const eduInfo = parseEdu(demo.education || demo.highestEducation || demo.academicStanding);
+      const codingYears = parseNum(demo.codingExp);
+      const dbYears = parseNum(demo.dbExp);
+      const langStr = String(demo.primaryLanguage || '').trim();
+      const isEnglish = langStr.toLowerCase().indexOf('english') !== -1 ? 1 : 0;
+      const countryStr = String(demo.countryOfOrigin || '').trim();
+      const isUs = (countryStr.toLowerCase().indexOf('united states') !== -1 || countryStr.toLowerCase() === 'usa' || countryStr.toLowerCase() === 'us') ? 1 : 0;
+      const disStr = String(demo.disability || '').trim().toLowerCase();
+      const hasDis = (disStr && disStr.indexOf('none') === -1 && disStr !== 'no' && disStr.indexOf('prefer not') === -1) ? 1 : 0;
+
       const row = [
         r.id || '',
         r.participantId || '',
         r.sessionId || '',
         r.timestamp || '',
-        r.questionNumber || '',
+        qNum,
+        trialBlock,
         r.questionCategory || '',
-        r.assignedGroupName || r.assignedGroup || demo.assignedGroupName || demo.assignedGroup || '',
+        assignedGroupName,
+        assignedGroupId,
         r.hostLanguage || demo.hostLanguage || '',
         r.activeDialect || '',
         r.activeDialectName || '',
+        isCorrectVal,
+        rtMs,
+        rtS,
+        logRt,
+        tabFocusLostVal,
+        validTrialVal,
+        r.tabSwitchCount !== undefined ? r.tabSwitchCount : 0,
+        r.focusLostDurationMs !== undefined ? r.focusLostDurationMs : 0,
         r.selectedKey !== undefined && r.selectedKey !== null ? r.selectedKey : '',
         r.selectedOptionText || '',
         r.correctOptionText || '',
-        r.isCorrect !== undefined ? (r.isCorrect ? 'TRUE' : 'FALSE') : '',
-        r.responseTimeMs !== undefined ? r.responseTimeMs : '',
-        r.seed !== undefined ? r.seed : '',
-        r.tabFocusLost ? 'TRUE' : 'FALSE',
-        r.tabSwitchCount !== undefined ? r.tabSwitchCount : 0,
-        r.focusLostDurationMs !== undefined ? r.focusLostDurationMs : 0,
         demo.age || '',
-        demo.gender || '',
-        demo.education || demo.highestEducation || demo.academicStanding || '',
-        demo.codingExp || '',
-        demo.dbExp || '',
-        demo.primaryLanguage || '',
-        demo.countryOfOrigin || '',
+        genderInfo.code,
+        genderInfo.label,
+        genderInfo.isMale,
+        genderInfo.isFemale,
+        eduInfo.code,
+        eduInfo.label,
+        eduInfo.degree,
+        codingYears,
+        codingYears > 0 ? 1 : 0,
+        dbYears,
+        dbYears > 0 ? 1 : 0,
+        langStr,
+        isEnglish,
+        countryStr,
+        isUs,
         demo.disability || '',
+        hasDis,
         thoughts.thoughts || '',
         r.rawQuery || '',
         r.dialectSql || '',

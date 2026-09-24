@@ -446,10 +446,9 @@ class ParticipantAnalytics {
       selectedKey: entry.selectedKey || null,
       selectedOptionText: entry.selectedOptionText || '',
       correctOptionText: entry.correctOptionText || '',
-      isCorrect: Boolean(entry.isCorrect),
+      isCorrect: entry.isCorrect ? 1 : 0,
       responseTimeMs: Math.max(0, Math.round(entry.responseTimeMs || 0)),
-      seed: entry.seed || 0,
-      tabFocusLost: Boolean(entry.tabFocusLost),
+      tabFocusLost: entry.tabFocusLost ? 1 : 0,
       tabSwitchCount: entry.tabSwitchCount || 0,
       focusLostDurationMs: Math.max(0, Math.round(entry.focusLostDurationMs || 0))
     };
@@ -851,37 +850,42 @@ class ParticipantAnalytics {
         const hostLangVal = getVal(row, ['Host Language', 'hostLanguage'], undefined);
         const codeVal = getVal(row, ['Code Snippet', 'codeSnippet', 'JS Code Snippet', 'jsCode'], undefined);
 
+        const rawCorrect = getVal(row, ['is_correct', 'Is Correct', 'isCorrect'], 11);
+        const isCorrectParsed = (rawCorrect === 1 || rawCorrect === '1' || String(rawCorrect).trim().toUpperCase() === 'TRUE');
+
+        const rawFocus = getVal(row, ['tab_focus_lost', 'Tab Focus Lost', 'tabFocusLost'], 14);
+        const focusLostParsed = (rawFocus === 1 || rawFocus === '1' || String(rawFocus).trim().toUpperCase() === 'TRUE');
+
         const resp = {
-          id: getVal(row, ['Response ID', 'id'], 0) || ('resp_' + Date.now() + '_' + Math.random().toString(36).substring(2, 7)),
+          id: getVal(row, ['response_id', 'Response ID', 'id'], 0) || ('resp_' + Date.now() + '_' + Math.random().toString(36).substring(2, 7)),
           participantId: pid,
-          sessionId: getVal(row, ['Session ID', 'sessionId'], 2) || '',
-          timestamp: getVal(row, ['Timestamp (ISO)', 'timestamp'], 3) || new Date().toISOString(),
-          questionNumber: parseInt(getVal(row, ['Question Number', 'questionNumber'], 4), 10) || 1,
-          questionCategory: getVal(row, ['Question Category', 'questionCategory'], 5) || 'General',
+          sessionId: getVal(row, ['session_id', 'Session ID', 'sessionId'], 2) || '',
+          timestamp: getVal(row, ['timestamp_iso', 'Timestamp (ISO)', 'timestamp'], 3) || new Date().toISOString(),
+          questionNumber: parseInt(getVal(row, ['question_number', 'Question Number', 'questionNumber'], 4), 10) || 1,
+          questionCategory: getVal(row, ['question_category', 'Question Category', 'questionCategory'], 5) || 'General',
           assignedGroup: assignedGroupVal || '',
           assignedGroupName: assignedGroupVal || '',
           hostLanguage: hostLangVal || '',
-          activeDialect: getVal(row, ['Syntax Dialect ID', 'activeDialect'], 6) || 'ansi',
-          activeDialectName: getVal(row, ['Syntax Dialect Name', 'activeDialectName'], 7) || 'ANSI SQL',
-          selectedKey: getVal(row, ['Selected Key (1-4)', 'selectedKey'], 8) ? parseInt(getVal(row, ['Selected Key (1-4)', 'selectedKey'], 8), 10) : null,
-          selectedOptionText: getVal(row, ['Selected Option', 'selectedOptionText'], 9) || '',
-          correctOptionText: getVal(row, ['Correct Option', 'correctOptionText'], 10) || '',
-          isCorrect: String(getVal(row, ['Is Correct', 'isCorrect'], 11)).toUpperCase() === 'TRUE',
-          responseTimeMs: parseInt(getVal(row, ['Response Time (ms)', 'responseTimeMs'], 12), 10) || 0,
-          seed: getVal(row, ['Random Seed', 'seed'], 13) || '',
-          tabFocusLost: String(getVal(row, ['Tab Focus Lost', 'tabFocusLost'], 14)).toUpperCase() === 'TRUE',
-          tabSwitchCount: parseInt(getVal(row, ['Tab Switch Count', 'tabSwitchCount'], 15), 10) || 0,
-          focusLostDurationMs: parseInt(getVal(row, ['Focus Lost Duration (ms)', 'focusLostDurationMs'], 16), 10) || 0,
-          rawQuery: getVal(row, ['Raw SQL Query', 'rawQuery'], row.length > 28 ? 26 : 24) || '',
-          dialectSql: getVal(row, ['Dialect SQL Query', 'dialectSql'], row.length > 28 ? 27 : 25) || '',
+          activeDialect: getVal(row, ['syntax_dialect_id', 'Syntax Dialect ID', 'activeDialect'], 6) || 'ansi',
+          activeDialectName: getVal(row, ['syntax_dialect_name', 'Syntax Dialect Name', 'activeDialectName'], 7) || 'ANSI SQL',
+          selectedKey: getVal(row, ['selected_key', 'Selected Key (1-4)', 'selectedKey'], 8) ? parseInt(getVal(row, ['selected_key', 'Selected Key (1-4)', 'selectedKey'], 8), 10) : null,
+          selectedOptionText: getVal(row, ['selected_option', 'Selected Option', 'selectedOptionText'], 9) || '',
+          correctOptionText: getVal(row, ['correct_option', 'Correct Option', 'correctOptionText'], 10) || '',
+          isCorrect: isCorrectParsed ? 1 : 0,
+          responseTimeMs: parseInt(getVal(row, ['response_time_ms', 'Response Time (ms)', 'responseTimeMs'], 12), 10) || 0,
+          tabFocusLost: focusLostParsed ? 1 : 0,
+          tabSwitchCount: parseInt(getVal(row, ['tab_switch_count', 'Tab Switch Count', 'tabSwitchCount'], 15), 10) || 0,
+          focusLostDurationMs: parseInt(getVal(row, ['focus_lost_duration_ms', 'Focus Lost Duration (ms)', 'focusLostDurationMs'], 16), 10) || 0,
+          rawQuery: getVal(row, ['raw_query', 'Raw SQL Query', 'rawQuery'], row.length > 28 ? 26 : 24) || '',
+          dialectSql: getVal(row, ['dialect_sql', 'Dialect SQL Query', 'dialectSql'], row.length > 28 ? 27 : 25) || '',
           codeSnippet: codeVal || '',
           jsCode: codeVal || ''
         };
         responses.push(resp);
 
-        const age = getVal(row, ['Age', 'age'], 17);
-        const gender = getVal(row, ['Gender', 'gender'], 18);
-        const education = getVal(row, ['Highest Level of Education', 'Education', 'Academic Standing', 'academicStanding', 'education'], 19);
+        const age = getVal(row, ['age', 'Age'], 17);
+        const gender = getVal(row, ['gender', 'Gender'], 18);
+        const education = getVal(row, ['highest_education', 'Highest Level of Education', 'Education', 'Academic Standing', 'academicStanding', 'education'], 19);
 
         if (!demographics[pid] && (age || gender || education)) {
           demographics[pid] = {
@@ -962,41 +966,196 @@ class ParticipantAnalytics {
     this.downloadBlob(JSON.stringify(payload, null, 2), `study_submission_${participantId}.json`, 'application/json');
   }
 
+  // --- Statistical / ANOVA Data Helpers ---
+
+  parseNum(val, defaultVal = 0.0) {
+    if (val === null || val === undefined || val === '') return defaultVal;
+    if (typeof val === 'number') return val;
+    const s = String(val).trim().toLowerCase();
+    if (s.includes('none') || s.startsWith('no ')) return 0.0;
+    if (s.includes('< 1') || s.includes('<1')) return 0.5;
+    const rangeMatch = s.match(/(\d+(?:\.\d+)?)\s*[-–—]\s*(\d+(?:\.\d+)?)/);
+    if (rangeMatch) {
+      return Math.round(((parseFloat(rangeMatch[1]) + parseFloat(rangeMatch[2])) / 2.0) * 100) / 100;
+    }
+    const match = s.match(/(\d+(?:\.\d+)?)/);
+    if (match) return parseFloat(match[1]);
+    return defaultVal;
+  }
+
+  parseAge(val) {
+    if (val === null || val === undefined || val === '') return '';
+    const match = String(val).match(/\d+/);
+    return match ? parseInt(match[0], 10) : '';
+  }
+
+  parseEducationInfo(val) {
+    const EDUCATION_LABELS = {
+      0: 'High School / GED',
+      1: 'Some college / university',
+      2: 'Associate Degree',
+      3: 'Bachelor Degree',
+      4: 'Masters Degree',
+      5: 'Ph. D.',
+      6: 'Other'
+    };
+    if (val === null || val === undefined || val === '') {
+      return { code: '', label: '', has_degree: 0 };
+    }
+    const s = String(val).trim().toLowerCase();
+    if (/^\d+$/.test(s)) {
+      const code = parseInt(s, 10);
+      const label = EDUCATION_LABELS[code] || 'Other';
+      return { code, label, has_degree: (code >= 3 && code <= 5) ? 1 : 0 };
+    }
+    let code = 6;
+    if (s.includes('ph') || s.includes('doctor') || s.includes('postdoc')) {
+      code = 5;
+    } else if (s.includes('master') || s.includes('graduate')) {
+      code = 4;
+    } else if (s.includes('bachelor') || s.includes('junior') || s.includes('senior')) {
+      code = 3;
+    } else if (s.includes('associate')) {
+      code = 2;
+    } else if (s.includes('some college') || s.includes('freshman') || s.includes('sophomore') || s.includes('undergrad')) {
+      code = 1;
+    } else if (s.includes('high school') || s.includes('ged') || s.includes('diploma')) {
+      code = 0;
+    }
+    return {
+      code,
+      label: EDUCATION_LABELS[code] || 'Other',
+      has_degree: (code >= 3 && code <= 5) ? 1 : 0
+    };
+  }
+
+  parseGenderInfo(val) {
+    const GENDER_LABELS = {
+      0: 'Male',
+      1: 'Female',
+      2: 'Non-binary',
+      3: 'Other',
+      4: 'Prefer not to say'
+    };
+    if (val === null || val === undefined || val === '') {
+      return { code: '', label: '', is_male: 0, is_female: 0 };
+    }
+    const s = String(val).trim().toLowerCase();
+    if (/^\d+$/.test(s)) {
+      const code = parseInt(s, 10);
+      const label = GENDER_LABELS[code] || 'Other';
+      return {
+        code,
+        label,
+        is_male: code === 0 ? 1 : 0,
+        is_female: code === 1 ? 1 : 0
+      };
+    }
+    let code = 3;
+    if (s === 'male' || s === 'm') {
+      code = 0;
+    } else if (s === 'female' || s === 'f') {
+      code = 1;
+    } else if (s.includes('non-binary') || s.includes('nonbinary') || s.includes('third')) {
+      code = 2;
+    } else if (s.includes('prefer not')) {
+      code = 4;
+    }
+    return {
+      code,
+      label: GENDER_LABELS[code] || 'Other',
+      is_male: code === 0 ? 1 : 0,
+      is_female: code === 1 ? 1 : 0
+    };
+  }
+
+  parseLanguageInfo(val) {
+    const s = String(val || '').trim().toLowerCase();
+    const isEng = s.includes('english') ? 1 : 0;
+    return { language: val || '', is_english: isEng };
+  }
+
+  parseCountryInfo(val) {
+    const s = String(val || '').trim().toLowerCase();
+    const isUs = (s.includes('united states') || s === 'usa' || s === 'us' || s.includes('u.s.')) ? 1 : 0;
+    return { country: val || '', is_us: isUs };
+  }
+
+  parseDisabilityInfo(val) {
+    const s = String(val || '').trim().toLowerCase();
+    const hasDis = (s && !s.includes('none') && s !== 'no' && !s.includes('prefer not')) ? 1 : 0;
+    return { disability: val || '', has_disability: hasDis };
+  }
+
+  toBinary(val) {
+    if (val === true || val === 1 || String(val).trim().toUpperCase() === 'TRUE' || String(val).trim() === '1') {
+      return 1;
+    }
+    return 0;
+  }
+
+  getTrialBlock(qNum) {
+    const q = parseInt(qNum, 10) || 1;
+    if (q <= 15) return 1;
+    if (q <= 30) return 2;
+    if (q <= 45) return 3;
+    return 4;
+  }
+
+  calcLogRT(rtMs) {
+    const ms = parseFloat(rtMs) || 0;
+    return Math.round(Math.log(Math.max(ms, 1.0)) * 10000) / 10000;
+  }
+
   // --- Export Routines ---
 
   getCSVHeaders() {
     return [
-      'Response ID',
-      'Participant ID',
-      'Session ID',
-      'Timestamp (ISO)',
-      'Question Number',
-      'Question Category',
-      'Assigned Group',
-      'Host Language',
-      'Syntax Dialect ID',
-      'Syntax Dialect Name',
-      'Selected Key (1-4)',
-      'Selected Option',
-      'Correct Option',
-      'Is Correct',
-      'Response Time (ms)',
-      'Random Seed',
-      'Tab Focus Lost',
-      'Tab Switch Count',
-      'Focus Lost Duration (ms)',
-      'Age',
-      'Gender',
-      'Highest Level of Education',
-      'Programming Experience',
-      'Database Experience',
-      'Primary Language',
-      'Country of Origin',
-      'Disability Status',
-      'Final Thoughts',
-      'Raw SQL Query',
-      'Dialect SQL Query',
-      'Code Snippet'
+      'response_id',
+      'participant_id',
+      'session_id',
+      'timestamp_iso',
+      'question_number',
+      'trial_block',
+      'question_category',
+      'assigned_group',
+      'assigned_group_id',
+      'host_language',
+      'syntax_dialect_id',
+      'syntax_dialect_name',
+      'is_correct',
+      'response_time_ms',
+      'response_time_s',
+      'log_response_time',
+      'tab_focus_lost',
+      'valid_trial',
+      'tab_switch_count',
+      'focus_lost_duration_ms',
+      'selected_key',
+      'selected_option',
+      'correct_option',
+      'age',
+      'gender',
+      'gender_label',
+      'gender_male',
+      'gender_female',
+      'education',
+      'education_label',
+      'has_college_degree',
+      'coding_exp_years',
+      'has_coding_exp',
+      'db_exp_years',
+      'has_db_exp',
+      'primary_language',
+      'is_english_primary',
+      'country_of_origin',
+      'is_country_us',
+      'disability_status',
+      'has_disability',
+      'final_thoughts',
+      'raw_query',
+      'dialect_sql',
+      'code_snippet'
     ];
   }
 
@@ -1004,6 +1163,36 @@ class ParticipantAnalytics {
     const demo = this.getDemographics(r.participantId) || {};
     const thoughtsObj = this.getFinalThoughts(r.participantId) || {};
     const assigned = this.getAssignedGroup(r.participantId);
+
+    const isCorrectVal = this.toBinary(r.isCorrect);
+    const rtMs = parseInt(r.responseTimeMs, 10) || 0;
+    const rtS = Math.round((rtMs / 1000.0) * 1000) / 1000;
+    const logRt = this.calcLogRT(rtMs);
+    const tabFocusLostVal = this.toBinary(r.tabFocusLost);
+    const validTrialVal = tabFocusLostVal === 0 ? 1 : 0;
+    const qNum = parseInt(r.questionNumber, 10) || 1;
+    const trialBlock = this.getTrialBlock(qNum);
+
+    const assignedGroupName = r.assignedGroupName || r.assignedGroup || (assigned ? assigned.name : (demo.assignedGroupName || demo.assignedGroup || ''));
+    let assignedGroupId = r.assignedGroupId || (assigned ? assigned.id : (demo.assignedGroupId || ''));
+    if (!assignedGroupId && assignedGroupName) {
+      const agLower = String(assignedGroupName).toLowerCase();
+      if (agLower.includes('group a')) assignedGroupId = 'group_a';
+      else if (agLower.includes('group b')) assignedGroupId = 'group_b';
+      else if (agLower.includes('group c')) assignedGroupId = 'group_c';
+      else if (agLower.includes('group d')) assignedGroupId = 'group_d';
+      else assignedGroupId = agLower.replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, '');
+    }
+
+    const ageVal = this.parseAge(demo.age);
+    const genderInfo = this.parseGenderInfo(demo.gender);
+    const eduInfo = this.parseEducationInfo(demo.education || demo.highestEducation || demo.academicStanding);
+    const codingYears = this.parseNum(demo.codingExp);
+    const dbYears = this.parseNum(demo.dbExp);
+    const langInfo = this.parseLanguageInfo(demo.primaryLanguage);
+    const countryInfo = this.parseCountryInfo(demo.countryOfOrigin);
+    const disInfo = this.parseDisabilityInfo(demo.disability);
+
     const escapeCsv = (val) => {
       if (val === null || val === undefined) return '""';
       const str = String(val).replace(/"/g, '""');
@@ -1015,29 +1204,43 @@ class ParticipantAnalytics {
       r.participantId || '',
       r.sessionId || '',
       r.timestamp || '',
-      r.questionNumber || '',
+      qNum,
+      trialBlock,
       r.questionCategory || '',
-      r.assignedGroupName || r.assignedGroup || (assigned ? assigned.name : ''),
-      r.hostLanguage || (assigned ? assigned.hostLanguage : ''),
+      assignedGroupName,
+      assignedGroupId,
+      r.hostLanguage || (assigned ? assigned.hostLanguage : (demo.hostLanguage || '')),
       r.activeDialect || '',
       r.activeDialectName || '',
+      isCorrectVal,
+      rtMs,
+      rtS,
+      logRt,
+      tabFocusLostVal,
+      validTrialVal,
+      r.tabSwitchCount || 0,
+      r.focusLostDurationMs || 0,
       r.selectedKey !== null && r.selectedKey !== undefined ? r.selectedKey : '',
       r.selectedOptionText || '',
       r.correctOptionText || '',
-      r.isCorrect ? 'TRUE' : 'FALSE',
-      r.responseTimeMs || 0,
-      r.seed || '',
-      r.tabFocusLost ? 'TRUE' : 'FALSE',
-      r.tabSwitchCount || 0,
-      r.focusLostDurationMs || 0,
-      demo.age || '',
-      demo.gender || '',
-      demo.education || demo.highestEducation || demo.academicStanding || '',
-      demo.codingExp || '',
-      demo.dbExp || '',
-      demo.primaryLanguage || '',
-      demo.countryOfOrigin || '',
-      demo.disability || '',
+      ageVal,
+      genderInfo.code,
+      genderInfo.label,
+      genderInfo.is_male,
+      genderInfo.is_female,
+      eduInfo.code,
+      eduInfo.label,
+      eduInfo.has_degree,
+      codingYears,
+      codingYears > 0 ? 1 : 0,
+      dbYears,
+      dbYears > 0 ? 1 : 0,
+      langInfo.language,
+      langInfo.is_english,
+      countryInfo.country,
+      countryInfo.is_us,
+      disInfo.disability,
+      disInfo.has_disability,
       thoughtsObj.thoughts || '',
       r.rawQuery || '',
       r.dialectSql || r.rawQuery || '',

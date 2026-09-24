@@ -8,6 +8,8 @@ import hashlib
 import tempfile
 import threading
 import urllib.parse
+import re
+import math
 from http.cookies import SimpleCookie
 from datetime import datetime
 from zoneinfo import ZoneInfo
@@ -83,15 +85,128 @@ def migrate_legacy_txt_emails():
             print(f"Notice: legacy email migration exception: {e}")
 
 CSV_HEADERS = [
-    'Response ID', 'Participant ID', 'Session ID', 'Timestamp (ISO)',
-    'Question Number', 'Question Category', 'Assigned Group', 'Host Language',
-    'Syntax Dialect ID', 'Syntax Dialect Name', 'Selected Key (1-4)', 'Selected Option',
-    'Correct Option', 'Is Correct', 'Response Time (ms)', 'Random Seed',
-    'Tab Focus Lost', 'Tab Switch Count', 'Focus Lost Duration (ms)',
-    'Age', 'Gender', 'Highest Level of Education', 'Programming Experience',
-    'Database Experience', 'Primary Language', 'Country of Origin', 'Disability Status',
-    'Final Thoughts', 'Raw SQL Query', 'Dialect SQL Query', 'Code Snippet'
+    'response_id', 'participant_id', 'session_id', 'timestamp_iso',
+    'question_number', 'trial_block', 'question_category',
+    'assigned_group', 'assigned_group_id', 'host_language',
+    'syntax_dialect_id', 'syntax_dialect_name',
+    'is_correct', 'response_time_ms', 'response_time_s', 'log_response_time',
+    'tab_focus_lost', 'valid_trial', 'tab_switch_count', 'focus_lost_duration_ms',
+    'selected_key', 'selected_option', 'correct_option',
+    'age', 'gender', 'gender_label', 'gender_male', 'gender_female',
+    'education', 'education_label', 'has_college_degree',
+    'coding_exp_years', 'has_coding_exp',
+    'db_exp_years', 'has_db_exp',
+    'primary_language', 'is_english_primary',
+    'country_of_origin', 'is_country_us',
+    'disability_status', 'has_disability',
+    'final_thoughts', 'raw_query', 'dialect_sql', 'code_snippet'
 ]
+
+def parse_num(val, default=0.0):
+    if val is None or val == '':
+        return default
+    if isinstance(val, (int, float)):
+        return float(val)
+    s = str(val).strip().lower()
+    if 'none' in s or s.startswith('no '):
+        return 0.0
+    if '< 1' in s or '<1' in s:
+        return 0.5
+    range_match = re.search(r'(\d+(?:\.\d+)?)\s*[-–—]\s*(\d+(?:\.\d+)?)', s)
+    if range_match:
+        return round((float(range_match.group(1)) + float(range_match.group(2))) / 2.0, 2)
+    match = re.search(r'(\d+(?:\.\d+)?)', s)
+    if match:
+        return float(match.group(1))
+    return default
+
+def parse_age(val):
+    if val is None or val == '':
+        return ''
+    match = re.search(r'\d+', str(val))
+    return int(match.group(0)) if match else ''
+
+GENDER_LABELS = {
+    0: 'Male',
+    1: 'Female',
+    2: 'Non-binary',
+    3: 'Other',
+    4: 'Prefer not to say'
+}
+
+EDUCATION_LABELS = {
+    0: 'High School / GED',
+    1: 'Some college / university',
+    2: 'Associate Degree',
+    3: 'Bachelor Degree',
+    4: 'Masters Degree',
+    5: 'Ph. D.',
+    6: 'Other'
+}
+
+def parse_education_info(val):
+    if val is None or val == '':
+        return {'code': '', 'label': '', 'has_degree': 0}
+    s = str(val).strip().lower()
+    if s.isdigit():
+        code = int(s)
+        label = EDUCATION_LABELS.get(code, 'Other')
+        return {'code': code, 'label': label, 'has_degree': 1 if (3 <= code <= 5) else 0}
+    if 'ph' in s or 'doctor' in s or 'postdoc' in s:
+        code = 5
+    elif 'master' in s or 'graduate' in s:
+        code = 4
+    elif 'bachelor' in s or 'junior' in s or 'senior' in s:
+        code = 3
+    elif 'associate' in s:
+        code = 2
+    elif 'some college' in s or 'freshman' in s or 'sophomore' in s or 'undergrad' in s:
+        code = 1
+    elif 'high school' in s or 'ged' in s or 'diploma' in s:
+        code = 0
+    else:
+        code = 6
+    return {'code': code, 'label': EDUCATION_LABELS.get(code, 'Other'), 'has_degree': 1 if (3 <= code <= 5) else 0}
+
+def parse_gender_info(val):
+    if val is None or val == '':
+        return {'code': '', 'label': '', 'is_male': 0, 'is_female': 0}
+    s = str(val).strip().lower()
+    if s.isdigit():
+        code = int(s)
+        label = GENDER_LABELS.get(code, 'Other')
+        return {'code': code, 'label': label, 'is_male': 1 if code == 0 else 0, 'is_female': 1 if code == 1 else 0}
+    if s == 'male' or s == 'm':
+        code = 0
+    elif s == 'female' or s == 'f':
+        code = 1
+    elif 'non-binary' in s or 'nonbinary' in s or 'third' in s:
+        code = 2
+    elif 'prefer not' in s:
+        code = 4
+    else:
+        code = 3
+    return {'code': code, 'label': GENDER_LABELS.get(code, 'Other'), 'is_male': 1 if code == 0 else 0, 'is_female': 1 if code == 1 else 0}
+
+def parse_language_info(val):
+    s = str(val or '').strip().lower()
+    is_eng = 1 if 'english' in s else 0
+    return {'language': val or '', 'is_english': is_eng}
+
+def parse_country_info(val):
+    s = str(val or '').strip().lower()
+    is_us = 1 if ('united states' in s or s == 'usa' or s == 'us' or 'u.s.' in s) else 0
+    return {'country': val or '', 'is_us': is_us}
+
+def parse_disability_info(val):
+    s = str(val or '').strip().lower()
+    has_dis = 1 if (s and 'none' not in s and s != 'no' and 'prefer not' not in s) else 0
+    return {'disability': val or '', 'has_disability': has_dis}
+
+def to_binary(val):
+    if val is True or val == 1 or str(val).strip().upper() in ('TRUE', '1', 'T'):
+        return 1
+    return 0
 
 def parse_cookies(cookie_header):
     if not cookie_header: return {}
@@ -149,7 +264,7 @@ def load_db_data():
     return db_data
 
 def export_csv(db_data):
-    """Exports reconstructed state to CSV for convenience."""
+    """Exports reconstructed state to CSV formatted for immediate ANOVA / statistical analysis."""
     responses = db_data.get('responses', [])
     demographics = db_data.get('demographics', {})
     final_thoughts = db_data.get('finalThoughts', {})
@@ -167,21 +282,100 @@ def export_csv(db_data):
             pid = r.get('participantId', '')
             demo = demographics.get(pid, {})
             thought_obj = final_thoughts.get(pid, {})
+
+            # Response correctness & timing metrics (1s and 0s)
+            is_correct_val = to_binary(r.get('isCorrect'))
+            
+            raw_rt_ms = r.get('responseTimeMs', 0)
+            try:
+                rt_ms = int(raw_rt_ms) if raw_rt_ms is not None else 0
+            except:
+                rt_ms = 0
+            rt_s = round(rt_ms / 1000.0, 3)
+            log_rt = round(math.log(max(rt_ms, 1)), 4)
+
+            # Focus and trial validity (1s and 0s)
+            tab_focus_lost_val = to_binary(r.get('tabFocusLost'))
+            valid_trial_val = 1 if tab_focus_lost_val == 0 else 0
+
+            # Trial sequence & block (1 to 4)
+            raw_q_num = r.get('questionNumber', 1)
+            try:
+                q_num = int(raw_q_num)
+            except:
+                q_num = 1
+            if q_num <= 15: trial_block = 1
+            elif q_num <= 30: trial_block = 2
+            elif q_num <= 45: trial_block = 3
+            else: trial_block = 4
+
+            # Group and Dialect
+            assigned_group = r.get('assignedGroupName', r.get('assignedGroup', demo.get('assignedGroupName', demo.get('assignedGroup', ''))))
+            assigned_group_id = r.get('assignedGroupId', demo.get('assignedGroupId', ''))
+            if not assigned_group_id and assigned_group:
+                ag_lower = str(assigned_group).lower()
+                if 'group a' in ag_lower: assigned_group_id = 'group_a'
+                elif 'group b' in ag_lower: assigned_group_id = 'group_b'
+                elif 'group c' in ag_lower: assigned_group_id = 'group_c'
+                elif 'group d' in ag_lower: assigned_group_id = 'group_d'
+                else: assigned_group_id = re.sub(r'[^a-z0-9]+', '_', ag_lower).strip('_')
+
+            # Demographics parsing (numeric, ordinal & 1s/0s)
+            raw_age = demo.get('age', '')
+            age_val = parse_age(raw_age)
+
+            gender_info = parse_gender_info(demo.get('gender', ''))
+            edu_info = parse_education_info(demo.get('education', demo.get('highestEducation', demo.get('academicStanding', ''))))
+            coding_years = parse_num(demo.get('codingExp', ''))
+            db_years = parse_num(demo.get('dbExp', ''))
+            lang_info = parse_language_info(demo.get('primaryLanguage', ''))
+            country_info = parse_country_info(demo.get('countryOfOrigin', ''))
+            dis_info = parse_disability_info(demo.get('disability', ''))
+
             writer.writerow([
-                r.get('id', ''), pid, r.get('sessionId', ''), r.get('timestamp', ''),
-                r.get('questionNumber', ''), r.get('questionCategory', ''),
-                r.get('assignedGroupName', r.get('assignedGroup', demo.get('assignedGroupName', demo.get('assignedGroup', '')))),
+                r.get('id', ''),
+                pid,
+                r.get('sessionId', ''),
+                r.get('timestamp', ''),
+                q_num,
+                trial_block,
+                r.get('questionCategory', ''),
+                assigned_group,
+                assigned_group_id,
                 r.get('hostLanguage', demo.get('hostLanguage', '')),
-                r.get('activeDialect', ''), r.get('activeDialectName', ''),
-                r.get('selectedKey', ''), r.get('selectedOptionText', ''),
-                r.get('correctOptionText', ''), 'TRUE' if r.get('isCorrect') else 'FALSE',
-                r.get('responseTimeMs', 0), r.get('seed', ''),
-                'TRUE' if r.get('tabFocusLost') else 'FALSE', r.get('tabSwitchCount', 0),
-                r.get('focusLostDurationMs', 0), demo.get('age', ''), demo.get('gender', ''),
-                demo.get('education', demo.get('highestEducation', demo.get('academicStanding', ''))),
-                demo.get('codingExp', ''), demo.get('dbExp', ''),
-                demo.get('primaryLanguage', ''), demo.get('countryOfOrigin', ''), demo.get('disability', ''),
-                thought_obj.get('thoughts', ''), r.get('rawQuery', ''),
+                r.get('activeDialect', ''),
+                r.get('activeDialectName', ''),
+                is_correct_val,
+                rt_ms,
+                rt_s,
+                log_rt,
+                tab_focus_lost_val,
+                valid_trial_val,
+                r.get('tabSwitchCount', 0),
+                r.get('focusLostDurationMs', 0),
+                r.get('selectedKey', ''),
+                r.get('selectedOptionText', ''),
+                r.get('correctOptionText', ''),
+                age_val,
+                gender_info['code'],
+                gender_info['label'],
+                gender_info['is_male'],
+                gender_info['is_female'],
+                edu_info['code'],
+                edu_info['label'],
+                edu_info['has_degree'],
+                coding_years,
+                1 if coding_years > 0 else 0,
+                db_years,
+                1 if db_years > 0 else 0,
+                lang_info['language'],
+                lang_info['is_english'],
+                country_info['country'],
+                country_info['is_us'],
+                dis_info['disability'],
+                dis_info['has_disability'],
+                thought_obj.get('thoughts', ''),
+                r.get('rawQuery', ''),
                 r.get('dialectSql', r.get('rawQuery', '')),
                 r.get('codeSnippet', r.get('jsCode', r.get('incompleteQuery', '')))
             ])
@@ -325,19 +519,40 @@ class TelemetryHandler(http.server.SimpleHTTPRequestHandler):
                     # Handle new incremental payloads
                     if payload.get('newResponse'):
                         r = payload['newResponse']
+                        r.pop('seed', None)
+                        r.pop('random_seed', None)
                         print(f"[{pst_now}] Response logged: Participant={r.get('participantId')} Q={r.get('questionNumber')} Correct={r.get('isCorrect')}", flush=True)
                         append_event("RESPONSE", r)
                     if payload.get('newDemographic'):
-                        append_event("DEMOGRAPHICS", payload['newDemographic'])
+                        d = payload['newDemographic']
+                        g_info = parse_gender_info(d.get('gender'))
+                        if g_info['code'] != '':
+                            d['gender'] = g_info['code']
+                            d['genderLabel'] = g_info['label']
+                        e_info = parse_education_info(d.get('education') or d.get('highestEducation') or d.get('academicStanding'))
+                        if e_info['code'] != '':
+                            d['education'] = e_info['code']
+                            d['educationLabel'] = e_info['label']
+                        append_event("DEMOGRAPHICS", d)
                     if payload.get('newFinalThought'):
                         append_event("FINAL_THOUGHT", payload['newFinalThought'])
 
                     # Support legacy arrays if old clients connect
                     for r in payload.get('responses', []):
+                        r.pop('seed', None)
+                        r.pop('random_seed', None)
                         print(f"[{pst_now}] Response logged (batch): Participant={r.get('participantId')} Q={r.get('questionNumber')} Correct={r.get('isCorrect')}", flush=True)
                         append_event("RESPONSE", r)
                     if payload.get('demographics'):
                         for k, v in payload['demographics'].items():
+                            g_info = parse_gender_info(v.get('gender'))
+                            if g_info['code'] != '':
+                                v['gender'] = g_info['code']
+                                v['genderLabel'] = g_info['label']
+                            e_info = parse_education_info(v.get('education') or v.get('highestEducation') or v.get('academicStanding'))
+                            if e_info['code'] != '':
+                                v['education'] = e_info['code']
+                                v['educationLabel'] = e_info['label']
                             append_event("DEMOGRAPHICS", v)
                     if payload.get('finalThoughts'):
                         for k, v in payload['finalThoughts'].items():

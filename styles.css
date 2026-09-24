@@ -116,12 +116,12 @@ body {
 .header-actions .btn,
 .header-actions button,
 .header-actions a,
-.header-actions .seed-control {
+.header-actions .counter-pill {
   white-space: nowrap !important;
   flex-shrink: 0;
 }
 
-.seed-control {
+.counter-pill {
   display: flex;
   align-items: center;
   gap: 6px;
@@ -131,17 +131,6 @@ body {
   border: var(--glass-border);
   font-size: 12px;
   white-space: nowrap;
-}
-
-.seed-control input {
-  width: 80px;
-  background: transparent;
-  border: none;
-  color: var(--color-accent);
-  font-family: var(--font-mono);
-  font-weight: 600;
-  font-size: 14px;
-  outline: none;
 }
 
 /* Main Layout */

@@ -27,13 +27,6 @@ class QueryExperimentApp {
     this.init();
   }
 
-  randomizeSeed() {
-    // Keep seed fixed to 42 while randomization is disabled
-    this.seed = 42;
-    const seedInput = document.getElementById('seed-input');
-    if (seedInput) seedInput.value = this.seed;
-  }
-
   isParticipantView() {
     if (typeof document !== 'undefined') {
       if (document.getElementById('admin-interactive-menu') || document.getElementById('admin-sidebar-panel') || document.getElementById('btn-admin-logout')) {
@@ -110,7 +103,11 @@ class QueryExperimentApp {
 
     const age = parseInt(demo.age, 10);
     if (isNaN(age) || age < 18) return false;
-    if (!demo.gender || (!demo.education && !demo.academicStanding && !demo.highestEducation) || !demo.codingExp || !demo.dbExp) {
+    const hasGender = demo.gender !== undefined && demo.gender !== null && demo.gender !== '';
+    const hasEdu = (demo.education !== undefined && demo.education !== null && demo.education !== '') ||
+                   (demo.academicStanding !== undefined && demo.academicStanding !== null && demo.academicStanding !== '') ||
+                   (demo.highestEducation !== undefined && demo.highestEducation !== null && demo.highestEducation !== '');
+    if (!hasGender || !hasEdu || demo.codingExp === undefined || demo.codingExp === '' || demo.dbExp === undefined || demo.dbExp === '') {
       return false;
     }
     if (demo.primaryLanguage !== undefined || demo.countryOfOrigin !== undefined) {
@@ -1621,8 +1618,8 @@ class QueryExperimentApp {
                     ${group.demographics ? `
                       <div class="d-flex flex-wrap gap-3 align-center mb-1" style="display:flex; flex-wrap:wrap; gap:12px;">
                         <span><i class="fa-solid fa-cake-candles text-accent"></i> <strong>Age:</strong> ${this.escapeHTML(group.demographics.age || 'N/A')}</span>
-                        <span><i class="fa-solid fa-venus-mars text-accent"></i> <strong>Gender:</strong> ${this.escapeHTML(group.demographics.gender || 'N/A')}</span>
-                        <span><i class="fa-solid fa-graduation-cap text-accent"></i> <strong>Education:</strong> ${this.escapeHTML(group.demographics.education || group.demographics.highestEducation || group.demographics.academicStanding || 'N/A')}</span>
+                        <span><i class="fa-solid fa-venus-mars text-accent"></i> <strong>Gender:</strong> ${this.escapeHTML(group.demographics.genderLabel || (group.demographics.gender !== undefined && group.demographics.gender !== null && group.demographics.gender !== '' ? (['Male', 'Female', 'Non-binary', 'Other', 'Prefer not to say'][group.demographics.gender] ?? group.demographics.gender) : 'N/A'))}</span>
+                        <span><i class="fa-solid fa-graduation-cap text-accent"></i> <strong>Education:</strong> ${this.escapeHTML(group.demographics.educationLabel || (group.demographics.education !== undefined && group.demographics.education !== null && group.demographics.education !== '' ? (['High School / GED', 'Some college / university', 'Associate Degree', 'Bachelor Degree', 'Masters Degree', 'Ph. D.', 'Other'][group.demographics.education] ?? group.demographics.education) : (group.demographics.highestEducation || group.demographics.academicStanding || 'N/A')))}</span>
                         <span><i class="fa-solid fa-code text-success"></i> <strong>Prog Exp:</strong> ${this.escapeHTML(group.demographics.codingExp || 'N/A')}</span>
                         <span><i class="fa-solid fa-database text-warning"></i> <strong>DB Exp:</strong> ${this.escapeHTML(group.demographics.dbExp || 'N/A')}</span>
                       </div>

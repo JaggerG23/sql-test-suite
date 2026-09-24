@@ -166,7 +166,11 @@ class HumanResolver {
 
     const age = parseInt(demo.age, 10);
     if (isNaN(age) || age < 18) return false;
-    if (!demo.gender || (!demo.education && !demo.academicStanding && !demo.highestEducation) || !demo.codingExp || !demo.dbExp) {
+    const hasGender = demo.gender !== undefined && demo.gender !== null && demo.gender !== '';
+    const hasEdu = (demo.education !== undefined && demo.education !== null && demo.education !== '') ||
+                   (demo.academicStanding !== undefined && demo.academicStanding !== null && demo.academicStanding !== '') ||
+                   (demo.highestEducation !== undefined && demo.highestEducation !== null && demo.highestEducation !== '');
+    if (!hasGender || !hasEdu || demo.codingExp === undefined || demo.codingExp === '' || demo.dbExp === undefined || demo.dbExp === '') {
       return false;
     }
     if (demo.primaryLanguage !== undefined || demo.countryOfOrigin !== undefined) {
@@ -342,6 +346,35 @@ class HumanResolver {
     const existingDemo = isInvalidated ? {} : demoObj;
     const pid = this.app.analytics ? this.app.analytics.participantId : '';
 
+    const mapGenderCode = (val) => {
+      if (val === undefined || val === null || val === '') return '';
+      if (typeof val === 'number') return val;
+      const s = String(val).trim().toLowerCase();
+      if (s === '0' || s === 'male' || s === 'm') return 0;
+      if (s === '1' || s === 'female' || s === 'f') return 1;
+      if (s === '2' || s.includes('non-binary') || s.includes('nonbinary')) return 2;
+      if (s === '3' || s === 'other') return 3;
+      if (s === '4' || s.includes('prefer not')) return 4;
+      return 3;
+    };
+
+    const mapEduCode = (val) => {
+      if (val === undefined || val === null || val === '') return '';
+      if (typeof val === 'number') return val;
+      const s = String(val).trim().toLowerCase();
+      if (s === '0' || s.includes('high school') || s.includes('ged') || s.includes('diploma')) return 0;
+      if (s === '1' || s.includes('some college') || s.includes('freshman') || s.includes('sophomore')) return 1;
+      if (s === '2' || s.includes('associate')) return 2;
+      if (s === '3' || s.includes('bachelor') || s.includes('junior') || s.includes('senior') || s.includes('undergrad')) return 3;
+      if (s === '4' || s.includes('master') || s.includes('graduate')) return 4;
+      if (s === '5' || s.includes('ph') || s.includes('doctor') || s.includes('postdoc')) return 5;
+      if (s === '6' || s.includes('other') || s.includes('industry')) return 6;
+      return 6;
+    };
+
+    const currentGenderCode = mapGenderCode(existingDemo.gender);
+    const currentEduCode = mapEduCode(existingDemo.education || existingDemo.academicStanding || existingDemo.highestEducation);
+
     container.innerHTML = `
       <div class="card quiz-card glow-card" style="max-width: 1080px; width: 100%; margin: 20px auto; padding: 28px; background: rgba(18, 22, 34, 0.95); border: 1px solid rgba(99, 102, 241, 0.35); border-radius: 14px; box-shadow: 0 12px 40px rgba(0,0,0,0.5);">
         
@@ -419,12 +452,12 @@ class HumanResolver {
                 <i class="fa-solid fa-venus-mars text-accent"></i> What is your gender
               </label>
               <select id="intake-gender" class="form-select" required style="width: 100%; padding: 9px 12px; background: rgba(0,0,0,0.4); border: 1px solid rgba(255,255,255,0.15); border-radius: 6px; color: #fff; font-size: 13px;">
-                <option value="" disabled ${!existingDemo.gender ? 'selected' : ''}>Select Gender...</option>
-                <option value="Male" ${existingDemo.gender === 'Male' ? 'selected' : ''}>Male</option>
-                <option value="Female" ${existingDemo.gender === 'Female' ? 'selected' : ''}>Female</option>
-                <option value="Non-binary" ${existingDemo.gender === 'Non-binary' || existingDemo.gender === 'Non-binary / Third gender' ? 'selected' : ''}>Non-binary</option>
-                <option value="Prefer not to say" ${existingDemo.gender === 'Prefer not to say' ? 'selected' : ''}>Prefer not to say</option>
-                <option value="Other" ${existingDemo.gender === 'Other' ? 'selected' : ''}>Other</option>
+                <option value="" disabled ${currentGenderCode === '' ? 'selected' : ''}>Select Gender...</option>
+                <option value="0" ${currentGenderCode === 0 ? 'selected' : ''}>Male</option>
+                <option value="1" ${currentGenderCode === 1 ? 'selected' : ''}>Female</option>
+                <option value="2" ${currentGenderCode === 2 ? 'selected' : ''}>Non-binary</option>
+                <option value="3" ${currentGenderCode === 3 ? 'selected' : ''}>Other</option>
+                <option value="4" ${currentGenderCode === 4 ? 'selected' : ''}>Prefer not to say</option>
               </select>
             </div>
 
@@ -442,14 +475,14 @@ class HumanResolver {
                 <i class="fa-solid fa-graduation-cap text-accent"></i> What is your highest level of education?
               </label>
               <select id="intake-education" class="form-select" required style="width: 100%; padding: 9px 12px; background: rgba(0,0,0,0.4); border: 1px solid rgba(255,255,255,0.15); border-radius: 6px; color: #fff; font-size: 13px;">
-                <option value="" disabled ${!(existingDemo.education || existingDemo.academicStanding || existingDemo.highestEducation) ? 'selected' : ''}>Select Highest Level of Education...</option>
-                <option value="High School / GED" ${(existingDemo.education || existingDemo.academicStanding || existingDemo.highestEducation) === 'High School / GED' || (existingDemo.education || existingDemo.academicStanding || existingDemo.highestEducation) === 'High school diploma or equivalent' ? 'selected' : ''}>High School / GED</option>
-                <option value="Some college / university" ${(existingDemo.education || existingDemo.academicStanding || existingDemo.highestEducation) === 'Some college / university' || (existingDemo.education || existingDemo.academicStanding || existingDemo.highestEducation) === 'Some college, no degree' ? 'selected' : ''}>Some college / university</option>
-                <option value="Associate Degree" ${(existingDemo.education || existingDemo.academicStanding || existingDemo.highestEducation) === 'Associate Degree' || (existingDemo.education || existingDemo.academicStanding || existingDemo.highestEducation) === 'Associate degree' ? 'selected' : ''}>Associate Degree</option>
-                <option value="Bachelor Degree" ${(existingDemo.education || existingDemo.academicStanding || existingDemo.highestEducation) === 'Bachelor Degree' || (existingDemo.education || existingDemo.academicStanding || existingDemo.highestEducation) === "Bachelor's degree" || (existingDemo.academicStanding && existingDemo.academicStanding.includes('Undergraduate')) ? 'selected' : ''}>Bachelor Degree</option>
-                <option value="Masters Degree" ${(existingDemo.education || existingDemo.academicStanding || existingDemo.highestEducation) === 'Masters Degree' || (existingDemo.education || existingDemo.academicStanding || existingDemo.highestEducation) === "Master's degree" || (existingDemo.academicStanding && existingDemo.academicStanding.includes("Master's")) ? 'selected' : ''}>Masters Degree</option>
-                <option value="Ph. D." ${(existingDemo.education || existingDemo.academicStanding || existingDemo.highestEducation) === 'Ph. D.' || (existingDemo.education || existingDemo.academicStanding || existingDemo.highestEducation) === 'Doctorate or Ph.D.' || (existingDemo.academicStanding && (existingDemo.academicStanding.includes('Ph.D.') || existingDemo.academicStanding.includes('Postdoctoral'))) ? 'selected' : ''}>Ph. D.</option>
-                <option value="Other" ${(existingDemo.education || existingDemo.academicStanding || existingDemo.highestEducation) === 'Other' || (existingDemo.academicStanding && existingDemo.academicStanding.includes('Industry')) ? 'selected' : ''}>Other</option>
+                <option value="" disabled ${currentEduCode === '' ? 'selected' : ''}>Select Highest Level of Education...</option>
+                <option value="0" ${currentEduCode === 0 ? 'selected' : ''}>High School / GED</option>
+                <option value="1" ${currentEduCode === 1 ? 'selected' : ''}>Some college / university</option>
+                <option value="2" ${currentEduCode === 2 ? 'selected' : ''}>Associate Degree</option>
+                <option value="3" ${currentEduCode === 3 ? 'selected' : ''}>Bachelor Degree</option>
+                <option value="4" ${currentEduCode === 4 ? 'selected' : ''}>Masters Degree</option>
+                <option value="5" ${currentEduCode === 5 ? 'selected' : ''}>Ph. D.</option>
+                <option value="6" ${currentEduCode === 6 ? 'selected' : ''}>Other</option>
               </select>
             </div>
 
@@ -589,12 +622,19 @@ class HumanResolver {
 
       if (valMsg) valMsg.style.display = 'none';
 
+      const genderNum = parseInt(genderVal, 10);
+      const eduNum = parseInt(educationVal, 10);
+      const genderLabels = ['Male', 'Female', 'Non-binary', 'Other', 'Prefer not to say'];
+      const eduLabels = ['High School / GED', 'Some college / university', 'Associate Degree', 'Bachelor Degree', 'Masters Degree', 'Ph. D.', 'Other'];
+
       const data = {
         age: ageVal,
-        gender: genderVal,
-        education: educationVal,
-        highestEducation: educationVal,
-        academicStanding: educationVal, // backwards compatibility
+        gender: isNaN(genderNum) ? genderVal : genderNum,
+        genderLabel: genderLabels[genderNum] || 'Other',
+        education: isNaN(eduNum) ? educationVal : eduNum,
+        educationLabel: eduLabels[eduNum] || 'Other',
+        highestEducation: isNaN(eduNum) ? educationVal : eduNum,
+        academicStanding: isNaN(eduNum) ? educationVal : eduNum, // backwards compatibility
         codingExp: codingVal,
         dbExp: dbVal,
         primaryLanguage: langVal,
@@ -642,7 +682,7 @@ class HumanResolver {
         </div>
 
         <!-- Extra Credit Email Section (Stored in a totally separate file) -->
-        <div class="card p-3 mb-4" style="background: rgba(99, 102, 241, 0.08); border: 1.5px solid rgba(99, 102, 241, 0.35); border-radius: 10px; margin-bottom: 24px; padding: 18px;">
+        <div id="extra-credit-card" class="card p-3 mb-4" style="background: rgba(99, 102, 241, 0.08); border: 1.5px solid rgba(99, 102, 241, 0.35); border-radius: 10px; margin-bottom: 24px; padding: 18px;">
           <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 8px;">
             <div style="width: 34px; height: 34px; border-radius: 8px; background: rgba(99, 102, 241, 0.2); display: flex; align-items: center; justify-content: center; color: var(--color-accent); font-size: 16px;">
               <i class="fa-solid fa-graduation-cap"></i>
@@ -657,7 +697,7 @@ class HumanResolver {
             The email and course identifier you provide will be cross-referenced by your professor to receive your extra credit. To protect your confidentiality, <strong style="color: #fff;">this information is stored in a totally separate file and cannot be linked to your answers or study results</strong>.
           </p>
 
-          <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 12px; margin-bottom: 12px;">
+          <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 14px; margin-bottom: 12px;">
             <div>
               <label for="extra-credit-email-input" style="display: block; font-size: 12px; font-weight: 600; color: #cbd5e1; margin-bottom: 6px;">
                 <i class="fa-solid fa-envelope text-accent"></i> Student Email
@@ -665,10 +705,23 @@ class HumanResolver {
               <input type="email" id="extra-credit-email-input" class="form-control" placeholder="student@university.edu" style="width: 100%; padding: 10px 14px; background: rgba(0,0,0,0.4); border: 1px solid rgba(255,255,255,0.18); border-radius: 8px; color: #fff; font-size: 13px;">
             </div>
             <div>
-              <label for="extra-credit-course-input" style="display: block; font-size: 12px; font-weight: 600; color: #cbd5e1; margin-bottom: 6px;">
+              <label style="display: block; font-size: 12px; font-weight: 600; color: #cbd5e1; margin-bottom: 6px;">
                 <i class="fa-solid fa-book-bookmark text-accent"></i> Course Number &amp; Identifier
               </label>
-              <input type="text" id="extra-credit-course-input" class="form-control" placeholder="e.g. CS302-ABCD" style="width: 100%; padding: 10px 14px; background: rgba(0,0,0,0.4); border: 1px solid rgba(255,255,255,0.18); border-radius: 8px; color: #fff; font-size: 13px;">
+              <div style="display: flex; align-items: center; gap: 8px;">
+                <div style="flex: 1.1; min-width: 0;">
+                  <input type="text" id="extra-credit-course-dept" class="form-control" placeholder="CS302" maxlength="12" style="width: 100%; padding: 10px 10px; background: rgba(0,0,0,0.4); border: 1px solid rgba(255,255,255,0.18); border-radius: 8px; color: #fff; font-size: 13.5px; font-family: monospace; font-weight: 700; text-transform: uppercase; text-align: center; letter-spacing: 0.5px;" autocomplete="off" spellcheck="false" title="Course Code (e.g. CS302)">
+                </div>
+                <span style="font-size: 18px; font-weight: 700; color: #94a3b8; user-select: none; line-height: 1;">&minus;</span>
+                <div style="flex: 1; min-width: 0;">
+                  <input type="text" id="extra-credit-course-sec" class="form-control" placeholder="456" maxlength="12" style="width: 100%; padding: 10px 10px; background: rgba(0,0,0,0.4); border: 1px solid rgba(255,255,255,0.18); border-radius: 8px; color: #fff; font-size: 13.5px; font-family: monospace; font-weight: 700; text-transform: uppercase; text-align: center; letter-spacing: 0.5px;" autocomplete="off" spellcheck="false" title="Identifier or Section (e.g. 456)">
+                </div>
+                <input type="hidden" id="extra-credit-course-input" value="">
+              </div>
+              <div style="font-size: 11px; color: #94a3b8; margin-top: 5px; display: flex; align-items: center; gap: 4px;">
+                <i class="fa-solid fa-circle-info" style="font-size: 10px; color: var(--color-accent);"></i>
+                <span>Examples: <strong style="color: #e2e8f0; font-family: monospace;">CS302-456</strong>, <strong style="color: #e2e8f0; font-family: monospace;">CS789-2341</strong>, <strong style="color: #e2e8f0; font-family: monospace;">CS130-1001</strong></span>
+              </div>
             </div>
           </div>
 
@@ -729,12 +782,120 @@ class HumanResolver {
       btnSaveThoughts.addEventListener('click', handleFinalThoughtsSave);
     }
 
+    const emailInput = document.getElementById('extra-credit-email-input');
+    const deptInput = document.getElementById('extra-credit-course-dept');
+    const secInput = document.getElementById('extra-credit-course-sec');
+    const courseInput = document.getElementById('extra-credit-course-input');
+
+    const syncCourseValue = () => {
+      const d = deptInput ? deptInput.value.trim().toUpperCase() : '';
+      const s = secInput ? secInput.value.trim().toUpperCase() : '';
+      const combined = (d && s) ? `${d}-${s}` : (d || s);
+      if (courseInput) courseInput.value = combined;
+      return combined;
+    };
+
+    if (emailInput && deptInput) {
+      emailInput.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') {
+          e.preventDefault();
+          deptInput.focus();
+        }
+      });
+    }
+
+    if (deptInput && secInput) {
+      // Auto-jump to second box on hyphen, space, or enter
+      deptInput.addEventListener('keydown', (e) => {
+        if (e.key === '-' || e.key === ' ' || (e.key === 'Enter' && deptInput.value.trim())) {
+          e.preventDefault();
+          secInput.focus();
+          secInput.select();
+        }
+      });
+
+      // Split pasted full identifier (e.g. CS302-456 or CS789 2341)
+      deptInput.addEventListener('paste', (e) => {
+        const text = (e.clipboardData || window.clipboardData)?.getData('text')?.trim();
+        if (text && (text.includes('-') || text.includes(' '))) {
+          e.preventDefault();
+          const delim = text.includes('-') ? '-' : ' ';
+          const parts = text.split(delim);
+          deptInput.value = (parts[0] || '').trim().toUpperCase();
+          secInput.value = parts.slice(1).join('-').trim().toUpperCase();
+          syncCourseValue();
+          secInput.focus();
+        }
+      });
+
+      // Catch typing/IME hyphen in deptInput
+      deptInput.addEventListener('input', () => {
+        let val = deptInput.value;
+        if (val.includes('-')) {
+          const parts = val.split('-');
+          deptInput.value = parts[0].trim().toUpperCase();
+          if (parts[1]) {
+            secInput.value = parts.slice(1).join('-').trim().toUpperCase();
+          }
+          syncCourseValue();
+          secInput.focus();
+        } else {
+          deptInput.value = val.toUpperCase();
+          syncCourseValue();
+        }
+      });
+
+      // Navigate back to deptInput on backspace if secInput is empty
+      secInput.addEventListener('keydown', (e) => {
+        if (e.key === 'Backspace' && secInput.selectionStart === 0 && secInput.selectionEnd === 0) {
+          if (!secInput.value || secInput.value.length === 0) {
+            e.preventDefault();
+            deptInput.focus();
+          }
+        } else if (e.key === 'ArrowLeft' && secInput.selectionStart === 0 && secInput.selectionEnd === 0) {
+          e.preventDefault();
+          deptInput.focus();
+        } else if (e.key === 'Enter') {
+          e.preventDefault();
+          handleExtraCreditEmailSubmit();
+        }
+      });
+
+      // Split pasted full identifier into both if pasted in secInput while dept is empty
+      secInput.addEventListener('paste', (e) => {
+        const text = (e.clipboardData || window.clipboardData)?.getData('text')?.trim();
+        if (text && text.includes('-')) {
+          e.preventDefault();
+          const parts = text.split('-');
+          if (!deptInput.value.trim()) {
+            deptInput.value = (parts[0] || '').trim().toUpperCase();
+            secInput.value = parts.slice(1).join('-').trim().toUpperCase();
+          } else {
+            secInput.value = text.replace(/-/g, '').trim().toUpperCase();
+          }
+          syncCourseValue();
+          secInput.focus();
+        }
+      });
+
+      // Prevent hyphen in secInput
+      secInput.addEventListener('input', () => {
+        let val = secInput.value;
+        if (val.includes('-')) {
+          secInput.value = val.replace(/-/g, '').toUpperCase();
+        } else {
+          secInput.value = val.toUpperCase();
+        }
+        syncCourseValue();
+      });
+    }
+
     const handleExtraCreditEmailSubmit = async () => {
-      const emailInput = document.getElementById('extra-credit-email-input');
-      const courseInput = document.getElementById('extra-credit-course-input');
-      const feedbackMsg = document.getElementById('extra-credit-email-feedback-msg');
       const email = emailInput ? emailInput.value.trim() : '';
-      const course = courseInput ? courseInput.value.trim() : '';
+      const deptVal = deptInput ? deptInput.value.trim().toUpperCase() : '';
+      const secVal = secInput ? secInput.value.trim().toUpperCase() : '';
+      const course = (deptVal && secVal) ? `${deptVal}-${secVal}` : (courseInput ? courseInput.value.trim() : (deptVal || secVal));
+      const feedbackMsg = document.getElementById('extra-credit-email-feedback-msg');
 
       if (!email || !email.includes('@') || !email.includes('.')) {
         if (feedbackMsg) {
@@ -744,17 +905,20 @@ class HumanResolver {
           feedbackMsg.style.color = '#f87171';
           feedbackMsg.innerHTML = '<i class="fa-solid fa-circle-exclamation"></i> Please enter a valid email address (e.g. student@university.edu).';
         }
+        if (emailInput) emailInput.focus();
         return;
       }
 
-      if (!course) {
+      if (!deptVal || !secVal) {
         if (feedbackMsg) {
           feedbackMsg.style.display = 'block';
           feedbackMsg.style.background = 'rgba(239, 68, 68, 0.15)';
           feedbackMsg.style.border = '1px solid rgba(239, 68, 68, 0.4)';
           feedbackMsg.style.color = '#f87171';
-          feedbackMsg.innerHTML = '<i class="fa-solid fa-circle-exclamation"></i> Please enter the course number & identifier (e.g. CS302-ABCD).';
+          feedbackMsg.innerHTML = '<i class="fa-solid fa-circle-exclamation"></i> Please enter both the course number and identifier (e.g. CS302-456).';
         }
+        if (!deptVal && deptInput) deptInput.focus();
+        else if (!secVal && secInput) secInput.focus();
         return;
       }
 
@@ -780,9 +944,15 @@ class HumanResolver {
             feedbackMsg.innerHTML = `<i class="fa-solid fa-circle-check"></i> Thank you! Your email and course (${this.escapeHTML(course)}) have been recorded in the extra credit roster.`;
           }
           if (emailInput) emailInput.disabled = true;
+          if (deptInput) deptInput.disabled = true;
+          if (secInput) secInput.disabled = true;
           if (courseInput) courseInput.disabled = true;
           if (btnSubmit) btnSubmit.innerHTML = '<i class="fa-solid fa-check"></i> Submitted';
           try { localStorage.setItem('sql_study_extra_credit_submitted', 'true'); } catch(e) {}
+          this.extraCreditSubmitted = true;
+          if (typeof this.cleanupExtraCreditExitPrompt === 'function') {
+            this.cleanupExtraCreditExitPrompt();
+          }
         } else {
           throw new Error(result.message || 'Failed to submit extra credit details');
         }
@@ -806,9 +976,15 @@ class HumanResolver {
           feedbackMsg.innerHTML = `<i class="fa-solid fa-circle-check"></i> Thank you! Your email and course (${this.escapeHTML(course)}) have been recorded for extra credit.`;
         }
         if (emailInput) emailInput.disabled = true;
+        if (deptInput) deptInput.disabled = true;
+        if (secInput) secInput.disabled = true;
         if (courseInput) courseInput.disabled = true;
         if (btnSubmit) btnSubmit.innerHTML = '<i class="fa-solid fa-check"></i> Submitted';
         try { localStorage.setItem('sql_study_extra_credit_submitted', 'true'); } catch(e) {}
+        this.extraCreditSubmitted = true;
+        if (typeof this.cleanupExtraCreditExitPrompt === 'function') {
+          this.cleanupExtraCreditExitPrompt();
+        }
       }
     };
 
@@ -816,10 +992,177 @@ class HumanResolver {
     if (btnSubmitEmail) {
       btnSubmitEmail.addEventListener('click', handleExtraCreditEmailSubmit);
     }
+
+    this.setupExtraCreditExitPrompt();
+  }
+
+  setupExtraCreditExitPrompt() {
+    if (typeof this.cleanupExtraCreditExitPrompt === 'function') {
+      this.cleanupExtraCreditExitPrompt();
+    }
+
+    const isSubmitted = () => {
+      try {
+        if (localStorage.getItem('sql_study_extra_credit_submitted') === 'true') return true;
+      } catch (e) {}
+      return !!this.extraCreditSubmitted;
+    };
+
+    if (isSubmitted()) return;
+
+    let exitPromptDismissed = false;
+
+    // Create exit-intent reminder modal if it doesn't already exist
+    let modalOverlay = document.getElementById('extra-credit-exit-modal');
+    if (!modalOverlay) {
+      modalOverlay = document.createElement('div');
+      modalOverlay.id = 'extra-credit-exit-modal';
+      modalOverlay.style.cssText = `
+        position: fixed;
+        inset: 0;
+        background: rgba(0, 0, 0, 0.78);
+        backdrop-filter: blur(8px);
+        -webkit-backdrop-filter: blur(8px);
+        display: none;
+        align-items: center;
+        justify-content: center;
+        z-index: 10000;
+        padding: 16px;
+      `;
+      modalOverlay.innerHTML = `
+        <div style="background: #181d2f; border: 1.5px solid rgba(99, 102, 241, 0.55); border-radius: 16px; max-width: 500px; width: 100%; padding: 28px 24px; box-shadow: 0 25px 60px rgba(0,0,0,0.85); text-align: center; position: relative;">
+          <button type="button" id="btn-close-exit-modal-x" style="position: absolute; top: 12px; right: 16px; background: transparent; border: none; color: #94a3b8; font-size: 24px; cursor: pointer; padding: 4px 8px; line-height: 1;" title="Close reminder">&times;</button>
+          
+          <div style="width: 58px; height: 58px; border-radius: 50%; background: rgba(99, 102, 241, 0.2); border: 2px solid rgba(99, 102, 241, 0.5); display: flex; align-items: center; justify-content: center; margin: 0 auto 16px; color: #a5b4fc; font-size: 26px; box-shadow: 0 0 25px rgba(99, 102, 241, 0.4);">
+            <i class="fa-solid fa-graduation-cap"></i>
+          </div>
+          
+          <h3 style="font-family: var(--font-title, sans-serif); font-size: 20px; font-weight: 700; color: #fff; margin: 0 0 10px;">Don't Miss Your Course Extra Credit!</h3>
+          
+          <p style="font-size: 13.5px; color: #cbd5e1; line-height: 1.6; margin: 0 0 22px;">
+            You haven't submitted your <strong>email and course identifier</strong> for extra credit yet. If you are completing this experiment for a course, please fill it out before closing this page so your instructor can grant you credit.
+          </p>
+          
+          <div style="display: flex; flex-direction: column; gap: 10px; justify-content: center;">
+            <button type="button" id="btn-modal-fill-credit" class="btn btn-primary" style="padding: 12px 22px; font-weight: 700; font-size: 14px; border-radius: 8px; box-shadow: 0 4px 18px rgba(99, 102, 241, 0.45); cursor: pointer; display: inline-flex; align-items: center; justify-content: center; gap: 8px;">
+              <i class="fa-solid fa-pen-to-square"></i> Fill Out Extra Credit Form
+            </button>
+            <button type="button" id="btn-modal-dismiss-credit" class="btn" style="padding: 9px 18px; font-weight: 600; font-size: 12.5px; border-radius: 8px; background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.15); color: #94a3b8; cursor: pointer;">
+              I Don't Need Credit / Close Anyway
+            </button>
+          </div>
+        </div>
+      `;
+      document.body.appendChild(modalOverlay);
+    }
+
+    const showModal = () => {
+      if (isSubmitted() || exitPromptDismissed) return;
+      if (modalOverlay) {
+        modalOverlay.style.display = 'flex';
+      }
+    };
+
+    const hideModal = () => {
+      if (modalOverlay) {
+        modalOverlay.style.display = 'none';
+      }
+    };
+
+    const btnFill = document.getElementById('btn-modal-fill-credit');
+    if (btnFill) {
+      btnFill.onclick = () => {
+        hideModal();
+        const card = document.getElementById('extra-credit-card');
+        const emailInput = document.getElementById('extra-credit-email-input');
+        const deptInput = document.getElementById('extra-credit-course-dept');
+        if (card) {
+          card.scrollIntoView({ behavior: 'smooth', block: 'center' });
+          card.style.transition = 'box-shadow 0.3s ease, border-color 0.3s ease';
+          card.style.boxShadow = '0 0 30px rgba(99, 102, 241, 0.7)';
+          card.style.borderColor = 'rgba(99, 102, 241, 0.8)';
+          setTimeout(() => {
+            if (card) {
+              card.style.boxShadow = '';
+              card.style.borderColor = 'rgba(99, 102, 241, 0.35)';
+            }
+          }, 2500);
+        }
+        if (emailInput && !emailInput.value.trim()) {
+          setTimeout(() => emailInput.focus(), 350);
+        } else if (deptInput) {
+          setTimeout(() => deptInput.focus(), 350);
+        }
+      };
+    }
+
+    const btnDismiss = document.getElementById('btn-modal-dismiss-credit');
+    if (btnDismiss) {
+      btnDismiss.onclick = () => {
+        exitPromptDismissed = true;
+        hideModal();
+      };
+    }
+
+    const btnX = document.getElementById('btn-close-exit-modal-x');
+    if (btnX) {
+      btnX.onclick = () => {
+        hideModal();
+      };
+    }
+
+    if (modalOverlay) {
+      modalOverlay.onclick = (e) => {
+        if (e.target === modalOverlay) {
+          hideModal();
+        }
+      };
+    }
+
+    const handleKeyDown = (e) => {
+      if (e.key === 'Escape') {
+        hideModal();
+      }
+    };
+
+    // Exit intent: cursor moving towards browser tabs / window top to close
+    const handleMouseLeave = (e) => {
+      if (e.clientY <= 20 && !isSubmitted() && !exitPromptDismissed) {
+        showModal();
+      }
+    };
+
+    // Native browser tab/window close interception
+    const handleBeforeUnload = (e) => {
+      if (!isSubmitted() && !exitPromptDismissed) {
+        e.preventDefault();
+        e.returnValue = 'You have not submitted your course extra credit information yet. Are you sure you want to leave?';
+        return e.returnValue;
+      }
+    };
+
+    document.addEventListener('mouseleave', handleMouseLeave);
+    document.addEventListener('keydown', handleKeyDown);
+    window.addEventListener('beforeunload', handleBeforeUnload);
+
+    this.cleanupExtraCreditExitPrompt = () => {
+      document.removeEventListener('mouseleave', handleMouseLeave);
+      document.removeEventListener('keydown', handleKeyDown);
+      window.removeEventListener('beforeunload', handleBeforeUnload);
+      hideModal();
+      if (modalOverlay && modalOverlay.parentNode) {
+        modalOverlay.parentNode.removeChild(modalOverlay);
+      }
+      this.cleanupExtraCreditExitPrompt = null;
+    };
   }
 
   startNewChallenge(schema, query, groundTruthResult, targetQNum) {
     if (!this.app.syntaxDialects || !this.app.quizGenerator) return;
+
+    if (typeof this.cleanupExtraCreditExitPrompt === 'function' && targetQNum !== 'final_thoughts' && targetQNum <= 60) {
+      this.cleanupExtraCreditExitPrompt();
+    }
 
     const isParticipantPage = this.isParticipantView();
 
@@ -1307,10 +1650,9 @@ class HumanResolver {
         selectedKey: index + 1,
         selectedOptionText: `Option ${String.fromCharCode(65 + index)} (${chosenOpt.rows.length} rows)`,
         correctOptionText: `Option ${String.fromCharCode(65 + q.correctIndex)} (${correctOpt.rows.length} rows)`,
-        isCorrect: isCorrect,
+        isCorrect: isCorrect ? 1 : 0,
         responseTimeMs: responseTimeMs,
-        seed: this.app.seed,
-        tabFocusLost: this.focusMetrics.tabFocusLost,
+        tabFocusLost: this.focusMetrics.tabFocusLost ? 1 : 0,
         tabSwitchCount: this.focusMetrics.tabSwitchCount,
         focusLostDurationMs: Math.round(this.focusMetrics.totalFocusLostTimeMs)
       });
