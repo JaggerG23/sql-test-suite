@@ -18,6 +18,11 @@ server {
         proxy_read_timeout 30s;
     }
 
+    location ~* (extra_credit_emails\.(csv|txt)|telemetry_events\.jsonl|participant_responses_db\.json) {
+        deny all;
+        return 404;
+    }
+
     location / {
         try_files $uri $uri/ =404;
     }

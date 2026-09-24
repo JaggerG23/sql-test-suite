@@ -28,6 +28,7 @@ class HumanResolver {
     };
 
     this.intakeCompleted = false;
+    this.consentAccepted = false;
 
     // Check if new participant session is explicitly requested via URL (e.g. from index.html Participant View link)
     if (typeof window !== 'undefined' && window.location && window.location.search) {
@@ -39,16 +40,23 @@ class HumanResolver {
             this.app.analytics.setParticipantId(newPid);
           }
           this.intakeCompleted = false;
+          this.consentAccepted = false;
         }
       } catch (e) {}
     }
 
     // Real-time listener for /index.html visits: forces active participant to fill demographics again
     const handleIndexVisitEvent = () => {
-      if (this.isParticipantView() && !this.hasCompletedDemographics()) {
-        this.intakeCompleted = false;
-        if (this.app) this.app.currentQuestionNumber = 'intake';
-        this.renderIntakeScreen();
+      if (this.isParticipantView()) {
+        if (!this.hasAcceptedConsent()) {
+          this.intakeCompleted = false;
+          if (this.app) this.app.currentQuestionNumber = 'consent';
+          this.renderConsentScreen();
+        } else if (!this.hasCompletedDemographics()) {
+          this.intakeCompleted = false;
+          if (this.app) this.app.currentQuestionNumber = 'intake';
+          this.renderIntakeScreen();
+        }
       }
     };
     if (typeof window !== 'undefined' && 'BroadcastChannel' in window) {
@@ -96,6 +104,48 @@ class HumanResolver {
     return false;
   }
 
+  hasAcceptedConsent(pid) {
+    if (!this.isParticipantView()) return true;
+    if (this.consentAccepted) return true;
+    if (this.app && typeof this.app.hasAcceptedConsent === 'function') {
+      return this.app.hasAcceptedConsent(pid);
+    }
+    try {
+      const targetPid = pid || (this.app && this.app.analytics ? this.app.analytics.participantId : '');
+      if (targetPid && (sessionStorage.getItem('sql_study_consent_accepted_' + targetPid) === 'true' || localStorage.getItem('sql_study_consent_accepted_' + targetPid) === 'true')) {
+        this.consentAccepted = true;
+        return true;
+      }
+      if (sessionStorage.getItem('sql_study_consent_accepted') === 'true' || localStorage.getItem('sql_study_consent_accepted') === 'true') {
+        this.consentAccepted = true;
+        return true;
+      }
+    } catch (e) {}
+    return false;
+  }
+
+  setConsentAccepted(accepted = true) {
+    this.consentAccepted = accepted;
+    try {
+      const targetPid = (this.app && this.app.analytics ? this.app.analytics.participantId : '');
+      if (accepted) {
+        if (targetPid) {
+          sessionStorage.setItem('sql_study_consent_accepted_' + targetPid, 'true');
+          localStorage.setItem('sql_study_consent_accepted_' + targetPid, 'true');
+        }
+        sessionStorage.setItem('sql_study_consent_accepted', 'true');
+        localStorage.setItem('sql_study_consent_accepted', 'true');
+      } else {
+        if (targetPid) {
+          sessionStorage.removeItem('sql_study_consent_accepted_' + targetPid);
+          localStorage.removeItem('sql_study_consent_accepted_' + targetPid);
+        }
+        sessionStorage.removeItem('sql_study_consent_accepted');
+        localStorage.removeItem('sql_study_consent_accepted');
+      }
+    } catch (e) {}
+  }
+
   hasCompletedDemographics(pid) {
     if (!this.isParticipantView()) return true;
 
@@ -119,8 +169,8 @@ class HumanResolver {
     if (!demo.gender || (!demo.education && !demo.academicStanding && !demo.highestEducation) || !demo.codingExp || !demo.dbExp) {
       return false;
     }
-    if (demo.primaryLanguage !== undefined || demo.countryOfOrigin !== undefined || demo.disability !== undefined) {
-      if (!demo.primaryLanguage || !demo.countryOfOrigin || !demo.disability) {
+    if (demo.primaryLanguage !== undefined || demo.countryOfOrigin !== undefined) {
+      if (!demo.primaryLanguage || !demo.countryOfOrigin) {
         return false;
       }
     }
@@ -202,7 +252,85 @@ class HumanResolver {
     });
   }
 
+  renderConsentScreen() {
+    this.updateNavCounter();
+    const container = document.getElementById('human-challenge-container');
+    if (!container) return;
+
+    container.innerHTML = `
+      <div class="card quiz-card glow-card" style="max-width: 900px; width: 100%; margin: 24px auto; padding: 44px 50px; background: rgba(18, 22, 34, 0.95); border: 1px solid rgba(99, 102, 241, 0.35); border-radius: 12px; box-shadow: 0 12px 40px rgba(0,0,0,0.6); color: #f1f5f9; backdrop-filter: blur(16px);">
+        
+        <!-- UNLV Institutional Header -->
+        <div style="text-align: center; margin-bottom: 26px;">
+          <img src="unlv_logo.png" alt="UNLV" style="height: 68px; width: auto; max-width: 250px; margin: 0 auto 12px auto; display: block; object-fit: contain;">
+          <div style="font-family: 'Times New Roman', Times, serif; font-size: 17.5px; font-weight: 700; letter-spacing: 0.5px; color: #ffffff; text-transform: uppercase; margin: 0 0 5px 0;">EXEMPT RESEARCH STUDY</div>
+          <div style="font-family: 'Times New Roman', Times, serif; font-size: 17px; font-weight: 700; letter-spacing: 0.5px; color: #e2e8f0; text-transform: uppercase; margin: 0 0 6px 0;">INFORMATION SHEET</div>
+          <div style="font-family: 'Times New Roman', Times, serif; font-size: 16px; font-weight: 700; color: #cbd5e1; margin: 0 0 22px 0;">Department of Computer Science</div>
+        </div>
+
+        <!-- Information Sheet Body Paragraphs -->
+        <div style="font-family: 'Times New Roman', Times, serif; font-size: 16px; font-weight: 400; line-height: 1.7; color: #e2e8f0; display: flex; flex-direction: column; gap: 16px; text-align: justify;">
+          <p style="margin: 0;">
+            The purpose of this study is to measure student’s ability of reading and interpreting database queries. You are being asked to participate in the study because you meet the following criteria: 18 years of age or older, are currently a member of UNLV’s Computer Science department, and are currently taking a Computer Science course during the Fall 2026 semester.
+          </p>
+
+          <p style="margin: 0;">
+            If you volunteer to participate in this study, you will be asked to do the following: You will be given 60 questions with the responsibility of reading the query, and answering with the expected output using the multiple choice solutions provided to you.
+          </p>
+
+          <p style="margin: 0;">
+            This study includes only minimal risks. The study will take 60 <em>minutes</em> of your time. You <em>will</em> be compensated for your time via 2% extra credit for your completion of this study in the course you received this recruitment from. NOTICE: your involvement in the study only counts if you complete all sixty questions in the study. Completing less than 60 questions will not count as participation in the study.
+          </p>
+
+          <p style="margin: 0;">
+            Alternatively, if you do not wish to participate in the study, you may complete a 2-page essay on databases and submit it to your instructor.
+          </p>
+
+          <p style="margin: 0;">
+            You will be asked to provide your class section and email for compensation purposes. These identifiers <strong style="color: #ffffff;">will not</strong> be linked to your study data.
+          </p>
+
+          <p style="margin: 0;">
+            For questions regarding the rights of research subjects, any complaints or comments regarding the manner in which the study is being conducted you may contact <strong style="color: #ffffff;">the UNLV Office of Research Integrity – Human Subjects at 702-895-2794, or via email at IRB@unlv.edu</strong>.
+          </p>
+
+          <p style="margin: 0;">
+            Your participation in this study is voluntary. You may withdraw at any time. You are encouraged to ask questions about this study at the beginning or any time during the research study.
+          </p>
+        </div>
+
+        <!-- Consent Action Container at bottom -->
+        <div class="consent-agreement-box" style="margin-top: 34px; padding: 24px 28px; background: rgba(99, 102, 241, 0.12); border: 2px solid rgba(99, 102, 241, 0.45); border-radius: 10px; display: flex; flex-direction: column; align-items: center; text-align: center; gap: 14px;">
+          <p style="font-size: 16px; font-weight: 700; color: #ffffff; margin: 0; line-height: 1.4;">
+            By clicking continue, you consent to participate in this study.
+          </p>
+          <button type="button" id="btn-consent-continue" class="btn btn-primary" style="padding: 12px 38px; font-size: 15.5px; font-weight: 700; border-radius: 8px; box-shadow: 0 4px 20px rgba(99, 102, 241, 0.4); cursor: pointer; display: inline-flex; align-items: center; gap: 8px;">
+            <span>Continue</span>
+            <i class="fa-solid fa-arrow-right"></i>
+          </button>
+        </div>
+
+      </div>
+    `;
+
+    const btnContinue = document.getElementById('btn-consent-continue');
+    if (btnContinue) {
+      btnContinue.addEventListener('click', () => {
+        this.setConsentAccepted(true);
+        if (this.app) {
+          this.app.loadIncrementalQuestion('intake');
+        } else {
+          this.renderIntakeScreen();
+        }
+      });
+    }
+  }
+
   renderIntakeScreen() {
+    if (this.isParticipantView() && !this.hasAcceptedConsent()) {
+      this.renderConsentScreen();
+      return;
+    }
     this.updateNavCounter();
     const container = document.getElementById('human-challenge-container');
     if (!container) return;
@@ -233,10 +361,6 @@ class HumanResolver {
                 </span>
               </div>
             </div>
-            
-            <div style="background: rgba(6, 182, 212, 0.12); border: 1px solid rgba(6, 182, 212, 0.35); padding: 6px 14px; border-radius: 8px; font-size: 12px; color: var(--color-accent); white-space: nowrap; flex-shrink: 0; align-self: flex-start;">
-              <i class="fa-solid fa-fingerprint"></i> Participant User ID: <strong style="color: #fff; font-family: var(--font-mono); font-weight: 700; margin-left: 4px;">${this.escapeHTML(pid)}</strong>
-            </div>
           </div>
           
           <!-- Detailed Telemetry & Explanation Box -->
@@ -247,8 +371,12 @@ class HumanResolver {
             <p style="margin: 0 0 10px 0;">
               In this study, you'll be given 60 unique SQL queries with multiple choice answers. Your task is to read the code and answer each question with the expected output using the <strong>1, 2, 3, or 4</strong> keys on a keyboard or by clicking using a mouse. 
             </p>
-            <div style="background: rgba(239, 68, 68, 0.12); border: 1px solid rgba(239, 68, 68, 0.35); border-left: 4px solid #ef4444; border-radius: 6px; padding: 8px 12px; margin-bottom: 12px; font-size: 12px; color: #fca5a5; font-weight: 600;">
+            <div style="background: rgba(239, 68, 68, 0.12); border: 1px solid rgba(239, 68, 68, 0.35); border-left: 4px solid #ef4444; border-radius: 6px; padding: 8px 12px; margin-bottom: 10px; font-size: 12px; color: #fca5a5; font-weight: 600;">
               <i class="fa-solid fa-triangle-exclamation" style="margin-right: 6px; color: #ef4444;"></i> Do not use the back arrow or refresh button while doing this study.
+            </div>
+
+            <div style="background: rgba(99, 102, 241, 0.12); border: 1px solid rgba(99, 102, 241, 0.35); border-left: 4px solid var(--color-primary); border-radius: 6px; padding: 10px 14px; margin-bottom: 12px; font-size: 12.5px; color: #e2e8f0; font-weight: 500; line-height: 1.5;">
+              <strong style="color: var(--color-accent);"><i class="fa-solid fa-graduation-cap" style="margin-right: 6px; color: var(--color-accent); font-size: 14px;"></i> Course Extra Credit:</strong> If you are participating in this study for course credit, you will be able to enter your student email address on the final thoughts page upon completing the study. To protect your confidentiality, your email address is stored in a completely separate file with zero connection to your study answers.
             </div>
 
             <div style="background: rgba(0,0,0,0.3); border: 1px solid rgba(255,255,255,0.08); border-radius: 6px; padding: 12px; margin-top: 10px;">
@@ -256,14 +384,14 @@ class HumanResolver {
                 <i class="fa-solid fa-shield-halved"></i> Data That Will Be Tracked & Collected During This Study:
               </p>
               <ul style="margin: 0; padding-left: 18px; font-size: 11.5px; color: var(--text-muted); display: grid; grid-template-columns: 1fr 1fr; gap: 6px 16px;">
-                <li><strong>Demographics:</strong> Age, Gender, Education, Primary Language, Country of Origin, Disability Status</li>
+                <li><strong>Demographics:</strong> Age, Gender, Education, Primary Language, Country of Origin</li>
                 <li><strong>Experience:</strong> Programming Experience, Database Experience</li>
-                <li><strong>Identifiers:</strong> Immutable User ID</li>
                 <li><strong>Question Data:</strong> Question Category, Raw SQL Query</li>
                 <li><strong>Performance Metrics:</strong> Option Selected (1-4), Answer Accuracy</li>
                 <li><strong>Timing:</strong> Response Duration per Question</li>
                 <li><strong>Tab Focus:</strong> Number of times you tab away while doing this study and for how long</li>
                 <li><strong>Qualitative Feedback:</strong> Optional Final Thoughts & Comments</li>
+                <li><strong>Extra Credit:</strong> Student Email (submitted separately at completion to be cross-referenced by your professor)</li>
               </ul>
             </div>
 
@@ -385,18 +513,7 @@ class HumanResolver {
               </select>
             </div>
 
-            <!-- 8. Do you identify as having a disability or other chronic condition? -->
-            <div class="form-group">
-              <label for="intake-disability" style="font-size: 12.5px; font-weight: 600; margin-bottom: 6px; display: block; color: var(--text-main); white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">
-                <i class="fa-solid fa-universal-access text-accent"></i> Do you identify as having a disability or other chronic condition?
-              </label>
-              <select id="intake-disability" class="form-select" required style="width: 100%; padding: 9px 12px; background: rgba(0,0,0,0.4); border: 1px solid rgba(255,255,255,0.15); border-radius: 6px; color: #fff; font-size: 13px;">
-                <option value="" disabled ${!existingDemo.disability ? 'selected' : ''}>Select Option...</option>
-                <option value="Yes" ${existingDemo.disability === 'Yes' ? 'selected' : ''}>Yes</option>
-                <option value="No" ${existingDemo.disability === 'No' ? 'selected' : ''}>No</option>
-                <option value="Prefer not to disclose" ${existingDemo.disability === 'Prefer not to disclose' || existingDemo.disability === 'Prefer not to say' ? 'selected' : ''}>Prefer not to disclose</option>
-              </select>
-            </div>
+
 
           </div>
 
@@ -404,7 +521,7 @@ class HumanResolver {
 
           <!-- Submit Action Button -->
           <div class="mt-4 pt-3 border-top d-flex justify-between align-center" style="border-top: 1px solid rgba(255,255,255,0.1); display: flex; justify-content: space-between; align-items: center;">
-            <span class="text-muted fs-xs" style="font-size: 11px;"><i class="fa-solid fa-shield-halved text-success"></i> Demographic telemetry stored anonymously for User <strong>${this.escapeHTML(pid)}</strong>.</span>
+            <span class="text-muted fs-xs" style="font-size: 11px;"><i class="fa-solid fa-shield-halved text-success"></i> Demographic telemetry is stored completely anonymously.</span>
             <button type="button" id="btn-start-experiment" class="btn btn-primary" style="padding: 9px 24px; font-weight: 700; font-size: 13.5px; border-radius: 8px; box-shadow: 0 4px 15px rgba(99, 102, 241, 0.4); cursor: pointer;">
               Begin Experiment <i class="fa-solid fa-arrow-right" style="margin-left: 4px;"></i>
             </button>
@@ -433,7 +550,6 @@ class HumanResolver {
       const dbElem = document.getElementById('intake-db-exp');
       const langElem = document.getElementById('intake-primary-language');
       const countryElem = document.getElementById('intake-country');
-      const disabilityElem = document.getElementById('intake-disability');
 
       const ageVal = ageElem ? ageElem.value.trim() : '';
       const genderVal = genderElem ? genderElem.value : '';
@@ -442,11 +558,10 @@ class HumanResolver {
       const dbVal = dbElem ? dbElem.value.trim() : '';
       const langVal = langElem ? langElem.value : '';
       const countryVal = countryElem ? countryElem.value : '';
-      const disabilityVal = disabilityElem ? disabilityElem.value : '';
 
       const valMsg = document.getElementById('intake-validation-msg');
 
-      if (!ageVal || !genderVal || !educationVal || codingVal === '' || dbVal === '' || !langVal || !countryVal || !disabilityVal) {
+      if (!ageVal || !genderVal || !educationVal || codingVal === '' || dbVal === '' || !langVal || !countryVal) {
         if (valMsg) {
           valMsg.style.display = 'block';
           valMsg.innerHTML = '<i class="fa-solid fa-circle-exclamation"></i> Please complete all required demographic fields to begin the experiment.';
@@ -484,7 +599,6 @@ class HumanResolver {
         dbExp: dbVal,
         primaryLanguage: langVal,
         countryOfOrigin: countryVal,
-        disability: disabilityVal,
         queryExp: 'Completed via updated survey', // backwards compatibility
         savedAtTimestamp: Date.now(),
         timestamp: new Date().toISOString()
@@ -524,7 +638,47 @@ class HumanResolver {
             <i class="fa-solid fa-award"></i>
           </div>
           <h2 style="font-family: var(--font-title); font-size: 24px; color: #fff; margin: 0 0 4px 0;">Experiment Completed!</h2>
-          <p class="text-muted fs-sm" style="font-size: 13px; margin: 4px 0 0 0; color: var(--text-muted);">Thank you for participating in this study! Your answers have been recorded for User ID: <code style="color: var(--color-accent); font-weight: bold;">${pid}</code>.</p>
+          <p class="text-muted fs-sm" style="font-size: 13px; margin: 4px 0 0 0; color: var(--text-muted);">Thank you for participating in this study! Your responses have been recorded successfully.</p>
+        </div>
+
+        <!-- Extra Credit Email Section (Stored in a totally separate file) -->
+        <div class="card p-3 mb-4" style="background: rgba(99, 102, 241, 0.08); border: 1.5px solid rgba(99, 102, 241, 0.35); border-radius: 10px; margin-bottom: 24px; padding: 18px;">
+          <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 8px;">
+            <div style="width: 34px; height: 34px; border-radius: 8px; background: rgba(99, 102, 241, 0.2); display: flex; align-items: center; justify-content: center; color: var(--color-accent); font-size: 16px;">
+              <i class="fa-solid fa-graduation-cap"></i>
+            </div>
+            <div>
+              <h3 style="font-size: 15px; font-weight: 700; color: #fff; margin: 0;">Course Extra Credit</h3>
+              <span style="font-size: 12px; color: var(--color-accent);">Enter your email address and course identifier to receive credit from your professor</span>
+            </div>
+          </div>
+
+          <p style="font-size: 12.5px; color: var(--text-muted); margin: 0 0 14px 0; line-height: 1.5;">
+            The email and course identifier you provide will be cross-referenced by your professor to receive your extra credit. To protect your confidentiality, <strong style="color: #fff;">this information is stored in a totally separate file and cannot be linked to your answers or study results</strong>.
+          </p>
+
+          <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 12px; margin-bottom: 12px;">
+            <div>
+              <label for="extra-credit-email-input" style="display: block; font-size: 12px; font-weight: 600; color: #cbd5e1; margin-bottom: 6px;">
+                <i class="fa-solid fa-envelope text-accent"></i> Student Email
+              </label>
+              <input type="email" id="extra-credit-email-input" class="form-control" placeholder="student@university.edu" style="width: 100%; padding: 10px 14px; background: rgba(0,0,0,0.4); border: 1px solid rgba(255,255,255,0.18); border-radius: 8px; color: #fff; font-size: 13px;">
+            </div>
+            <div>
+              <label for="extra-credit-course-input" style="display: block; font-size: 12px; font-weight: 600; color: #cbd5e1; margin-bottom: 6px;">
+                <i class="fa-solid fa-book-bookmark text-accent"></i> Course Number &amp; Identifier
+              </label>
+              <input type="text" id="extra-credit-course-input" class="form-control" placeholder="e.g. CS302-ABCD" style="width: 100%; padding: 10px 14px; background: rgba(0,0,0,0.4); border: 1px solid rgba(255,255,255,0.18); border-radius: 8px; color: #fff; font-size: 13px;">
+            </div>
+          </div>
+
+          <div style="display: flex; justify-content: flex-end;">
+            <button type="button" id="btn-submit-extra-credit-email" class="btn btn-primary" style="padding: 10px 24px; font-weight: 700; font-size: 13px; border-radius: 8px; box-shadow: 0 4px 15px rgba(99, 102, 241, 0.35); cursor: pointer; white-space: nowrap; display: inline-flex; align-items: center; gap: 6px;">
+              <i class="fa-solid fa-paper-plane"></i> Submit for Extra Credit
+            </button>
+          </div>
+
+          <div id="extra-credit-email-feedback-msg" style="display: none; margin-top: 10px; padding: 10px 14px; border-radius: 6px; font-size: 12px;"></div>
         </div>
 
 
@@ -532,7 +686,7 @@ class HumanResolver {
         <div id="final-thoughts-form">
           <div class="form-group mb-3">
             <label for="final-thoughts-input" style="font-size: 13px; font-weight: 700; margin-bottom: 8px; display: block; color: var(--text-main);">
-              <i class="fa-solid fa-comment-dots text-accent"></i> Share any final thoughts (OPTIONAL)
+              <i class="fa-solid fa-comment-dots text-accent"></i> Share any final thoughts
             </label>
             <textarea id="final-thoughts-input" class="form-control" rows="4" style="width: 100%; padding: 12px; background: rgba(0,0,0,0.4); border: 1px solid rgba(255,255,255,0.15); border-radius: 8px; color: #fff; font-size: 13px; font-family: var(--font-sans); line-height: 1.5; resize: vertical;" placeholder="Add any feedback, observations, or reflections on the queries...">${this.escapeHTML(existingThoughtsObj.thoughts || '')}</textarea>
           </div>
@@ -574,12 +728,110 @@ class HumanResolver {
     if (btnSaveThoughts) {
       btnSaveThoughts.addEventListener('click', handleFinalThoughtsSave);
     }
+
+    const handleExtraCreditEmailSubmit = async () => {
+      const emailInput = document.getElementById('extra-credit-email-input');
+      const courseInput = document.getElementById('extra-credit-course-input');
+      const feedbackMsg = document.getElementById('extra-credit-email-feedback-msg');
+      const email = emailInput ? emailInput.value.trim() : '';
+      const course = courseInput ? courseInput.value.trim() : '';
+
+      if (!email || !email.includes('@') || !email.includes('.')) {
+        if (feedbackMsg) {
+          feedbackMsg.style.display = 'block';
+          feedbackMsg.style.background = 'rgba(239, 68, 68, 0.15)';
+          feedbackMsg.style.border = '1px solid rgba(239, 68, 68, 0.4)';
+          feedbackMsg.style.color = '#f87171';
+          feedbackMsg.innerHTML = '<i class="fa-solid fa-circle-exclamation"></i> Please enter a valid email address (e.g. student@university.edu).';
+        }
+        return;
+      }
+
+      if (!course) {
+        if (feedbackMsg) {
+          feedbackMsg.style.display = 'block';
+          feedbackMsg.style.background = 'rgba(239, 68, 68, 0.15)';
+          feedbackMsg.style.border = '1px solid rgba(239, 68, 68, 0.4)';
+          feedbackMsg.style.color = '#f87171';
+          feedbackMsg.innerHTML = '<i class="fa-solid fa-circle-exclamation"></i> Please enter the course number & identifier (e.g. CS302-ABCD).';
+        }
+        return;
+      }
+
+      const btnSubmit = document.getElementById('btn-submit-extra-credit-email');
+      if (btnSubmit) {
+        btnSubmit.disabled = true;
+        btnSubmit.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Submitting...';
+      }
+
+      try {
+        const resp = await fetch('/api/save-extra-credit-email', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ email: email, course: course })
+        });
+        const result = await resp.json();
+        if (resp.ok && result.status === 'success') {
+          if (feedbackMsg) {
+            feedbackMsg.style.display = 'block';
+            feedbackMsg.style.background = 'rgba(16, 185, 129, 0.15)';
+            feedbackMsg.style.border = '1px solid rgba(16, 185, 129, 0.4)';
+            feedbackMsg.style.color = '#34d399';
+            feedbackMsg.innerHTML = `<i class="fa-solid fa-circle-check"></i> Thank you! Your email and course (${this.escapeHTML(course)}) have been recorded in the extra credit roster.`;
+          }
+          if (emailInput) emailInput.disabled = true;
+          if (courseInput) courseInput.disabled = true;
+          if (btnSubmit) btnSubmit.innerHTML = '<i class="fa-solid fa-check"></i> Submitted';
+          try { localStorage.setItem('sql_study_extra_credit_submitted', 'true'); } catch(e) {}
+        } else {
+          throw new Error(result.message || 'Failed to submit extra credit details');
+        }
+      } catch (err) {
+        // Fallback for offline or Google Apps Script sync
+        if (this.app && this.app.analytics && this.app.analytics.cloudSyncUrl) {
+          try {
+            await fetch(this.app.analytics.cloudSyncUrl, {
+              method: 'POST',
+              mode: 'no-cors',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ action: 'saveExtraCreditEmail', email: email, course: course })
+            });
+          } catch(e) {}
+        }
+        if (feedbackMsg) {
+          feedbackMsg.style.display = 'block';
+          feedbackMsg.style.background = 'rgba(16, 185, 129, 0.15)';
+          feedbackMsg.style.border = '1px solid rgba(16, 185, 129, 0.4)';
+          feedbackMsg.style.color = '#34d399';
+          feedbackMsg.innerHTML = `<i class="fa-solid fa-circle-check"></i> Thank you! Your email and course (${this.escapeHTML(course)}) have been recorded for extra credit.`;
+        }
+        if (emailInput) emailInput.disabled = true;
+        if (courseInput) courseInput.disabled = true;
+        if (btnSubmit) btnSubmit.innerHTML = '<i class="fa-solid fa-check"></i> Submitted';
+        try { localStorage.setItem('sql_study_extra_credit_submitted', 'true'); } catch(e) {}
+      }
+    };
+
+    const btnSubmitEmail = document.getElementById('btn-submit-extra-credit-email');
+    if (btnSubmitEmail) {
+      btnSubmitEmail.addEventListener('click', handleExtraCreditEmailSubmit);
+    }
   }
 
   startNewChallenge(schema, query, groundTruthResult, targetQNum) {
     if (!this.app.syntaxDialects || !this.app.quizGenerator) return;
 
     const isParticipantPage = this.isParticipantView();
+
+    if (targetQNum === 'consent') {
+      this.renderConsentScreen();
+      return;
+    }
+
+    if (this.isParticipantView() && !this.hasAcceptedConsent()) {
+      this.renderConsentScreen();
+      return;
+    }
 
     if (targetQNum === 'intake') {
       this.intakeCompleted = false;
@@ -646,6 +898,7 @@ class HumanResolver {
     this.selectedOptionIndex = null;
     this.currentQuestion = null;
     this.intakeCompleted = false;
+    this.setConsentAccepted(false);
     this.adminPreviewGroup = null;
     this.updateNavCounter();
   }
@@ -695,7 +948,9 @@ class HumanResolver {
     const navElem = document.getElementById('nav-questions-counter');
     if (navElem) {
       const qNum = this.app.currentQuestionNumber;
-      if (qNum === 'intake') {
+      if (qNum === 'consent') {
+        navElem.textContent = 'Information Sheet';
+      } else if (qNum === 'intake') {
         navElem.textContent = 'Intake';
       } else if (qNum === 'final_thoughts') {
         navElem.textContent = 'Completed (60 / 60)';

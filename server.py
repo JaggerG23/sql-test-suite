@@ -17,6 +17,7 @@ BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 LOG_FILE = os.path.join(BASE_DIR, "telemetry_events.jsonl")
 DB_FILE = os.path.join(BASE_DIR, "participant_responses_db.json")
 CSV_FILE = os.path.join(BASE_DIR, "participant_responses_export.csv")
+EXTRA_CREDIT_FILE = os.path.join(BASE_DIR, "extra_credit_emails.csv")
 
 ADMIN_PASSWORD = os.environ.get("ADMIN_PASSWORD", "StefiksLabRootPassword")
 
@@ -24,6 +25,62 @@ def get_admin_token():
     return hashlib.sha256(ADMIN_PASSWORD.encode('utf-8')).hexdigest()
 
 db_lock = threading.Lock()
+email_lock = threading.Lock()
+
+def append_extra_credit_email(email, course=""):
+    """Appends an email and course identifier to a completely separate, isolated CSV file with zero linkage to telemetry."""
+    clean_email = email.strip().lower()
+    clean_course = (course or "").strip().upper()
+    with email_lock:
+        file_exists = os.path.exists(EXTRA_CREDIT_FILE) and os.path.getsize(EXTRA_CREDIT_FILE) > 0
+        existing_entries = set()
+        needs_upgrade = False
+        existing_rows = []
+
+        if file_exists:
+            with open(EXTRA_CREDIT_FILE, 'r', encoding='utf-8') as f:
+                reader = csv.reader(f)
+                header = next(reader, None)
+                if header and (len(header) < 2 or 'course' not in [h.lower() for h in header]):
+                    needs_upgrade = True
+                for row in reader:
+                    if row and row[0].strip():
+                        em = row[0].strip().lower()
+                        cs = row[1].strip() if len(row) > 1 else ""
+                        existing_entries.add((em, cs))
+                        existing_rows.append([em, cs])
+
+        if needs_upgrade:
+            with open(EXTRA_CREDIT_FILE, 'w', encoding='utf-8', newline='') as f:
+                writer = csv.writer(f)
+                writer.writerow(['Email', 'Course'])
+                for r in existing_rows:
+                    writer.writerow(r)
+
+        if (clean_email, clean_course) not in existing_entries:
+            with open(EXTRA_CREDIT_FILE, 'a', encoding='utf-8', newline='') as f:
+                writer = csv.writer(f)
+                if not file_exists:
+                    writer.writerow(['Email', 'Course'])
+                writer.writerow([clean_email, clean_course])
+        return True
+
+def migrate_legacy_txt_emails():
+    """Migrates any legacy extra_credit_emails.txt into extra_credit_emails.csv safely."""
+    legacy_file = os.path.join(BASE_DIR, "extra_credit_emails.txt")
+    if os.path.exists(legacy_file) and os.path.getsize(legacy_file) > 0:
+        try:
+            with open(legacy_file, 'r', encoding='utf-8') as f:
+                for line in f:
+                    candidate = line.strip()
+                    if '@' in candidate and '.' in candidate:
+                        parts = candidate.split(',', 1)
+                        if len(parts) == 2:
+                            append_extra_credit_email(parts[0].strip(), parts[1].strip())
+                        else:
+                            append_extra_credit_email(parts[0].strip(), "")
+        except Exception as e:
+            print(f"Notice: legacy email migration exception: {e}")
 
 CSV_HEADERS = [
     'Response ID', 'Participant ID', 'Session ID', 'Timestamp (ISO)',
@@ -132,6 +189,8 @@ def export_csv(db_data):
     os.replace(temp_name, CSV_FILE)
 
 class TelemetryHandler(http.server.SimpleHTTPRequestHandler):
+    directory = BASE_DIR
+
     def is_admin_authenticated(self):
         cookies = parse_cookies(self.headers.get('Cookie', ''))
         token = cookies.get('admin_session')
@@ -184,6 +243,50 @@ class TelemetryHandler(http.server.SimpleHTTPRequestHandler):
             with db_lock:
                 data = load_db_data()
             self.send_json(200, data)
+            return
+
+        if parsed_path in ('/extra_credit_emails.csv', '/extra_credit_emails.txt', '/telemetry_events.jsonl', '/participant_responses_db.json'):
+            if not self.is_admin_authenticated():
+                self.send_json(401, {"status": "error", "message": "Unauthorized"})
+                return
+
+        if parsed_path == '/api/admin/extra-credit-emails':
+            if not self.is_admin_authenticated():
+                self.send_json(401, {"status": "error", "message": "Unauthorized"})
+                return
+            records = []
+            emails = []
+            with email_lock:
+                if os.path.exists(EXTRA_CREDIT_FILE):
+                    with open(EXTRA_CREDIT_FILE, 'r', encoding='utf-8') as f:
+                        reader = csv.reader(f)
+                        header = next(reader, None)
+                        for row in reader:
+                            if row and row[0].strip():
+                                em = row[0].strip()
+                                cs = row[1].strip() if len(row) > 1 else ""
+                                emails.append(em)
+                                records.append({"email": em, "course": cs})
+            self.send_json(200, {"status": "success", "records": records, "emails": emails, "count": len(records)})
+            return
+
+        if parsed_path == '/api/admin/download-extra-credit-emails':
+            if not self.is_admin_authenticated():
+                self.send_json(401, {"status": "error", "message": "Unauthorized"})
+                return
+            content = b""
+            with email_lock:
+                if os.path.exists(EXTRA_CREDIT_FILE):
+                    with open(EXTRA_CREDIT_FILE, 'rb') as f:
+                        content = f.read()
+                else:
+                    content = b"Email,Course\r\n"
+            self.send_response(200)
+            self.send_header('Content-Type', 'text/csv; charset=utf-8')
+            self.send_header('Content-Disposition', 'attachment; filename="extra_credit_emails.csv"')
+            self.send_header('Content-Length', str(len(content)))
+            self.end_headers()
+            self.wfile.write(content)
             return
 
         return super().do_GET()
@@ -250,6 +353,20 @@ class TelemetryHandler(http.server.SimpleHTTPRequestHandler):
                 self.send_json(400, {"status": "error", "message": str(e)})
             return
 
+        elif parsed_path == '/api/save-extra-credit-email':
+            try:
+                payload = json.loads(body.decode('utf-8'))
+                email = payload.get('email', '').strip()
+                course = payload.get('course', '').strip()
+                if not email or '@' not in email or '.' not in email:
+                    self.send_json(400, {"status": "error", "message": "Please provide a valid email address."})
+                    return
+                append_extra_credit_email(email, course)
+                self.send_json(200, {"status": "success", "message": "Email and course identifier saved for extra credit."})
+            except Exception as e:
+                self.send_json(400, {"status": "error", "message": str(e)})
+            return
+
         elif parsed_path == '/api/delete-user-telemetry':
             if not self.is_admin_authenticated():
                 self.send_json(401, {"status": "error", "message": "Unauthorized"})
@@ -296,6 +413,7 @@ if __name__ == '__main__':
         class ThreadingHTTPServer(socketserver.ThreadingMixIn, http.server.HTTPServer): pass
         ServerClass = ThreadingHTTPServer
 
+    migrate_legacy_txt_emails()
     httpd = ServerClass(server_address, TelemetryHandler)
     print(f"=========================================================")
     print(f"   SQL Test Suite Telemetry Server Started at:")

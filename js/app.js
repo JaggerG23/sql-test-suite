@@ -53,6 +53,45 @@ class QueryExperimentApp {
     return false;
   }
 
+  hasAcceptedConsent(pid) {
+    if (!this.isParticipantView()) return true;
+    if (this.humanResolver && this.humanResolver.consentAccepted) return true;
+    try {
+      const targetPid = pid || (this.analytics ? this.analytics.participantId : '');
+      if (targetPid && (sessionStorage.getItem('sql_study_consent_accepted_' + targetPid) === 'true' || localStorage.getItem('sql_study_consent_accepted_' + targetPid) === 'true')) {
+        return true;
+      }
+      if (sessionStorage.getItem('sql_study_consent_accepted') === 'true' || localStorage.getItem('sql_study_consent_accepted') === 'true') {
+        return true;
+      }
+    } catch (e) {}
+    return false;
+  }
+
+  setConsentAccepted(accepted = true) {
+    if (this.humanResolver) {
+      this.humanResolver.consentAccepted = accepted;
+    }
+    try {
+      const targetPid = (this.analytics ? this.analytics.participantId : '');
+      if (accepted) {
+        if (targetPid) {
+          sessionStorage.setItem('sql_study_consent_accepted_' + targetPid, 'true');
+          localStorage.setItem('sql_study_consent_accepted_' + targetPid, 'true');
+        }
+        sessionStorage.setItem('sql_study_consent_accepted', 'true');
+        localStorage.setItem('sql_study_consent_accepted', 'true');
+      } else {
+        if (targetPid) {
+          sessionStorage.removeItem('sql_study_consent_accepted_' + targetPid);
+          localStorage.removeItem('sql_study_consent_accepted_' + targetPid);
+        }
+        sessionStorage.removeItem('sql_study_consent_accepted');
+        localStorage.removeItem('sql_study_consent_accepted');
+      }
+    } catch (e) {}
+  }
+
   hasCompletedDemographics(pid) {
     // In the admin dashboard, demographics are never required to preview questions
     if (!this.isParticipantView()) return true;
@@ -74,8 +113,8 @@ class QueryExperimentApp {
     if (!demo.gender || (!demo.education && !demo.academicStanding && !demo.highestEducation) || !demo.codingExp || !demo.dbExp) {
       return false;
     }
-    if (demo.primaryLanguage !== undefined || demo.countryOfOrigin !== undefined || demo.disability !== undefined) {
-      if (!demo.primaryLanguage || !demo.countryOfOrigin || !demo.disability) {
+    if (demo.primaryLanguage !== undefined || demo.countryOfOrigin !== undefined) {
+      if (!demo.primaryLanguage || !demo.countryOfOrigin) {
         return false;
       }
     }
@@ -107,7 +146,10 @@ class QueryExperimentApp {
       }
     }
 
-    if (this.isParticipantView() && !this.hasCompletedDemographics()) {
+    if (this.isParticipantView() && !this.hasAcceptedConsent()) {
+      this.currentQuestionNumber = 'consent';
+      await this.loadIncrementalQuestion('consent');
+    } else if (this.isParticipantView() && !this.hasCompletedDemographics()) {
       this.currentQuestionNumber = 'intake';
       await this.loadIncrementalQuestion('intake');
     } else {
@@ -297,7 +339,10 @@ class QueryExperimentApp {
 
         if (targetTab === 'tab-human') {
           this.syncChallengeContainerLocation();
-          if (!this.hasCompletedDemographics()) {
+          if (!this.hasAcceptedConsent()) {
+            this.currentQuestionNumber = 'consent';
+            this.loadIncrementalQuestion('consent');
+          } else if (!this.hasCompletedDemographics()) {
             this.currentQuestionNumber = 'intake';
             this.loadIncrementalQuestion('intake');
           }
@@ -388,7 +433,7 @@ class QueryExperimentApp {
    * Updates the active highlight in the question grid to match currentQuestionNumber.
    */
   syncAdminQuestionGrid(activeQNum) {
-    const targetQ = (activeQNum === 'intake' || activeQNum === 'final_thoughts')
+    const targetQ = (activeQNum === 'consent' || activeQNum === 'intake' || activeQNum === 'final_thoughts')
       ? activeQNum
       : parseInt(activeQNum, 10);
 
@@ -411,6 +456,15 @@ class QueryExperimentApp {
       btn.style.background = '';
       btn.style.color = '';
       btn.style.borderColor = '';
+    }
+
+    const btnConsent = document.getElementById('admin-qgrid-btn-consent');
+    if (btnConsent) {
+      const isConsent = (targetQ === 'consent');
+      btnConsent.classList.toggle('active', isConsent);
+      btnConsent.style.border = isConsent ? '1.5px solid rgba(220, 38, 38, 0.9)' : '1.5px solid rgba(220, 38, 38, 0.4)';
+      btnConsent.style.background = isConsent ? 'rgba(220, 38, 38, 0.35)' : 'rgba(220, 38, 38, 0.15)';
+      btnConsent.style.color = isConsent ? '#ffffff' : '#fca5a5';
     }
 
     const btnIntake = document.getElementById('admin-qgrid-btn-intake');
@@ -438,7 +492,11 @@ class QueryExperimentApp {
 
     const stageBadge = document.getElementById('admin-preview-stage-badge');
     if (stageBadge) {
-      if (activeQNum === 'intake') {
+      if (activeQNum === 'consent') {
+        stageBadge.textContent = 'Previewing: Information Sheet & Consent';
+        stageBadge.style.color = '#fca5a5';
+        stageBadge.style.borderColor = 'rgba(220, 38, 38, 0.4)';
+      } else if (activeQNum === 'intake') {
         stageBadge.textContent = 'Previewing: Pre-Experiment Questionnaire';
         stageBadge.style.color = '#c7d2fe';
         stageBadge.style.borderColor = 'rgba(99, 102, 241, 0.4)';
@@ -535,7 +593,11 @@ class QueryExperimentApp {
         }
       }
 
-      // Handle dedicated intake and final thoughts buttons
+      // Handle dedicated consent, intake, and final thoughts buttons
+      if (e.target.closest('#admin-qgrid-btn-consent')) {
+        this.syncAdminQuestionGrid('consent');
+        this.loadIncrementalQuestion('consent');
+      }
       if (e.target.closest('#admin-qgrid-btn-intake')) {
         this.syncAdminQuestionGrid('intake');
         this.loadIncrementalQuestion('intake');
@@ -602,7 +664,12 @@ class QueryExperimentApp {
     if (!select) return;
 
     select.innerHTML = '';
-    
+
+    const optConsent = document.createElement('option');
+    optConsent.value = 'consent';
+    optConsent.textContent = '📄 Information Sheet & Consent';
+    select.appendChild(optConsent);
+
     const optIntake = document.createElement('option');
     optIntake.value = 'intake';
     optIntake.textContent = '📋 Pre-Experiment Questionnaire';
@@ -637,6 +704,17 @@ class QueryExperimentApp {
 
     const currentReq = ++this._loadQuestionCounter;
 
+    if (targetQNum === 'consent') {
+      this.currentQuestionNumber = 'consent';
+      const select = document.getElementById('question-jump-select');
+      if (select) select.value = 'consent';
+      this.syncAdminQuestionGrid('consent');
+      if (this.humanResolver) {
+        this.humanResolver.renderConsentScreen();
+      }
+      return;
+    }
+
     if (targetQNum === 'intake') {
       this.currentQuestionNumber = 'intake';
       const select = document.getElementById('question-jump-select');
@@ -659,7 +737,18 @@ class QueryExperimentApp {
       return;
     }
 
-    // Check if intake form has been completed (Mandatory only on participant page /participants.html)
+    // Check if consent has been accepted (Mandatory only on participant page /participant.html)
+    if (this.isParticipantView() && !this.hasAcceptedConsent()) {
+      this.currentQuestionNumber = 'consent';
+      const select = document.getElementById('question-jump-select');
+      if (select) select.value = 'consent';
+      if (this.humanResolver) {
+        this.humanResolver.renderConsentScreen();
+      }
+      return;
+    }
+
+    // Check if intake form has been completed (Mandatory only on participant page /participant.html)
     if (this.isParticipantView() && !this.hasCompletedDemographics()) {
       this.currentQuestionNumber = 'intake';
       const select = document.getElementById('question-jump-select');
@@ -1139,6 +1228,30 @@ class QueryExperimentApp {
       btnJson.addEventListener('click', () => this.analytics.exportToJSON());
     }
 
+    const btnExtraCredit = document.getElementById('btn-export-extra-credit');
+    if (btnExtraCredit) {
+      btnExtraCredit.addEventListener('click', async () => {
+        try {
+          const resp = await fetch('/api/admin/download-extra-credit-emails');
+          if (resp.ok) {
+            const blob = await resp.blob();
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = 'extra_credit_emails.csv';
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+          } else {
+            alert('Failed to download extra credit emails. Ensure you are logged in as admin.');
+          }
+        } catch (e) {
+          alert('Error downloading extra credit emails: ' + e.message);
+        }
+      });
+    }
+
     const btnClear = document.getElementById('btn-clear-logs');
     if (btnClear) {
       btnClear.addEventListener('click', () => {
@@ -1324,8 +1437,9 @@ class QueryExperimentApp {
       if (this.humanResolver) {
         this.humanResolver.resetToFirstQuestion();
         this.humanResolver.intakeCompleted = false;
+        this.setConsentAccepted(false);
       }
-      await this.loadIncrementalQuestion('intake');
+      await this.loadIncrementalQuestion('consent');
     }
   }
 
@@ -1515,7 +1629,6 @@ class QueryExperimentApp {
                       <div class="d-flex flex-wrap gap-3 align-center" style="display:flex; flex-wrap:wrap; gap:12px;">
                         <span><i class="fa-solid fa-language text-info"></i> <strong>Language:</strong> ${this.escapeHTML(group.demographics.primaryLanguage || 'N/A')}</span>
                         <span><i class="fa-solid fa-earth-americas text-accent"></i> <strong>Country:</strong> ${this.escapeHTML(group.demographics.countryOfOrigin || 'N/A')}</span>
-                        <span><i class="fa-solid fa-universal-access text-secondary"></i> <strong>Disability:</strong> ${this.escapeHTML(group.demographics.disability || 'N/A')}</span>
                       </div>
                     ` : ''}
                     ${group.finalThoughts && group.finalThoughts.thoughts ? `

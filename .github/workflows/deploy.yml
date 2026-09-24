@@ -37,6 +37,8 @@ jobs:
             [ -f "$REPO_DIR/participant_responses_db.json" ] && cp "$REPO_DIR/participant_responses_db.json" "$HOME/sql_telemetry_backup/" || true
             [ -f "$REPO_DIR/participant_responses_export.csv" ] && cp "$REPO_DIR/participant_responses_export.csv" "$HOME/sql_telemetry_backup/" || true
             [ -f "$REPO_DIR/telemetry_events.jsonl" ] && cp "$REPO_DIR/telemetry_events.jsonl" "$HOME/sql_telemetry_backup/" || true
+            [ -f "$REPO_DIR/extra_credit_emails.csv" ] && cp "$REPO_DIR/extra_credit_emails.csv" "$HOME/sql_telemetry_backup/" || true
+            [ -f "$REPO_DIR/extra_credit_emails.txt" ] && cp "$REPO_DIR/extra_credit_emails.txt" "$HOME/sql_telemetry_backup/" || true
 
             # Forcefully fetch and reset to latest origin/master to eliminate merge conflicts on tracked files
             git fetch origin master
@@ -46,9 +48,11 @@ jobs:
             [ -f "$HOME/sql_telemetry_backup/participant_responses_db.json" ] && cp "$HOME/sql_telemetry_backup/participant_responses_db.json" "$REPO_DIR/" || true
             [ -f "$HOME/sql_telemetry_backup/participant_responses_export.csv" ] && cp "$HOME/sql_telemetry_backup/participant_responses_export.csv" "$REPO_DIR/" || true
             [ -f "$HOME/sql_telemetry_backup/telemetry_events.jsonl" ] && cp "$HOME/sql_telemetry_backup/telemetry_events.jsonl" "$REPO_DIR/" || true
+            [ -f "$HOME/sql_telemetry_backup/extra_credit_emails.csv" ] && cp "$HOME/sql_telemetry_backup/extra_credit_emails.csv" "$REPO_DIR/" || true
+            [ -f "$HOME/sql_telemetry_backup/extra_credit_emails.txt" ] && cp "$HOME/sql_telemetry_backup/extra_credit_emails.txt" "$REPO_DIR/" || true
 
             # Sync updated files to Nginx web root (/var/www/html/)
-            sudo rsync -av --delete --exclude='.git/' --exclude='participant_responses_db.json' --exclude='participant_responses_export.csv' --exclude='telemetry_events.jsonl' "$REPO_DIR/" /var/www/html/
+            sudo rsync -av --delete --exclude='.git/' --exclude='participant_responses_db.json' --exclude='participant_responses_export.csv' --exclude='telemetry_events.jsonl' --exclude='extra_credit_emails.csv' --exclude='extra_credit_emails.txt' "$REPO_DIR/" /var/www/html/
 
             # Run patch_nginx.py
             if [ -f "$REPO_DIR/patch_nginx.py" ]; then

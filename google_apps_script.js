@@ -43,6 +43,20 @@ function doPost(e) {
     const contents = e.postData.contents;
     const payload = JSON.parse(contents);
     const ss = SpreadsheetApp.getActiveSpreadsheet();
+
+    // Handle extra credit email independently in a separate sheet with zero linkage to responses
+    if (payload.action === 'saveExtraCreditEmail' || (payload.email && !payload.responses && !payload.newResponse)) {
+      let emailSheet = ss.getSheetByName('Extra Credit Emails');
+      if (!emailSheet) {
+        emailSheet = ss.insertSheet('Extra Credit Emails');
+        emailSheet.appendRow(['Email', 'Course']);
+        emailSheet.getRange(1, 1, 1, 2).setFontWeight('bold').setBackground('#1e293b').setFontColor('#ffffff');
+        emailSheet.setFrozenRows(1);
+      }
+      emailSheet.appendRow([payload.email, payload.course || '']);
+      return ContentService.createTextOutput(JSON.stringify({ status: 'success', message: 'Email and course saved' })).setMimeType(ContentService.MimeType.JSON);
+    }
+
     let sheet = ss.getSheetByName('Study Responses');
     if (!sheet) {
       sheet = setupSheet();
