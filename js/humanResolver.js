@@ -275,24 +275,33 @@ class HumanResolver {
 
         <!-- Information Sheet Body Paragraphs -->
         <div style="font-family: 'Times New Roman', Times, serif; font-size: 16px; font-weight: 400; line-height: 1.7; color: #e2e8f0; display: flex; flex-direction: column; gap: 16px; text-align: justify;">
+          <div style="font-weight: 700; color: #ffffff; text-align: left; line-height: 1.5;">
+            <p style="margin: 0 0 6px 0;">
+              TITLE OF STUDY: HUMAN-COMPUTER INTERACTION IN DATABASE MANAGEMENT: READABILITY IN SQL QUERIES
+            </p>
+            <p style="margin: 0;">
+              INVESTIGATOR(S) AND CONTACT PHONE NUMBER: <br> <u><strong>JAGGER GOLDBERG, (702) 840-8691</strong></u>; <u><strong>ANDREAS STEFIK, (702) 774-3404</strong></u>
+            </p>
+          </div>
+
           <p style="margin: 0;">
             The purpose of this study is to measure student’s ability of reading and interpreting database queries. You are being asked to participate in the study because you meet the following criteria: 18 years of age or older, are currently a member of UNLV’s Computer Science department, and are currently taking a Computer Science course during the Fall 2026 semester.
           </p>
 
           <p style="margin: 0;">
-            If you volunteer to participate in this study, you will be asked to do the following: You will be given 60 questions with the responsibility of reading the query, and answering with the expected output using the multiple choice solutions provided to you.
+            If you choose to participate in this study, you will complete 60 multiple-choice questions. For each question, you will read a database query and select its expected output. 
           </p>
 
           <p style="margin: 0;">
-            This study includes only minimal risks. The study will take 60 <em>minutes</em> of your time. You <em>will</em> be compensated for your time via 2% extra credit for your completion of this study in the course you received this recruitment from. NOTICE: your involvement in the study only counts if you complete all sixty questions in the study. Completing less than 60 questions will not count as participation in the study.
+            This study includes the minimal risks of eye strain and/or hand cramps. The study will take 60 minutes of your time. You will be compensated for your time via 2% extra credit for your completion of this study in the course you received this recruitment from. NOTICE: Your involvement in the study only counts if you complete all sixty questions in the study. Completing less than 60 questions will not count as participation in the study.
           </p>
 
           <p style="margin: 0;">
-            Alternatively, if you do not wish to participate in the study, you may complete a 2-page essay on databases and submit it to your instructor.
+            Alternatively, if you do not wish to participate in the study, you may complete a 2-page essay on databases and submit it to your instructor. You will receive the same 2% extra credit for doing so.
           </p>
 
           <p style="margin: 0;">
-            You will be asked to provide your class section and email for compensation purposes. These identifiers <strong style="color: #ffffff;">will not</strong> be linked to your study data.
+            You will be asked to provide your class section and email for compensation purposes. Other identifiers such as demographic data like age, gender, primary language, and country of origin are collected to measure effects across different groups, but this data will not be included with individual results. These identifiers <strong style="color: #ffffff;">will not</strong> be linked to your study data.
           </p>
 
           <p style="margin: 0;">
