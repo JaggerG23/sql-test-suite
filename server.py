@@ -91,6 +91,7 @@ CSV_HEADERS = [
     'syntax_dialect_id', 'syntax_dialect_name',
     'is_correct', 'response_time_ms', 'response_time_s', 'log_response_time',
     'tab_focus_lost', 'valid_trial', 'tab_switch_count', 'focus_lost_duration_ms',
+    'answer_change_count',
     'selected_key', 'selected_option', 'correct_option',
     'age', 'gender', 'gender_label', 'gender_male', 'gender_female',
     'education', 'education_label', 'has_college_degree',
@@ -298,6 +299,12 @@ def export_csv(db_data):
             tab_focus_lost_val = to_binary(r.get('tabFocusLost'))
             valid_trial_val = 1 if tab_focus_lost_val == 0 else 0
 
+            # Answer change count
+            try:
+                ans_change_cnt = int(r.get('answerChangeCount', 0))
+            except:
+                ans_change_cnt = 0
+
             # Trial sequence & block (1 to 4)
             raw_q_num = r.get('questionNumber', 1)
             try:
@@ -353,6 +360,7 @@ def export_csv(db_data):
                 valid_trial_val,
                 r.get('tabSwitchCount', 0),
                 r.get('focusLostDurationMs', 0),
+                ans_change_cnt,
                 r.get('selectedKey', ''),
                 r.get('selectedOptionText', ''),
                 r.get('correctOptionText', ''),

@@ -1463,6 +1463,9 @@ class QueryExperimentApp {
     const statAvgTime = document.getElementById('astat-avgtime');
     if (statAvgTime) statAvgTime.textContent = `${summary.avgResponseTimeMs} ms`;
 
+    const statChanges = document.getElementById('astat-changes');
+    if (statChanges) statChanges.textContent = summary.avgAnswerChanges || '0.00';
+
     // 4 Experimental Groups Breakdown
     const groupContainer = document.getElementById('analytics-group-breakdown');
     if (groupContainer && summary.groupStats) {
@@ -1598,6 +1601,7 @@ class QueryExperimentApp {
                   <span class="badge badge-accent" style="font-size: 10.5px;">${group.totalAnswers} / 60 Questions</span>
                   <span class="badge ${group.accuracy >= 70 ? 'badge-success' : 'badge-warning'}" style="font-size: 10.5px;">${group.accuracy}% Accuracy</span>
                   <span class="badge badge-outline text-muted" style="font-size: 10px;">Avg: ${group.avgTimeMs}ms</span>
+                  <span class="badge badge-outline text-muted" style="font-size: 10px;" title="Answer Changes: ${group.totalAnswerChanges || 0} total (avg ${group.avgAnswerChanges || '0.00'}/q)"><i class="fa-solid fa-arrows-rotate"></i> ${group.totalAnswerChanges || 0} changes</span>
                   ${group.focusLostCount > 0 ? `<span class="badge badge-danger" style="font-size: 9.5px;" title="Focus lost ${group.focusLostCount} times"><i class="fa-solid fa-triangle-exclamation"></i> Focus Lost (${group.focusLostCount}x)</span>` : ''}
                 </div>
                 <div class="d-flex align-center gap-2" style="display: flex; align-items: center; gap: 8px;" onclick="event.stopPropagation();">
@@ -1650,6 +1654,7 @@ class QueryExperimentApp {
                         <th>User Answer</th>
                         <th>Correct Answer</th>
                         <th>Result</th>
+                        <th>Ans Changes</th>
                         <th>Tab Focus / Integrity</th>
                         <th>Time (ms)</th>
                       </tr>
@@ -1679,6 +1684,11 @@ class QueryExperimentApp {
                               ${r.isCorrect 
                                 ? '<span class="status-badge status-success">Correct</span>' 
                                 : '<span class="status-badge status-error">Incorrect</span>'}
+                            </td>
+                            <td>
+                              ${(r.answerChangeCount !== undefined && r.answerChangeCount > 0)
+                                ? `<span class="badge badge-warning" style="font-size:10px;" title="Participant changed their answer ${r.answerChangeCount} time(s)"><i class="fa-solid fa-arrows-rotate"></i> ${r.answerChangeCount}</span>`
+                                : '<span class="badge" style="font-size:10px; opacity:0.55;">0</span>'}
                             </td>
                             <td>
                               ${r.tabFocusLost 

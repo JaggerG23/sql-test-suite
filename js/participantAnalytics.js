@@ -450,7 +450,8 @@ class ParticipantAnalytics {
       responseTimeMs: Math.max(0, Math.round(entry.responseTimeMs || 0)),
       tabFocusLost: entry.tabFocusLost ? 1 : 0,
       tabSwitchCount: entry.tabSwitchCount || 0,
-      focusLostDurationMs: Math.max(0, Math.round(entry.focusLostDurationMs || 0))
+      focusLostDurationMs: Math.max(0, Math.round(entry.focusLostDurationMs || 0)),
+      answerChangeCount: Math.max(0, parseInt(entry.answerChangeCount, 10) || 0)
     };
 
     this.responses.push(record);
@@ -562,11 +563,14 @@ class ParticipantAnalytics {
         uniqueParticipants: uniqueParticipants,
         overallAccuracy: 0,
         avgResponseTimeMs: 0,
+        totalAnswerChanges: 0,
+        avgAnswerChanges: '0.00',
         dialectStats: {},
         categoryStats: {}
       };
     }
 
+    let totalAnswerChanges = 0;
     const correctCount = this.responses.filter(r => r.isCorrect).length;
     const overallAccuracy = Math.round((correctCount / total) * 100);
     const avgResponseTimeMs = Math.round(this.responses.reduce((sum, r) => sum + (r.responseTimeMs || 0), 0) / total);
@@ -598,6 +602,8 @@ class ParticipantAnalytics {
       groupStats[gKey].total++;
       if (r.isCorrect) groupStats[gKey].correct++;
       groupStats[gKey].totalTime += (r.responseTimeMs || 0);
+
+      totalAnswerChanges += (r.answerChangeCount || 0);
     });
 
     Object.keys(dialectStats).forEach(k => {
@@ -618,11 +624,15 @@ class ParticipantAnalytics {
       s.avgTimeMs = s.total > 0 ? Math.round(s.totalTime / s.total) : 0;
     });
 
+    const avgAnswerChanges = total > 0 ? (totalAnswerChanges / total).toFixed(2) : '0.00';
+
     return {
       totalResponses: total,
       uniqueParticipants,
       overallAccuracy,
       avgResponseTimeMs,
+      totalAnswerChanges,
+      avgAnswerChanges,
       dialectStats,
       categoryStats,
       groupStats
@@ -650,6 +660,7 @@ class ParticipantAnalytics {
         correctCount: 0,
         totalTimeMs: 0,
         focusLostCount: 0,
+        totalAnswerChanges: 0,
         lastActive: null
       };
     });
@@ -670,6 +681,7 @@ class ParticipantAnalytics {
           correctCount: 0,
           totalTimeMs: 0,
           focusLostCount: 0,
+          totalAnswerChanges: 0,
           lastActive: r.timestamp
         };
       }
@@ -678,6 +690,7 @@ class ParticipantAnalytics {
       if (r.isCorrect) groups[uid].correctCount++;
       groups[uid].totalTimeMs += (r.responseTimeMs || 0);
       if (r.tabFocusLost) groups[uid].focusLostCount++;
+      groups[uid].totalAnswerChanges = (groups[uid].totalAnswerChanges || 0) + (r.answerChangeCount || 0);
       if (!groups[uid].lastActive || new Date(r.timestamp) > new Date(groups[uid].lastActive)) {
         groups[uid].lastActive = r.timestamp;
       }
@@ -687,6 +700,8 @@ class ParticipantAnalytics {
       const g = groups[uid];
       g.accuracy = g.totalAnswers > 0 ? Math.round((g.correctCount / g.totalAnswers) * 100) : 0;
       g.avgTimeMs = g.totalAnswers > 0 ? Math.round(g.totalTimeMs / g.totalAnswers) : 0;
+      g.totalAnswerChanges = g.totalAnswerChanges || 0;
+      g.avgAnswerChanges = g.totalAnswers > 0 ? (g.totalAnswerChanges / g.totalAnswers).toFixed(2) : '0.00';
       g.demographics = this.getDemographics(uid);
       g.finalThoughts = this.getFinalThoughts(uid);
       if (!g.lastActive && g.demographics && g.demographics.timestamp) {
@@ -876,6 +891,7 @@ class ParticipantAnalytics {
           tabFocusLost: focusLostParsed ? 1 : 0,
           tabSwitchCount: parseInt(getVal(row, ['tab_switch_count', 'Tab Switch Count', 'tabSwitchCount'], 15), 10) || 0,
           focusLostDurationMs: parseInt(getVal(row, ['focus_lost_duration_ms', 'Focus Lost Duration (ms)', 'focusLostDurationMs'], 16), 10) || 0,
+          answerChangeCount: parseInt(getVal(row, ['answer_change_count', 'Answer Change Count', 'Answer Changes', 'answerChangeCount'], 17), 10) || 0,
           rawQuery: getVal(row, ['raw_query', 'Raw SQL Query', 'rawQuery'], row.length > 28 ? 26 : 24) || '',
           dialectSql: getVal(row, ['dialect_sql', 'Dialect SQL Query', 'dialectSql'], row.length > 28 ? 27 : 25) || '',
           codeSnippet: codeVal || '',
@@ -1131,6 +1147,7 @@ class ParticipantAnalytics {
       'valid_trial',
       'tab_switch_count',
       'focus_lost_duration_ms',
+      'answer_change_count',
       'selected_key',
       'selected_option',
       'correct_option',
@@ -1220,6 +1237,7 @@ class ParticipantAnalytics {
       validTrialVal,
       r.tabSwitchCount || 0,
       r.focusLostDurationMs || 0,
+      r.answerChangeCount || 0,
       r.selectedKey !== null && r.selectedKey !== undefined ? r.selectedKey : '',
       r.selectedOptionText || '',
       r.correctOptionText || '',

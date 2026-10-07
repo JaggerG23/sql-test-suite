@@ -19,6 +19,7 @@ class HumanResolver {
 
     this.isAnswered = false;
     this.selectedOptionIndex = null;
+    this.answerChangeCount = 0;
 
     this.focusMetrics = {
       tabFocusLost: false,
@@ -1224,6 +1225,7 @@ class HumanResolver {
     this.currentQuestion.startTime = Date.now();
     this.isAnswered = false;
     this.selectedOptionIndex = null;
+    this.answerChangeCount = 0;
     const isFocused = document.hasFocus() && document.visibilityState !== 'hidden';
     this.focusMetrics = {
       tabFocusLost: !isFocused,
@@ -1239,6 +1241,7 @@ class HumanResolver {
     this.stats.totalAnswered = 0;
     this.isAnswered = false;
     this.selectedOptionIndex = null;
+    this.answerChangeCount = 0;
     this.currentQuestion = null;
     this.intakeCompleted = false;
     this.setConsentAccepted(false);
@@ -1554,6 +1557,10 @@ class HumanResolver {
       return;
     }
 
+    if (this.selectedOptionIndex !== null && this.selectedOptionIndex !== index) {
+      this.answerChangeCount = (this.answerChangeCount || 0) + 1;
+    }
+
     this.selectedOptionIndex = index;
     const q = this.currentQuestion;
 
@@ -1654,7 +1661,8 @@ class HumanResolver {
         responseTimeMs: responseTimeMs,
         tabFocusLost: this.focusMetrics.tabFocusLost ? 1 : 0,
         tabSwitchCount: this.focusMetrics.tabSwitchCount,
-        focusLostDurationMs: Math.round(this.focusMetrics.totalFocusLostTimeMs)
+        focusLostDurationMs: Math.round(this.focusMetrics.totalFocusLostTimeMs),
+        answerChangeCount: this.answerChangeCount || 0
       });
 
       if (typeof this.app.renderAnalyticsDashboard === 'function') {
