@@ -1457,7 +1457,7 @@ class HumanResolver {
             <div class="d-flex justify-between align-center mb-1 pb-1" style="border-bottom: 1px solid rgba(255,255,255,0.06);">
               <div class="d-flex align-center gap-2">
                 <span class="badge" style="font-size: 11px; font-weight: 800; padding: 2px 9px; border-radius: 4px; background: rgba(99, 102, 241, 0.25); border: 1px solid rgba(99, 102, 241, 0.55); color: #c7d2fe; letter-spacing: 0.3px;">
-                  <i class="fa-solid fa-cube"></i> Question ${qNum} / 60 <span style="opacity: 0.65; font-weight: 500;">(Block ${bIdx}.${vIdx})</span>
+                  <i class="fa-solid fa-cube"></i> Question ${qNum} / 60
                 </span>
                 <strong style="color: var(--color-accent); font-size: 11px;"><i class="fa-solid fa-table-cells text-accent"></i> Input Schema Reference (${this.app.currentSchema ? this.app.currentSchema.tables.length : 0} Tables)</strong>
               </div>
