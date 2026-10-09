@@ -91,6 +91,9 @@ class QueryExperimentApp {
 
     if (!this.analytics) return false;
     const targetPid = pid || this.analytics.participantId;
+    if (typeof this.analytics.hasCompletedDemographics === 'function') {
+      return this.analytics.hasCompletedDemographics(targetPid);
+    }
     const demo = this.analytics.getDemographics(targetPid);
     if (!demo) return false;
 
@@ -116,6 +119,14 @@ class QueryExperimentApp {
       }
     }
     return true;
+  }
+
+  hasCompletedTraining(pid) {
+    if (!this.isParticipantView()) return true;
+    if (this.analytics && typeof this.analytics.hasCompletedTraining === 'function') {
+      return this.analytics.hasCompletedTraining(pid);
+    }
+    return false;
   }
 
   async init() {
@@ -149,6 +160,23 @@ class QueryExperimentApp {
     } else if (this.isParticipantView() && !this.hasCompletedDemographics()) {
       this.currentQuestionNumber = 'intake';
       await this.loadIncrementalQuestion('intake');
+    } else if (this.isParticipantView() && !this.hasCompletedTraining()) {
+      const pid = this.analytics ? this.analytics.participantId : null;
+      const trainResponses = (pid && this.analytics && typeof this.analytics.getTrainingResponses === 'function')
+        ? this.analytics.getTrainingResponses(pid)
+        : [];
+      const trainCount = trainResponses.length;
+      if (trainCount === 0) {
+        this.currentQuestionNumber = 'training_intro';
+        await this.loadIncrementalQuestion('training_intro');
+      } else if (trainCount < 10) {
+        const nextTrain = trainCount + 1;
+        this.currentQuestionNumber = `training:${nextTrain}`;
+        await this.loadIncrementalQuestion(`training:${nextTrain}`);
+      } else {
+        this.currentQuestionNumber = 'training_complete';
+        await this.loadIncrementalQuestion('training_complete');
+      }
     } else {
       const pid = this.analytics ? this.analytics.participantId : null;
       const completedResponses = (pid && this.analytics && typeof this.analytics.getParticipantResponses === 'function')
@@ -161,8 +189,18 @@ class QueryExperimentApp {
       }
 
       if (completedCount >= 60) {
-        this.currentQuestionNumber = 'final_thoughts';
-        await this.loadIncrementalQuestion('final_thoughts');
+        const hasFinished = typeof localStorage !== 'undefined' && localStorage.getItem('sql_study_completed_finished') === 'true';
+        const hasFinalThoughts = typeof localStorage !== 'undefined' && (localStorage.getItem('sql_study_final_thoughts_done_' + pid) === 'true' || (this.analytics && this.analytics.getFinalThoughts(pid)));
+        if (hasFinished) {
+          this.currentQuestionNumber = 'thank_you';
+          await this.loadIncrementalQuestion('thank_you');
+        } else if (hasFinalThoughts) {
+          this.currentQuestionNumber = 'extra_credit';
+          await this.loadIncrementalQuestion('extra_credit');
+        } else {
+          this.currentQuestionNumber = 'final_thoughts';
+          await this.loadIncrementalQuestion('final_thoughts');
+        }
       } else {
         await this.loadIncrementalQuestion(Math.min(60, completedCount + 1));
       }
@@ -196,14 +234,33 @@ class QueryExperimentApp {
     if (btnPrevQ) {
       btnPrevQ.addEventListener('click', () => {
         const cur = this.currentQuestionNumber;
-        if (cur === 'final_thoughts') {
+        if (cur === 'thank_you') {
+          this.loadIncrementalQuestion('extra_credit');
+        } else if (cur === 'extra_credit') {
+          this.loadIncrementalQuestion('final_thoughts');
+        } else if (cur === 'final_thoughts') {
           this.loadIncrementalQuestion(60);
-        } else if (cur === 'intake') {
+        } else if (cur === 1 || cur === '1') {
+          this.loadIncrementalQuestion('training_complete');
+        } else if (cur === 'training_complete') {
+          this.loadIncrementalQuestion('training:10');
+        } else if (typeof cur === 'string' && cur.startsWith('training:')) {
+          const t = parseInt(cur.split(':')[1], 10) || 1;
+          if (t <= 1) {
+            this.loadIncrementalQuestion('training_intro');
+          } else {
+            this.loadIncrementalQuestion(`training:${t - 1}`);
+          }
+        } else if (cur === 'training_intro') {
           this.loadIncrementalQuestion('intake');
+        } else if (cur === 'intake') {
+          this.loadIncrementalQuestion('consent');
+        } else if (cur === 'consent') {
+          this.loadIncrementalQuestion('consent');
         } else {
           const num = parseInt(cur, 10) || 1;
           if (num <= 1) {
-            this.loadIncrementalQuestion('intake');
+            this.loadIncrementalQuestion('training_complete');
           } else {
             this.loadIncrementalQuestion(num - 1);
           }
@@ -214,19 +271,7 @@ class QueryExperimentApp {
     const btnNextQ = document.getElementById('btn-next-q');
     if (btnNextQ) {
       btnNextQ.addEventListener('click', () => {
-        const cur = this.currentQuestionNumber;
-        if (cur === 'intake') {
-          this.loadIncrementalQuestion(1);
-        } else if (cur === 'final_thoughts') {
-          this.loadIncrementalQuestion('final_thoughts');
-        } else {
-          const num = parseInt(cur, 10) || 1;
-          if (num >= 60) {
-            this.loadIncrementalQuestion('final_thoughts');
-          } else {
-            this.loadIncrementalQuestion(num + 1);
-          }
-        }
+        this.generateNextIncrementalQuestion();
       });
     }
 
@@ -372,41 +417,62 @@ class QueryExperimentApp {
    * to highlight the currently active cell.
    */
   populateAdminQuestionGrid() {
-    const grid = document.getElementById('admin-question-grid');
-    if (!grid) return;
+    // 1. Populate Training Questions Grid (T1 to T10)
+    const trainGrid = document.getElementById('admin-training-question-grid');
+    if (trainGrid) {
+      trainGrid.innerHTML = '';
+      for (let t = 1; t <= 10; t++) {
+        const tBtn = document.createElement('button');
+        tBtn.id = `admin-qgrid-btn-train-${t}`;
+        tBtn.className = 'admin-qgrid-train-btn';
+        tBtn.title = `Practice Question ${t} / 10`;
+        tBtn.textContent = `T${t}`;
+        tBtn.dataset.trainNum = t;
 
-    grid.innerHTML = '';
-
-    // Render 10 block rows, each with a block label + 6 question buttons
-    for (let blockIdx = 1; blockIdx <= 10; blockIdx++) {
-      // Block label cell
-      const label = document.createElement('div');
-      label.style.cssText = 'font-size:9px;color:rgba(255,255,255,0.3);font-weight:700;text-align:right;padding-right:6px;padding-top:4px;white-space:nowrap;';
-      label.textContent = `Blk ${blockIdx}`;
-      grid.appendChild(label);
-
-      // 6-cell inner grid
-      const row = document.createElement('div');
-      row.style.cssText = 'display:grid;grid-template-columns:repeat(6,1fr);gap:4px;';
-
-      for (let v = 1; v <= 6; v++) {
-        const qNum = (blockIdx - 1) * 6 + v;
-        const btn = document.createElement('button');
-        btn.id = `admin-qgrid-btn-${qNum}`;
-        btn.className = 'admin-qgrid-btn';
-        btn.title = `Q${qNum} — Block ${blockIdx}, variation ${v}`;
-        btn.textContent = qNum;
-        btn.dataset.qnum = qNum;
-
-        const isActive = (qNum === this.currentQuestionNumber || qNum === parseInt(this.currentQuestionNumber, 10));
-        if (isActive) {
-          btn.classList.add('active');
+        const isCurrent = (this.currentQuestionNumber === `training:${t}`);
+        if (isCurrent) {
+          tBtn.classList.add('active');
         }
-
-        // Native CSS classes handle hover (:hover:not(.active)) and active state
-        row.appendChild(btn);
+        trainGrid.appendChild(tBtn);
       }
-      grid.appendChild(row);
+    }
+
+    // 2. Populate 60 Official Study Questions Grid
+    const grid = document.getElementById('admin-question-grid');
+    if (grid) {
+      grid.innerHTML = '';
+
+      // Render 10 block rows, each with a block label + 6 question buttons
+      for (let blockIdx = 1; blockIdx <= 10; blockIdx++) {
+        // Block label cell
+        const label = document.createElement('div');
+        label.style.cssText = 'font-size:9px;color:rgba(255,255,255,0.3);font-weight:700;text-align:right;padding-right:6px;padding-top:4px;white-space:nowrap;';
+        label.textContent = `Blk ${blockIdx}`;
+        grid.appendChild(label);
+
+        // 6-cell inner grid
+        const row = document.createElement('div');
+        row.style.cssText = 'display:grid;grid-template-columns:repeat(6,1fr);gap:4px;';
+
+        for (let v = 1; v <= 6; v++) {
+          const qNum = (blockIdx - 1) * 6 + v;
+          const btn = document.createElement('button');
+          btn.id = `admin-qgrid-btn-${qNum}`;
+          btn.className = 'admin-qgrid-btn';
+          btn.title = `Q${qNum} — Block ${blockIdx}, variation ${v}`;
+          btn.textContent = qNum;
+          btn.dataset.qnum = qNum;
+
+          const isActive = (qNum === this.currentQuestionNumber || qNum === parseInt(this.currentQuestionNumber, 10));
+          if (isActive) {
+            btn.classList.add('active');
+          }
+
+          // Native CSS classes handle hover (:hover:not(.active)) and active state
+          row.appendChild(btn);
+        }
+        grid.appendChild(row);
+      }
     }
 
     // Ensure state is cleanly synchronized
@@ -430,9 +496,21 @@ class QueryExperimentApp {
    * Updates the active highlight in the question grid to match currentQuestionNumber.
    */
   syncAdminQuestionGrid(activeQNum) {
-    const targetQ = (activeQNum === 'consent' || activeQNum === 'intake' || activeQNum === 'final_thoughts')
-      ? activeQNum
-      : parseInt(activeQNum, 10);
+    const isSpecial = (
+      activeQNum === 'consent' ||
+      activeQNum === 'intake' ||
+      activeQNum === 'training_intro' ||
+      activeQNum === 'training_complete' ||
+      activeQNum === 'final_thoughts' ||
+      activeQNum === 'extra_credit' ||
+      activeQNum === 'thank_you' ||
+      (typeof activeQNum === 'string' && activeQNum.startsWith('training:'))
+    );
+
+    const studyQNum = !isSpecial ? parseInt(activeQNum, 10) : null;
+    const trainQNum = (typeof activeQNum === 'string' && activeQNum.startsWith('training:'))
+      ? parseInt(activeQNum.split(':')[1], 10)
+      : null;
 
     // Clear focus from any active button to avoid browser focus outlines lingering
     if (typeof document !== 'undefined' && document.activeElement && typeof document.activeElement.blur === 'function') {
@@ -442,49 +520,105 @@ class QueryExperimentApp {
       }
     }
 
+    // 1. Study Questions 1-60
     for (let q = 1; q <= 60; q++) {
       const btn = document.getElementById(`admin-qgrid-btn-${q}`);
       if (!btn) continue;
-      const isActive = (q === targetQ);
+      const isActive = (studyQNum !== null && q === studyQNum);
       btn.classList.toggle('active', isActive);
 
-      // Wipe out any lingering inline styles so CSS classes rule completely
       btn.style.border = '';
       btn.style.background = '';
       btn.style.color = '';
       btn.style.borderColor = '';
     }
 
+    // 2. Practice Training Questions 1-10
+    for (let t = 1; t <= 10; t++) {
+      const tBtn = document.getElementById(`admin-qgrid-btn-train-${t}`);
+      if (!tBtn) continue;
+      const isActive = (trainQNum !== null && t === trainQNum);
+      tBtn.classList.toggle('active', isActive);
+
+      tBtn.style.border = '';
+      tBtn.style.background = '';
+      tBtn.style.color = '';
+      tBtn.style.borderColor = '';
+    }
+
+    // 3. Consent
     const btnConsent = document.getElementById('admin-qgrid-btn-consent');
     if (btnConsent) {
-      const isConsent = (targetQ === 'consent');
+      const isConsent = (activeQNum === 'consent');
       btnConsent.classList.toggle('active', isConsent);
       btnConsent.style.border = isConsent ? '1.5px solid rgba(220, 38, 38, 0.9)' : '1.5px solid rgba(220, 38, 38, 0.4)';
       btnConsent.style.background = isConsent ? 'rgba(220, 38, 38, 0.35)' : 'rgba(220, 38, 38, 0.15)';
       btnConsent.style.color = isConsent ? '#ffffff' : '#fca5a5';
     }
 
+    // 4. Intake
     const btnIntake = document.getElementById('admin-qgrid-btn-intake');
     if (btnIntake) {
-      const isIntake = (targetQ === 'intake');
+      const isIntake = (activeQNum === 'intake');
       btnIntake.classList.toggle('active', isIntake);
       btnIntake.style.border = isIntake ? '1.5px solid rgba(99, 102, 241, 0.9)' : '1.5px solid rgba(99, 102, 241, 0.4)';
       btnIntake.style.background = isIntake ? 'rgba(99, 102, 241, 0.35)' : 'rgba(99, 102, 241, 0.15)';
       btnIntake.style.color = isIntake ? '#ffffff' : '#c7d2fe';
     }
 
+    // 5. Training Intro (Screen Before Training)
+    const btnTrainIntro = document.getElementById('admin-qgrid-btn-training_intro');
+    if (btnTrainIntro) {
+      const isTrainIntro = (activeQNum === 'training_intro');
+      btnTrainIntro.classList.toggle('active', isTrainIntro);
+      btnTrainIntro.style.border = isTrainIntro ? '1.5px solid rgba(245, 158, 11, 0.95)' : '1.5px solid rgba(245, 158, 11, 0.4)';
+      btnTrainIntro.style.background = isTrainIntro ? 'rgba(245, 158, 11, 0.38)' : 'rgba(245, 158, 11, 0.15)';
+      btnTrainIntro.style.color = isTrainIntro ? '#ffffff' : '#fde68a';
+    }
+
+    // 6. Training Complete (Screen After Training)
+    const btnTrainComplete = document.getElementById('admin-qgrid-btn-training_complete');
+    if (btnTrainComplete) {
+      const isTrainComplete = (activeQNum === 'training_complete');
+      btnTrainComplete.classList.toggle('active', isTrainComplete);
+      btnTrainComplete.style.border = isTrainComplete ? '1.5px solid rgba(16, 185, 129, 0.95)' : '1.5px solid rgba(16, 185, 129, 0.4)';
+      btnTrainComplete.style.background = isTrainComplete ? 'rgba(16, 185, 129, 0.38)' : 'rgba(16, 185, 129, 0.15)';
+      btnTrainComplete.style.color = isTrainComplete ? '#ffffff' : '#a7f3d0';
+    }
+
+    // 7. Final Thoughts
     const btnFinal = document.getElementById('admin-qgrid-btn-final_thoughts');
     if (btnFinal) {
-      const isFinal = (targetQ === 'final_thoughts');
+      const isFinal = (activeQNum === 'final_thoughts');
       btnFinal.classList.toggle('active', isFinal);
       btnFinal.style.border = isFinal ? '1.5px solid rgba(245, 158, 11, 0.9)' : '1.5px solid rgba(245, 158, 11, 0.35)';
       btnFinal.style.background = isFinal ? 'rgba(245, 158, 11, 0.35)' : 'rgba(245, 158, 11, 0.12)';
       btnFinal.style.color = isFinal ? '#ffffff' : '#fde68a';
     }
 
+    // 8. Extra Credit (Email & Course Submission)
+    const btnExtraCredit = document.getElementById('admin-qgrid-btn-extra_credit');
+    if (btnExtraCredit) {
+      const isExtraCredit = (activeQNum === 'extra_credit');
+      btnExtraCredit.classList.toggle('active', isExtraCredit);
+      btnExtraCredit.style.border = isExtraCredit ? '1.5px solid rgba(6, 182, 212, 0.95)' : '1.5px solid rgba(6, 182, 212, 0.38)';
+      btnExtraCredit.style.background = isExtraCredit ? 'rgba(6, 182, 212, 0.38)' : 'rgba(6, 182, 212, 0.14)';
+      btnExtraCredit.style.color = isExtraCredit ? '#ffffff' : '#a5f3fc';
+    }
+
+    // 9. Thank You (Study Complete)
+    const btnThankYou = document.getElementById('admin-qgrid-btn-thank_you');
+    if (btnThankYou) {
+      const isThankYou = (activeQNum === 'thank_you');
+      btnThankYou.classList.toggle('active', isThankYou);
+      btnThankYou.style.border = isThankYou ? '1.5px solid rgba(34, 197, 94, 0.95)' : '1.5px solid rgba(34, 197, 94, 0.38)';
+      btnThankYou.style.background = isThankYou ? 'rgba(34, 197, 94, 0.38)' : 'rgba(34, 197, 94, 0.14)';
+      btnThankYou.style.color = isThankYou ? '#ffffff' : '#bbf7d0';
+    }
+
     const select = document.getElementById('question-jump-select');
     if (select && activeQNum !== undefined && activeQNum !== null) {
-      select.value = activeQNum;
+      select.value = String(activeQNum);
     }
 
     const stageBadge = document.getElementById('admin-preview-stage-badge');
@@ -497,10 +631,30 @@ class QueryExperimentApp {
         stageBadge.textContent = 'Previewing: Pre-Experiment Questionnaire';
         stageBadge.style.color = '#c7d2fe';
         stageBadge.style.borderColor = 'rgba(99, 102, 241, 0.4)';
+      } else if (activeQNum === 'training_intro') {
+        stageBadge.textContent = 'Previewing: Screen Before Training (Intro & Briefing)';
+        stageBadge.style.color = '#fde68a';
+        stageBadge.style.borderColor = 'rgba(245, 158, 11, 0.5)';
+      } else if (trainQNum !== null) {
+        stageBadge.textContent = `Previewing: Practice Question ${trainQNum} / 10 (Training Phase)`;
+        stageBadge.style.color = '#fbbf24';
+        stageBadge.style.borderColor = 'rgba(245, 158, 11, 0.6)';
+      } else if (activeQNum === 'training_complete') {
+        stageBadge.textContent = 'Previewing: Screen After Training (Ready for Official Study)';
+        stageBadge.style.color = '#a7f3d0';
+        stageBadge.style.borderColor = 'rgba(16, 185, 129, 0.5)';
       } else if (activeQNum === 'final_thoughts') {
-        stageBadge.textContent = 'Previewing: Final Thoughts & Conclusion';
+        stageBadge.textContent = 'Previewing: Final Thoughts & Evaluation (Likert Scales)';
         stageBadge.style.color = '#fde68a';
         stageBadge.style.borderColor = 'rgba(245, 158, 11, 0.4)';
+      } else if (activeQNum === 'extra_credit') {
+        stageBadge.textContent = 'Previewing: Email & Course Credit Submission';
+        stageBadge.style.color = '#a5f3fc';
+        stageBadge.style.borderColor = 'rgba(6, 182, 212, 0.5)';
+      } else if (activeQNum === 'thank_you') {
+        stageBadge.textContent = 'Previewing: Study Complete (Thank You Screen)';
+        stageBadge.style.color = '#bbf7d0';
+        stageBadge.style.borderColor = 'rgba(34, 197, 94, 0.5)';
       } else {
         const qNum = parseInt(activeQNum, 10) || 1;
         const bIdx = Math.floor((qNum - 1) / 6) + 1;
@@ -580,7 +734,7 @@ class QueryExperimentApp {
         this.applyAdminGroup(btn.dataset.groupId);
       }
 
-      // Also handle question grid clicks from the admin tab
+      // Question grid clicks (Q1-Q60)
       const qBtn = e.target.closest('[id^="admin-qgrid-btn-"]');
       if (qBtn && qBtn.dataset.qnum) {
         const qNum = parseInt(qBtn.dataset.qnum, 10);
@@ -590,7 +744,17 @@ class QueryExperimentApp {
         }
       }
 
-      // Handle dedicated consent, intake, and final thoughts buttons
+      // Practice Training Question clicks (T1-T10)
+      const trainBtn = e.target.closest('[data-train-num]');
+      if (trainBtn) {
+        const tNum = parseInt(trainBtn.dataset.trainNum, 10);
+        if (tNum >= 1 && tNum <= 10) {
+          this.syncAdminQuestionGrid(`training:${tNum}`);
+          this.loadIncrementalQuestion(`training:${tNum}`);
+        }
+      }
+
+      // Dedicated protocol and transition page buttons
       if (e.target.closest('#admin-qgrid-btn-consent')) {
         this.syncAdminQuestionGrid('consent');
         this.loadIncrementalQuestion('consent');
@@ -599,9 +763,25 @@ class QueryExperimentApp {
         this.syncAdminQuestionGrid('intake');
         this.loadIncrementalQuestion('intake');
       }
+      if (e.target.closest('#admin-qgrid-btn-training_intro')) {
+        this.syncAdminQuestionGrid('training_intro');
+        this.loadIncrementalQuestion('training_intro');
+      }
+      if (e.target.closest('#admin-qgrid-btn-training_complete')) {
+        this.syncAdminQuestionGrid('training_complete');
+        this.loadIncrementalQuestion('training_complete');
+      }
       if (e.target.closest('#admin-qgrid-btn-final_thoughts')) {
         this.syncAdminQuestionGrid('final_thoughts');
         this.loadIncrementalQuestion('final_thoughts');
+      }
+      if (e.target.closest('#admin-qgrid-btn-extra_credit')) {
+        this.syncAdminQuestionGrid('extra_credit');
+        this.loadIncrementalQuestion('extra_credit');
+      }
+      if (e.target.closest('#admin-qgrid-btn-thank_you')) {
+        this.syncAdminQuestionGrid('thank_you');
+        this.loadIncrementalQuestion('thank_you');
       }
     });
   }
@@ -672,6 +852,23 @@ class QueryExperimentApp {
     optIntake.textContent = '📋 Pre-Experiment Questionnaire';
     select.appendChild(optIntake);
 
+    const optTrainIntro = document.createElement('option');
+    optTrainIntro.value = 'training_intro';
+    optTrainIntro.textContent = '🎓 Training: Introduction';
+    select.appendChild(optTrainIntro);
+
+    for (let t = 1; t <= 10; t++) {
+      const optT = document.createElement('option');
+      optT.value = `training:${t}`;
+      optT.textContent = `🎯 Training Practice Q ${t} / 10`;
+      select.appendChild(optT);
+    }
+
+    const optTrainDone = document.createElement('option');
+    optTrainDone.value = 'training_complete';
+    optTrainDone.textContent = '🏁 Training: Completed Notice';
+    select.appendChild(optTrainDone);
+
     for (let qNum = 1; qNum <= 60; qNum++) {
       const bIdx = Math.floor((qNum - 1) / 6) + 1;
       const vIdx = ((qNum - 1) % 6) + 1;
@@ -683,8 +880,18 @@ class QueryExperimentApp {
 
     const optFinal = document.createElement('option');
     optFinal.value = 'final_thoughts';
-    optFinal.textContent = '🏁 Final Thoughts & Conclusion';
+    optFinal.textContent = '⭐ Final Thoughts (Likert Scales)';
     select.appendChild(optFinal);
+
+    const optExtra = document.createElement('option');
+    optExtra.value = 'extra_credit';
+    optExtra.textContent = '🎓 Course Extra Credit';
+    select.appendChild(optExtra);
+
+    const optThankYou = document.createElement('option');
+    optThankYou.value = 'thank_you';
+    optThankYou.textContent = '🎉 Completed / Thank You';
+    select.appendChild(optThankYou);
 
     select.value = this.currentQuestionNumber || 1;
   }
@@ -724,6 +931,50 @@ class QueryExperimentApp {
       return;
     }
 
+    if (targetQNum === 'training_intro') {
+      this.currentQuestionNumber = 'training_intro';
+      const select = document.getElementById('question-jump-select');
+      if (select) select.value = 'training_intro';
+      this.syncAdminQuestionGrid('training_intro');
+      if (this.humanResolver) {
+        this.humanResolver.renderTrainingIntroScreen();
+      }
+      return;
+    }
+
+    if (targetQNum === 'training_complete') {
+      this.currentQuestionNumber = 'training_complete';
+      const select = document.getElementById('question-jump-select');
+      if (select) select.value = 'training_complete';
+      this.syncAdminQuestionGrid('training_complete');
+      if (this.humanResolver) {
+        this.humanResolver.renderTrainingCompleteScreen();
+      }
+      return;
+    }
+
+    if (targetQNum === 'extra_credit') {
+      this.currentQuestionNumber = 'extra_credit';
+      const select = document.getElementById('question-jump-select');
+      if (select) select.value = 'extra_credit';
+      this.syncAdminQuestionGrid('extra_credit');
+      if (this.humanResolver) {
+        this.humanResolver.renderExtraCreditScreen();
+      }
+      return;
+    }
+
+    if (targetQNum === 'thank_you') {
+      this.currentQuestionNumber = 'thank_you';
+      const select = document.getElementById('question-jump-select');
+      if (select) select.value = 'thank_you';
+      this.syncAdminQuestionGrid('thank_you');
+      if (this.humanResolver) {
+        this.humanResolver.renderThankYouScreen();
+      }
+      return;
+    }
+
     const isOver60 = (typeof targetQNum === 'number' && targetQNum > 60) || (parseInt(targetQNum, 10) > 60);
     if (targetQNum === 'final_thoughts' || isOver60) {
       this.currentQuestionNumber = 'final_thoughts';
@@ -759,6 +1010,60 @@ class QueryExperimentApp {
       this.humanResolver.intakeCompleted = true;
     }
 
+    // Handle Training Challenge Questions (training:1 .. training:10)
+    const isTraining = typeof targetQNum === 'string' && targetQNum.startsWith('training:');
+    if (isTraining) {
+      const tNum = Math.max(1, Math.min(10, parseInt(targetQNum.split(':')[1], 10) || 1));
+      this.currentQuestionNumber = `training:${tNum}`;
+
+      const select = document.getElementById('question-jump-select');
+      if (select) select.value = `training:${tNum}`;
+
+      const tBlockIndex = Math.floor((tNum - 1) / 5);
+      const tVariationIndex = (tNum - 1) % 5;
+      const blockSeed = this.seed + 85000 + tBlockIndex * 137;
+      const blockKey = `training_${tBlockIndex}`;
+
+      if (!this.currentSchema || this.lastBlockKey !== blockKey) {
+        this.lastBlockKey = blockKey;
+        this.lastBlockIndex = null;
+        this.schemaGenerator = new SchemaGenerator(blockSeed);
+        this.currentSchema = this.schemaGenerator.generateSchema(5, 4, 30, true);
+
+        await this.sqliteEngine.loadSchemaAndData(this.currentSchema);
+        this.customJsEngine.loadSchemaAndData(this.currentSchema);
+        this.optimizerEngine.loadSchemaAndData(this.currentSchema);
+        this.renderSchemaPreview();
+      }
+
+      if (currentReq !== this._loadQuestionCounter) {
+        return;
+      }
+
+      this.queryGenerator = new QueryGenerator(blockSeed);
+      this.currentQuery = this.queryGenerator.generateIncrementalQuery(this.currentSchema, 'medium', true, tVariationIndex);
+
+      const editor = document.getElementById('sql-editor');
+      if (editor) editor.value = this.currentQuery;
+
+      const r1 = this.sqliteEngine.executeQuery(this.currentQuery);
+      const r2 = this.customJsEngine.executeQuery(this.currentQuery);
+      const r3 = this.optimizerEngine.executeQuery(this.currentQuery);
+
+      this.updateEngineCardUI(1, r1, r1.plan);
+      this.updateEngineCardUI(2, r2, r2.astTrace);
+      this.updateEngineCardUI(3, r3, this.formatCostAnalysis(r3.costAnalysis));
+      this.renderDifferentialComparison(r1, r2, r3);
+
+      const groundTruth = (r1 && r1.success && r1.columns && r1.columns.length > 0) ? r1 : ((r2 && r2.success) ? r2 : r3);
+      this.humanResolver.startNewChallenge(this.currentSchema, this.currentQuery, groundTruth, `training:${tNum}`);
+
+      if (!this.isParticipantView() && currentReq === this._loadQuestionCounter && this._adminPreviewGroupId) {
+        this.applyAdminGroup(this._adminPreviewGroupId);
+      }
+      return;
+    }
+
     const qNum = Math.max(1, Math.min(60, parseInt(targetQNum, 10) || 1));
     this.currentQuestionNumber = qNum;
 
@@ -769,8 +1074,10 @@ class QueryExperimentApp {
     const blockIndex = Math.floor(qIndex / 6);
     const blockSeed = this.seed + blockIndex * 137;
     const variationIndex = qIndex % 6;
+    const blockKey = `study_${blockIndex}`;
 
-    if (!this.currentSchema || this.lastBlockIndex !== blockIndex) {
+    if (!this.currentSchema || this.lastBlockKey !== blockKey) {
+      this.lastBlockKey = blockKey;
       this.lastBlockIndex = blockIndex;
       this.schemaGenerator = new SchemaGenerator(blockSeed);
       this.currentSchema = this.schemaGenerator.generateSchema(5, 4, 30, true);
@@ -818,10 +1125,30 @@ class QueryExperimentApp {
 
   async generateNextIncrementalQuestion() {
     const cur = this.currentQuestionNumber;
-    if (cur === 'intake') {
+    if (cur === 'consent') {
+      await this.loadIncrementalQuestion('intake');
+    } else if (cur === 'intake') {
+      await this.loadIncrementalQuestion('training_intro');
+    } else if (cur === 'training_intro') {
+      await this.loadIncrementalQuestion('training:1');
+    } else if (typeof cur === 'string' && cur.startsWith('training:')) {
+      const tNum = parseInt(cur.split(':')[1], 10) || 1;
+      if (tNum < 10) {
+        await this.loadIncrementalQuestion(`training:${tNum + 1}`);
+      } else {
+        if (this.analytics && typeof this.analytics.setTrainingCompleted === 'function') {
+          this.analytics.setTrainingCompleted(true);
+        }
+        await this.loadIncrementalQuestion('training_complete');
+      }
+    } else if (cur === 'training_complete') {
       await this.loadIncrementalQuestion(1);
     } else if (cur === 'final_thoughts') {
-      await this.loadIncrementalQuestion('final_thoughts');
+      await this.loadIncrementalQuestion('extra_credit');
+    } else if (cur === 'extra_credit') {
+      await this.loadIncrementalQuestion('thank_you');
+    } else if (cur === 'thank_you') {
+      await this.loadIncrementalQuestion('thank_you');
     } else {
       const num = parseInt(cur, 10) || 1;
       if (num >= 60) {

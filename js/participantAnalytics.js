@@ -8,6 +8,7 @@
 class ParticipantAnalytics {
   constructor() {
     this.storageKey = 'sql_study_responses';
+    this.trainingStorageKey = 'sql_study_training_responses';
     this.demographicsKey = 'sql_study_demographics';
     this.finalThoughtsKey = 'sql_study_final_thoughts';
     this.participantIdKey = 'sql_study_participant_id';
@@ -15,13 +16,15 @@ class ParticipantAnalytics {
 
     this.participantId = this.initParticipantId();
     this.sessionId = this.initSessionId();
-    this.assignedGroup = this.initAssignedGroup(this.participantId);
     this.callbacks = [];
 
     this.migrateLegacyData();
     this.responses = this.loadResponses();
+    this.trainingResponses = this.loadTrainingResponses();
     this.demographics = this.loadDemographics();
     this.finalThoughts = this.loadFinalThoughts();
+
+    this.assignedGroup = this.initAssignedGroup(this.participantId);
 
     this.initRealtimeChannel();
     this.syncWithDiskStorage();
@@ -102,6 +105,63 @@ class ParticipantAnalytics {
     return ParticipantAnalytics.STUDY_GROUPS.find(g => g.id === id || g.name.toLowerCase() === String(id).toLowerCase()) || null;
   }
 
+  isParticipantView() {
+    if (typeof window !== 'undefined' && window.app && typeof window.app.isParticipantView === 'function') {
+      return window.app.isParticipantView();
+    }
+    if (typeof document !== 'undefined') {
+      if (document.getElementById('admin-interactive-menu') || document.getElementById('admin-sidebar-panel') || document.getElementById('btn-admin-logout')) {
+        return false;
+      }
+      if (document.title && document.title.toLowerCase().includes('admin')) {
+        return false;
+      }
+      if (document.title && document.title.toLowerCase().includes('participant')) {
+        return true;
+      }
+    }
+    if (typeof window !== 'undefined' && window.location && window.location.pathname) {
+      const p = window.location.pathname.toLowerCase();
+      if (p.includes('participant')) return true;
+    }
+    return false;
+  }
+
+  hasCompletedDemographics(pid = this.participantId) {
+    const targetPid = pid || this.participantId;
+    if (!targetPid) return false;
+    if (!this.demographics) {
+      this.demographics = this.loadDemographics();
+    }
+    const demo = this.demographics[targetPid];
+    if (!demo) return false;
+
+    // Check if invalidated by admin visiting index.html
+    if (typeof localStorage !== 'undefined') {
+      const indexVisitedAt = parseInt(localStorage.getItem('sql_study_index_visited_at') || '0', 10);
+      const demoSavedAt = demo.savedAtTimestamp || (demo.timestamp ? new Date(demo.timestamp).getTime() : 0);
+      if (indexVisitedAt > 0 && demoSavedAt < indexVisitedAt) {
+        return false;
+      }
+    }
+
+    const age = parseInt(demo.age, 10);
+    if (isNaN(age) || age < 18) return false;
+    const hasGender = demo.gender !== undefined && demo.gender !== null && demo.gender !== '';
+    const hasEdu = (demo.education !== undefined && demo.education !== null && demo.education !== '') ||
+                   (demo.academicStanding !== undefined && demo.academicStanding !== null && demo.academicStanding !== '') ||
+                   (demo.highestEducation !== undefined && demo.highestEducation !== null && demo.highestEducation !== '');
+    if (!hasGender || !hasEdu || demo.codingExp === undefined || demo.codingExp === '' || demo.dbExp === undefined || demo.dbExp === '') {
+      return false;
+    }
+    if (demo.primaryLanguage !== undefined || demo.countryOfOrigin !== undefined) {
+      if (!demo.primaryLanguage || !demo.countryOfOrigin) {
+        return false;
+      }
+    }
+    return true;
+  }
+
   initAssignedGroup(pid = this.participantId) {
     const targetPid = pid || this.participantId || 'user';
     const groupStorageKey = `sql_study_assigned_group_${targetPid}`;
@@ -121,7 +181,39 @@ class ParticipantAnalytics {
       } catch (e) {}
     }
 
-    // Check if participant was already assigned a group previously
+    // In participant view: group is strictly decided AFTER demographics submission
+    if (this.isParticipantView()) {
+      if (this.hasCompletedDemographics(targetPid)) {
+        try {
+          const saved = localStorage.getItem(groupStorageKey);
+          if (saved) {
+            const parsed = JSON.parse(saved);
+            if (parsed && parsed.id && ParticipantAnalytics.STUDY_GROUPS.some(g => g.id === parsed.id)) {
+              return parsed;
+            }
+          }
+        } catch (e) {}
+
+        const demo = (this.demographics && this.demographics[targetPid]) || this.getDemographics(targetPid);
+        if (demo && (demo.assignedGroupId || demo.assignedGroup)) {
+          const match = this.getGroupById(demo.assignedGroupId || demo.assignedGroup);
+          if (match) {
+            try { localStorage.setItem(groupStorageKey, JSON.stringify(match)); } catch (e) {}
+            return match;
+          }
+        }
+
+        return this.decideAssignedGroupAfterDemographics(targetPid);
+      }
+
+      // Demographics not completed yet: clear any premature group and return null
+      try {
+        localStorage.removeItem(groupStorageKey);
+      } catch (e) {}
+      return null;
+    }
+
+    // In admin view: return saved group or default to first group
     try {
       const saved = localStorage.getItem(groupStorageKey);
       if (saved) {
@@ -132,35 +224,137 @@ class ParticipantAnalytics {
       }
     } catch (e) {}
 
-    // Uniformly random selection among the 4 groups (crypto-secure when available)
-    const groups = ParticipantAnalytics.STUDY_GROUPS;
-    let randIdx = 0;
-    if (typeof window !== 'undefined' && window.crypto && window.crypto.getRandomValues) {
-      const array = new Uint32Array(1);
-      window.crypto.getRandomValues(array);
-      randIdx = array[0] % groups.length;
-    } else {
-      randIdx = Math.floor(Math.random() * groups.length);
-    }
-
-    const assigned = groups[randIdx];
-    try {
-      localStorage.setItem(groupStorageKey, JSON.stringify(assigned));
-    } catch (e) {}
-    return assigned;
+    return ParticipantAnalytics.STUDY_GROUPS[0];
   }
 
   getAssignedGroup(pid = this.participantId) {
     const targetPid = pid || this.participantId || 'user';
     const groupStorageKey = `sql_study_assigned_group_${targetPid}`;
+
+    // Optional query parameter override for testing/admin validation: ?group=google_sql_python
+    if (targetPid === this.participantId && typeof window !== 'undefined' && window.location && window.location.search) {
+      try {
+        const params = new URLSearchParams(window.location.search);
+        const forced = params.get('group') || params.get('study_group');
+        if (forced) {
+          const match = this.getGroupById(forced);
+          if (match) return match;
+        }
+      } catch (e) {}
+    }
+
+    // 1. Check if recorded in demographics for targetPid
+    try {
+      const demo = (this.demographics && this.demographics[targetPid]) || this.getDemographics(targetPid);
+      if (demo && (demo.assignedGroupId || demo.assignedGroup)) {
+        const match = this.getGroupById(demo.assignedGroupId || demo.assignedGroup);
+        if (match) return match;
+      }
+    } catch (e) {}
+
+    // 2. Check saved in localStorage
     try {
       const saved = localStorage.getItem(groupStorageKey);
       if (saved) {
         const parsed = JSON.parse(saved);
-        if (parsed && parsed.id) return parsed;
+        if (parsed && parsed.id && ParticipantAnalytics.STUDY_GROUPS.some(g => g.id === parsed.id)) {
+          if (this.isParticipantView() && targetPid === this.participantId && !this.hasCompletedDemographics(targetPid)) {
+            try { localStorage.removeItem(groupStorageKey); } catch (e) {}
+            return null;
+          }
+          return parsed;
+        }
       }
     } catch (e) {}
-    return this.initAssignedGroup(targetPid);
+
+    // 3. In participant view for current participant:
+    if (this.isParticipantView() && targetPid === this.participantId) {
+      if (this.hasCompletedDemographics(targetPid)) {
+        return this.decideAssignedGroupAfterDemographics(targetPid);
+      }
+      return null;
+    }
+
+    // 4. In admin view:
+    if (!this.isParticipantView()) {
+      return ParticipantAnalytics.STUDY_GROUPS[0];
+    }
+
+    return null;
+  }
+
+  decideAssignedGroupAfterDemographics(pid = this.participantId) {
+    const targetPid = pid || this.participantId || 'user';
+    const groupStorageKey = `sql_study_assigned_group_${targetPid}`;
+
+    // 1. Check query parameter override (?group=...)
+    if (typeof window !== 'undefined' && window.location && window.location.search) {
+      try {
+        const params = new URLSearchParams(window.location.search);
+        const forced = params.get('group') || params.get('study_group');
+        if (forced) {
+          const match = this.getGroupById(forced);
+          if (match) {
+            try { localStorage.setItem(groupStorageKey, JSON.stringify(match)); } catch (e) {}
+            if (targetPid === this.participantId) this.assignedGroup = match;
+            this.notify({ type: 'GROUP_CHANGE', participantId: targetPid, assignedGroup: match });
+            return match;
+          }
+        }
+      } catch (e) {}
+    }
+
+    // 2. Check if already decided for this participant
+    try {
+      const saved = localStorage.getItem(groupStorageKey);
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (parsed && parsed.id && ParticipantAnalytics.STUDY_GROUPS.some(g => g.id === parsed.id)) {
+          if (targetPid === this.participantId) this.assignedGroup = parsed;
+          return parsed;
+        }
+      }
+    } catch (e) {}
+
+    // 3. Balanced assignment among the 4 groups based on completed demographics count
+    const groups = ParticipantAnalytics.STUDY_GROUPS;
+    const counts = {};
+    groups.forEach(g => { counts[g.id] = 0; });
+
+    try {
+      const demos = this.demographics || this.loadDemographics();
+      Object.keys(demos || {}).forEach(p => {
+        if (p === targetPid) return;
+        const d = demos[p];
+        const gid = d.assignedGroupId || (this.getGroupById(d.assignedGroup) ? this.getGroupById(d.assignedGroup).id : null);
+        if (gid && counts[gid] !== undefined) {
+          counts[gid]++;
+        }
+      });
+    } catch (e) {}
+
+    const minCount = Math.min(...groups.map(g => counts[g.id]));
+    const candidateGroups = groups.filter(g => counts[g.id] === minCount);
+
+    let randIdx = 0;
+    if (typeof window !== 'undefined' && window.crypto && window.crypto.getRandomValues) {
+      const array = new Uint32Array(1);
+      window.crypto.getRandomValues(array);
+      randIdx = array[0] % candidateGroups.length;
+    } else {
+      randIdx = Math.floor(Math.random() * candidateGroups.length);
+    }
+
+    const assigned = candidateGroups[randIdx];
+    try {
+      localStorage.setItem(groupStorageKey, JSON.stringify(assigned));
+    } catch (e) {}
+
+    if (targetPid === this.participantId) {
+      this.assignedGroup = assigned;
+    }
+    this.notify({ type: 'GROUP_CHANGE', participantId: targetPid, assignedGroup: assigned });
+    return assigned;
   }
 
   setAssignedGroup(groupOrId, pid = this.participantId) {
@@ -267,6 +461,15 @@ class ParticipantAnalytics {
       return data ? JSON.parse(data) : {};
     } catch (e) {
       return {};
+    }
+  }
+
+  loadTrainingResponses() {
+    try {
+      const data = localStorage.getItem(this.trainingStorageKey);
+      return data ? JSON.parse(data) : [];
+    } catch (e) {
+      return [];
     }
   }
 
@@ -471,7 +674,7 @@ class ParticipantAnalytics {
   saveDemographics(demographicsData, pid = this.participantId) {
     if (!pid) return null;
     const pst = this.getPSTDateTime();
-    const assignedGroup = this.getAssignedGroup(pid);
+    const assignedGroup = this.decideAssignedGroupAfterDemographics(pid);
     const record = {
       participantId: pid,
       assignedGroup: assignedGroup ? assignedGroup.name : '',
@@ -505,16 +708,27 @@ class ParticipantAnalytics {
     return (pid && this.demographics[pid]) ? this.demographics[pid] : null;
   }
 
-  saveFinalThoughts(thoughtsText, pid = this.participantId) {
+  saveFinalThoughts(thoughtsData, pid = this.participantId) {
     if (!pid) return null;
     const pst = this.getPSTDateTime();
     const assignedGroup = this.getAssignedGroup(pid);
+
+    let thoughtsText = '';
+    let likertRatings = null;
+    if (typeof thoughtsData === 'object' && thoughtsData !== null) {
+      thoughtsText = thoughtsData.thoughts || '';
+      likertRatings = thoughtsData.ratings || thoughtsData.likertRatings || null;
+    } else {
+      thoughtsText = String(thoughtsData || '');
+    }
+
     const record = {
       participantId: pid,
       assignedGroup: assignedGroup ? assignedGroup.name : '',
       assignedGroupId: assignedGroup ? assignedGroup.id : '',
       assignedGroupName: assignedGroup ? assignedGroup.name : '',
-      thoughts: thoughtsText || '',
+      thoughts: thoughtsText,
+      likertRatings: likertRatings,
       timestamp: new Date().toISOString(),
       timestampPST: pst.dateTimePST,
       datePST: pst.datePST,
@@ -540,12 +754,59 @@ class ParticipantAnalytics {
     return (pid && this.finalThoughts[pid]) ? this.finalThoughts[pid] : null;
   }
 
+  logTrainingResponse(data) {
+    const pid = data.participantId || this.participantId;
+    const record = Object.assign({
+      id: 'train_' + Date.now() + '_' + Math.random().toString(36).substring(2, 7),
+      participantId: pid,
+      sessionId: this.sessionId,
+      timestamp: new Date().toISOString(),
+      isTraining: true
+    }, data);
+
+    if (!Array.isArray(this.trainingResponses)) {
+      this.trainingResponses = [];
+    }
+    this.trainingResponses.push(record);
+    try {
+      localStorage.setItem(this.trainingStorageKey, JSON.stringify(this.trainingResponses));
+    } catch (e) {}
+    return record;
+  }
+
+  getTrainingResponses(participantId = this.participantId) {
+    if (!Array.isArray(this.trainingResponses)) {
+      this.trainingResponses = this.loadTrainingResponses();
+    }
+    return this.trainingResponses.filter(r => r.participantId === participantId);
+  }
+
+  hasCompletedTraining(pid = this.participantId) {
+    const targetPid = pid || this.participantId || 'user';
+    try {
+      return localStorage.getItem('sql_study_training_completed_' + targetPid) === 'true';
+    } catch (e) {
+      return false;
+    }
+  }
+
+  setTrainingCompleted(completed = true, pid = this.participantId) {
+    const targetPid = pid || this.participantId || 'user';
+    try {
+      if (completed) {
+        localStorage.setItem('sql_study_training_completed_' + targetPid, 'true');
+      } else {
+        localStorage.removeItem('sql_study_training_completed_' + targetPid);
+      }
+    } catch (e) {}
+  }
+
   getAllResponses() {
     return this.responses;
   }
 
   getParticipantResponses(participantId = this.participantId) {
-    return this.responses.filter(r => r.participantId === participantId);
+    return this.responses.filter(r => r.participantId === participantId && !r.isTraining && r.questionNumber !== 'consent' && r.questionNumber !== 'intake' && !String(r.questionNumber).startsWith('training'));
   }
 
   getAnalyticsSummary() {
@@ -597,7 +858,7 @@ class ParticipantAnalytics {
       if (r.isCorrect) categoryStats[cKey].correct++;
       categoryStats[cKey].totalTime += (r.responseTimeMs || 0);
 
-      const gKey = r.assignedGroupName || r.assignedGroup || (this.getAssignedGroup(r.participantId).name);
+      const gKey = r.assignedGroupName || r.assignedGroup || (this.getAssignedGroup(r.participantId) ? this.getAssignedGroup(r.participantId).name : 'Unknown');
       if (!groupStats[gKey]) groupStats[gKey] = { total: 0, correct: 0, totalTime: 0 };
       groupStats[gKey].total++;
       if (r.isCorrect) groupStats[gKey].correct++;
@@ -648,13 +909,14 @@ class ParticipantAnalytics {
 
     allUserIds.forEach(uid => {
       const assigned = this.getAssignedGroup(uid);
+      const demo = (this.demographics && this.demographics[uid]) || {};
       groups[uid] = {
         participantId: uid,
-        assignedGroup: assigned.name,
-        assignedGroupId: assigned.id,
-        assignedGroupName: assigned.name,
-        hostLanguage: assigned.hostLanguage,
-        sqlDialect: assigned.sqlDialect,
+        assignedGroup: assigned ? assigned.name : (demo.assignedGroupName || demo.assignedGroup || 'Unassigned'),
+        assignedGroupId: assigned ? assigned.id : (demo.assignedGroupId || 'unassigned'),
+        assignedGroupName: assigned ? assigned.name : (demo.assignedGroupName || demo.assignedGroup || 'Unassigned'),
+        hostLanguage: assigned ? assigned.hostLanguage : (demo.hostLanguage || ''),
+        sqlDialect: assigned ? assigned.sqlDialect : (demo.sqlDialect || ''),
         responses: [],
         totalAnswers: 0,
         correctCount: 0,
@@ -669,13 +931,14 @@ class ParticipantAnalytics {
       const uid = r.participantId || 'Anonymous';
       if (!groups[uid]) {
         const assigned = this.getAssignedGroup(uid);
+        const demo = (this.demographics && this.demographics[uid]) || {};
         groups[uid] = {
           participantId: uid,
-          assignedGroup: assigned.name,
-          assignedGroupId: assigned.id,
-          assignedGroupName: assigned.name,
-          hostLanguage: assigned.hostLanguage,
-          sqlDialect: assigned.sqlDialect,
+          assignedGroup: assigned ? assigned.name : (demo.assignedGroupName || demo.assignedGroup || 'Unassigned'),
+          assignedGroupId: assigned ? assigned.id : (demo.assignedGroupId || 'unassigned'),
+          assignedGroupName: assigned ? assigned.name : (demo.assignedGroupName || demo.assignedGroup || 'Unassigned'),
+          hostLanguage: assigned ? assigned.hostLanguage : (demo.hostLanguage || ''),
+          sqlDialect: assigned ? assigned.sqlDialect : (demo.sqlDialect || ''),
           responses: [],
           totalAnswers: 0,
           correctCount: 0,

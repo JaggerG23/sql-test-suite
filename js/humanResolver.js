@@ -226,8 +226,12 @@ class HumanResolver {
         return;
       }
 
-      // Block answering shortcuts if test is finished or at final thoughts
-      if (this.app && (this.app.currentQuestionNumber === 'final_thoughts' || (this.stats && this.stats.totalAnswered >= 60))) {
+      // Block answering shortcuts if test is finished or at static info/survey pages
+      const staticPages = ['consent', 'intake', 'training_intro', 'training_complete', 'final_thoughts', 'extra_credit', 'thank_you'];
+      if (!this.currentQuestion || (this.app && staticPages.includes(this.app.currentQuestionNumber))) {
+        return;
+      }
+      if (!this.isTrainingChallenge && this.stats && this.stats.totalAnswered >= 60) {
         return;
       }
 
@@ -659,7 +663,7 @@ class HumanResolver {
       }
 
       this.intakeCompleted = true;
-      this.app.loadIncrementalQuestion(1);
+      this.app.loadIncrementalQuestion('training_intro');
     };
 
     const btnStart = document.getElementById('btn-start-experiment');
@@ -668,100 +672,353 @@ class HumanResolver {
     }
   }
 
+  renderTrainingIntroScreen() {
+    this.currentQuestion = null;
+    this.isAnswered = true;
+    this.isTrainingChallenge = false;
+    this.trainingQuestionNumber = null;
+    this.updateNavCounter();
+    const container = document.getElementById('human-challenge-container');
+    if (!container) return;
+
+    container.innerHTML = `
+      <div class="card quiz-card glow-card" style="max-width: 820px; margin: 20px auto; padding: 32px 28px; background: rgba(18, 22, 34, 0.96); border: 1.5px solid rgba(245, 158, 11, 0.45); border-radius: 14px; box-shadow: 0 16px 50px rgba(0,0,0,0.6);">
+        
+        <!-- Header -->
+        <div class="border-bottom pb-3 mb-3" style="border-bottom: 1px solid rgba(255,255,255,0.1); display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; padding-bottom: 18px; margin-bottom: 22px;">
+          <div class="logo-icon mb-2" style="width: 54px; height: 54px; font-size: 26px; margin: 0 0 12px 0; background: linear-gradient(135deg, #f59e0b, #d97706); box-shadow: 0 0 25px rgba(245, 158, 11, 0.45); display: flex; align-items: center; justify-content: center; border-radius: 14px; color: #fff;">
+            <i class="fa-solid fa-graduation-cap"></i>
+          </div>
+          <span class="badge-training mb-2"><i class="fa-solid fa-graduation-cap"></i> Practice Phase</span>
+          <h2 style="font-family: var(--font-title); font-size: 26px; color: #fff; margin: 6px 0 6px 0;">Get Ready for Training!</h2>
+          <p class="text-muted fs-sm" style="font-size: 13.5px; margin: 0; color: #cbd5e1; max-width: 620px; line-height: 1.5;">
+            Before you begin, you will complete a <strong>10-question practice phase</strong> to familiarize yourself with the layout of the study.
+          </p>
+        </div>
+
+        <!-- Highlight cards -->
+        <div class="training-info-grid">
+          <div class="training-info-box">
+            <h4><i class="fa-solid fa-list-ol text-accent"></i> 10 Practice Questions</h4>
+            <p>You will see 10 questions with the same structure as the official study: database schema tables, code snippet, and four candidate output tables.</p>
+          </div>
+          <div class="training-info-box">
+            <h4><i class="fa-solid fa-keyboard text-accent"></i> Easy Controls</h4>
+            <p>Use keys <kbd>1</kbd>–<kbd>4</kbd> (or click) to choose your answer, press <kbd>ENTER</kbd> to submit, then press <kbd>ENTER</kbd> again to move to the next question.</p>
+          </div>
+        </div>
+
+        <!-- Notice banner -->
+        <div style="background: rgba(99, 102, 241, 0.1); border: 1px solid rgba(99, 102, 241, 0.3); border-radius: 8px; padding: 12px 16px; margin-bottom: 24px; font-size: 12.5px; color: #cbd5e1; display: flex; align-items: center; gap: 10px;">
+          <i class="fa-solid fa-circle-info text-accent" style="font-size: 16px; flex-shrink: 0;"></i>
+          <span>Once you finish the training questions, you will see a screen before you begin the 60-question study.</span>
+        </div>
+
+        <div style="text-align: center;">
+          <button type="button" id="btn-start-training" class="btn btn-primary" style="padding: 12px 36px; font-weight: 700; font-size: 15px; border-radius: 8px; box-shadow: 0 4px 20px rgba(99, 102, 241, 0.45); cursor: pointer; display: inline-flex; align-items: center; gap: 8px;">
+            <span>Start Training Phase (10 Questions)</span>
+            <i class="fa-solid fa-arrow-right"></i>
+          </button>
+        </div>
+      </div>
+    `;
+
+    const btnStart = document.getElementById('btn-start-training');
+    if (btnStart) {
+      btnStart.addEventListener('click', () => {
+        this.app.loadIncrementalQuestion('training:1');
+      });
+    }
+  }
+
+  renderTrainingCompleteScreen() {
+    this.currentQuestion = null;
+    this.isAnswered = true;
+    this.isTrainingChallenge = false;
+    this.trainingQuestionNumber = null;
+    this.updateNavCounter();
+    const container = document.getElementById('human-challenge-container');
+    if (!container) return;
+
+    container.innerHTML = `
+      <div class="card quiz-card glow-card" style="max-width: 820px; margin: 20px auto; padding: 34px 28px; background: rgba(18, 22, 34, 0.96); border: 1.5px solid rgba(16, 185, 129, 0.45); border-radius: 14px; box-shadow: 0 16px 50px rgba(0,0,0,0.6);">
+        
+        <!-- Header -->
+        <div class="border-bottom pb-3 mb-3" style="border-bottom: 1px solid rgba(255,255,255,0.1); display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; padding-bottom: 18px; margin-bottom: 22px;">
+          <div class="logo-icon mb-2" style="width: 58px; height: 58px; font-size: 28px; margin: 0 0 12px 0; background: linear-gradient(135deg, #10b981, #06b6d4); box-shadow: 0 0 25px rgba(16, 185, 129, 0.45); display: flex; align-items: center; justify-content: center; border-radius: 14px; color: #fff;">
+            <i class="fa-solid fa-flag-checkered"></i>
+          </div>
+          <span class="badge" style="background: rgba(16, 185, 129, 0.18); border: 1px solid rgba(16, 185, 129, 0.45); color: #34d399; font-weight: 700; font-size: 11px; padding: 2px 9px; border-radius: 4px; margin-bottom: 8px;">
+            <i class="fa-solid fa-circle-check"></i> Practice Completed
+          </span>
+          <h2 style="font-family: var(--font-title); font-size: 26px; color: #fff; margin: 4px 0 6px 0;">Training Finished!</h2>
+          <p class="text-muted fs-sm" style="font-size: 14px; margin: 0; color: #cbd5e1; max-width: 620px; line-height: 1.55;">
+            You have successfully completed all 10 practice questions. You are now familiar with the interface and are ready to begin the official study.
+          </p>
+        </div>
+
+        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 14px; margin-bottom: 24px;">
+          <div style="background: rgba(14, 18, 28, 0.85); border: 1px solid rgba(255, 255, 255, 0.08); border-radius: 10px; padding: 16px;">
+            <h4 style="font-size: 13px; font-weight: 700; color: #34d399; margin: 0 0 6px; display: flex; align-items: center; gap: 8px;">
+              <i class="fa-solid fa-list-check"></i> Official Study: 60 Questions
+            </h4>
+            <p style="font-size: 12.5px; color: #94a3b8; line-height: 1.5; margin: 0;">
+              The study consists of 60 questions following the exact same format as the practice questions. Your progress is displayed in the top bar as you answer each question.
+            </p>
+          </div>
+          <div style="background: rgba(14, 18, 28, 0.85); border: 1px solid rgba(255, 255, 255, 0.08); border-radius: 10px; padding: 16px;">
+            <h4 style="font-size: 13px; font-weight: 700; color: #f59e0b; margin: 0 0 6px; display: flex; align-items: center; gap: 8px;">
+              <i class="fa-solid fa-triangle-exclamation"></i> Important Reminder
+            </h4>
+            <p style="font-size: 12.5px; color: #94a3b8; line-height: 1.5; margin: 0;">
+              Take your time on each question. Please do not refresh the page or use the browser back button while completing the study.
+            </p>
+          </div>
+        </div>
+
+        <div style="text-align: center;">
+          <button type="button" id="btn-start-study" class="btn btn-success" style="padding: 13px 40px; font-weight: 700; font-size: 15px; border-radius: 8px; box-shadow: 0 4px 22px rgba(16, 185, 129, 0.45); cursor: pointer; display: inline-flex; align-items: center; gap: 8px;">
+            <span>Begin Official Study (Question 1)</span>
+            <i class="fa-solid fa-arrow-right"></i>
+          </button>
+        </div>
+      </div>
+    `;
+
+    const btnStartStudy = document.getElementById('btn-start-study');
+    if (btnStartStudy) {
+      btnStartStudy.addEventListener('click', () => {
+        this.app.loadIncrementalQuestion(1);
+      });
+    }
+  }
+
   renderFinalThoughtsScreen() {
     this.currentQuestion = null;
     this.isAnswered = true;
+    this.isTrainingChallenge = false;
+    this.trainingQuestionNumber = null;
     this.updateNavCounter();
     const container = document.getElementById('human-challenge-container');
     if (!container) return;
 
     const existingThoughtsObj = this.app.analytics ? this.app.analytics.getFinalThoughts() || {} : {};
-
+    const existingRatings = existingThoughtsObj.likertRatings || {};
     const pid = this.app.analytics ? this.app.analytics.participantId : 'user';
 
+    const likertQuestions = [
+      { id: 'likert_clarity', num: 1, text: 'The instructions and question prompts were clear and easy to understand.' },
+      { id: 'likert_difficulty', num: 2, text: 'The study required a lot of mental thinking to complete.' },
+      { id: 'likert_interface', num: 3, text: 'The user interface was easy to use.' },
+      { id: 'likert_experience', num: 4, text: 'Overall, I had a positive experience participating in this study.' }
+    ];
+
+    const scaleOptions = [
+      { val: 1, label: 'Strongly Disagree' },
+      { val: 2, label: 'Disagree' },
+      { val: 3, label: 'Neutral' },
+      { val: 4, label: 'Agree' },
+      { val: 5, label: 'Strongly Agree' }
+    ];
+
     container.innerHTML = `
-      <div class="card quiz-card glow-card" style="max-width: 840px; margin: 15px auto; padding: 24px; background: rgba(18, 22, 34, 0.95); border: 1px solid rgba(16, 185, 129, 0.4); border-radius: 12px; box-shadow: 0 12px 40px rgba(0,0,0,0.5);">
+      <div class="card quiz-card glow-card" style="max-width: 860px; margin: 15px auto; padding: 26px 28px; background: rgba(18, 22, 34, 0.95); border: 1px solid rgba(16, 185, 129, 0.4); border-radius: 14px; box-shadow: 0 12px 40px rgba(0,0,0,0.5);">
         
         <!-- Header -->
-        <div class="border-bottom pb-3 mb-3" style="border-bottom: 1px solid rgba(255,255,255,0.1); display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; padding-bottom: 16px; margin-bottom: 20px;">
+        <div class="border-bottom pb-3 mb-3" style="border-bottom: 1px solid rgba(255,255,255,0.1); display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; padding-bottom: 16px; margin-bottom: 22px;">
           <div class="logo-icon mb-2" style="width: 50px; height: 50px; font-size: 24px; margin: 0 0 10px 0; background: linear-gradient(135deg, #10b981, #06b6d4); box-shadow: 0 0 20px rgba(16, 185, 129, 0.5); display: flex; align-items: center; justify-content: center; border-radius: 12px; color: #fff;">
             <i class="fa-solid fa-award"></i>
           </div>
-          <h2 style="font-family: var(--font-title); font-size: 24px; color: #fff; margin: 0 0 4px 0;">Experiment Completed!</h2>
-          <p class="text-muted fs-sm" style="font-size: 13px; margin: 4px 0 0 0; color: var(--text-muted);">Thank you for participating in this study! Your responses have been recorded successfully.</p>
-        </div>
-
-        <!-- Extra Credit Email Section (Stored in a totally separate file) -->
-        <div id="extra-credit-card" class="card p-3 mb-4" style="background: rgba(99, 102, 241, 0.08); border: 1.5px solid rgba(99, 102, 241, 0.35); border-radius: 10px; margin-bottom: 24px; padding: 18px;">
-          <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 8px;">
-            <div style="width: 34px; height: 34px; border-radius: 8px; background: rgba(99, 102, 241, 0.2); display: flex; align-items: center; justify-content: center; color: var(--color-accent); font-size: 16px;">
-              <i class="fa-solid fa-graduation-cap"></i>
-            </div>
-            <div>
-              <h3 style="font-size: 15px; font-weight: 700; color: #fff; margin: 0;">Course Extra Credit</h3>
-              <span style="font-size: 12px; color: var(--color-accent);">Enter your email address and course identifier to receive credit from your professor</span>
-            </div>
-          </div>
-
-          <p style="font-size: 12.5px; color: var(--text-muted); margin: 0 0 14px 0; line-height: 1.5;">
-            The email and course identifier you provide will be cross-referenced by your professor to receive your extra credit. To protect your confidentiality, <strong style="color: #fff;">this information is stored in a totally separate file and cannot be linked to your answers or study results</strong>.
+          <h2 style="font-family: var(--font-title); font-size: 24px; color: #fff; margin: 0 0 4px 0;">Study Completed &mdash; Final Thoughts</h2>
+          <p class="text-muted fs-sm" style="font-size: 13.5px; margin: 4px 0 0 0; color: #cbd5e1;">
+            Thank you for completing all 60 questions! Please let us know what you thought of the study by rating the statements below.
           </p>
+        </div>
 
-          <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 14px; margin-bottom: 12px;">
-            <div>
-              <label for="extra-credit-email-input" style="display: block; font-size: 12px; font-weight: 600; color: #cbd5e1; margin-bottom: 6px;">
-                <i class="fa-solid fa-envelope text-accent"></i> Student Email
-              </label>
-              <input type="email" id="extra-credit-email-input" class="form-control" placeholder="student@university.edu" style="width: 100%; padding: 10px 14px; background: rgba(0,0,0,0.4); border: 1px solid rgba(255,255,255,0.18); border-radius: 8px; color: #fff; font-size: 13px;">
-            </div>
-            <div>
-              <label style="display: block; font-size: 12px; font-weight: 600; color: #cbd5e1; margin-bottom: 6px;">
-                <i class="fa-solid fa-book-bookmark text-accent"></i> Course Number &amp; Identifier
-              </label>
-              <div style="display: flex; align-items: center; gap: 8px;">
-                <div style="flex: 1.1; min-width: 0;">
-                  <input type="text" id="extra-credit-course-dept" class="form-control" placeholder="CS302" maxlength="12" style="width: 100%; padding: 10px 10px; background: rgba(0,0,0,0.4); border: 1px solid rgba(255,255,255,0.18); border-radius: 8px; color: #fff; font-size: 13.5px; font-family: monospace; font-weight: 700; text-transform: uppercase; text-align: center; letter-spacing: 0.5px;" autocomplete="off" spellcheck="false" title="Course Code (e.g. CS302)">
-                </div>
-                <span style="font-size: 18px; font-weight: 700; color: #94a3b8; user-select: none; line-height: 1;">&minus;</span>
-                <div style="flex: 1; min-width: 0;">
-                  <input type="text" id="extra-credit-course-sec" class="form-control" placeholder="456" maxlength="12" style="width: 100%; padding: 10px 10px; background: rgba(0,0,0,0.4); border: 1px solid rgba(255,255,255,0.18); border-radius: 8px; color: #fff; font-size: 13.5px; font-family: monospace; font-weight: 700; text-transform: uppercase; text-align: center; letter-spacing: 0.5px;" autocomplete="off" spellcheck="false" title="Identifier or Section (e.g. 456)">
-                </div>
-                <input type="hidden" id="extra-credit-course-input" value="">
+        <!-- Likert Questions -->
+        <div class="likert-group">
+          ${likertQuestions.map(q => `
+            <div class="likert-card" id="card-${q.id}">
+              <div class="likert-statement">
+                <span class="likert-statement-num">${q.num}</span>
+                <span>${q.text} <span style="color: #f87171;">*</span></span>
               </div>
-              <div style="font-size: 11px; color: #94a3b8; margin-top: 5px; display: flex; align-items: center; gap: 4px;">
-                <i class="fa-solid fa-circle-info" style="font-size: 10px; color: var(--color-accent);"></i>
-                <span>Examples: <strong style="color: #e2e8f0; font-family: monospace;">CS302-456</strong>, <strong style="color: #e2e8f0; font-family: monospace;">CS789-2341</strong>, <strong style="color: #e2e8f0; font-family: monospace;">CS130-1001</strong></span>
+              <div class="likert-scale">
+                ${scaleOptions.map(opt => `
+                  <label class="likert-option-wrapper" style="position: relative; display: block; margin: 0;">
+                    <input type="radio" name="${q.id}" value="${opt.val}" class="likert-option-input" ${existingRatings[q.id] == opt.val ? 'checked' : ''}>
+                    <div class="likert-option-label">
+                      <span class="likert-option-num">${opt.val}</span>
+                      <span class="likert-option-text">${opt.label}</span>
+                    </div>
+                  </label>
+                `).join('')}
               </div>
             </div>
+          `).join('')}
+        </div>
+
+        <!-- Additional Thoughts & Comments Textarea -->
+        <div class="form-group mb-4" style="margin-bottom: 22px;">
+          <label for="final-thoughts-input" style="font-size: 13px; font-weight: 700; margin-bottom: 8px; display: block; color: var(--text-main);">
+            <i class="fa-solid fa-comment-dots text-accent"></i> Additional Comments &amp; Reflections (Optional)
+          </label>
+          <textarea id="final-thoughts-input" class="form-control" rows="3" style="width: 100%; padding: 12px; background: rgba(0,0,0,0.4); border: 1px solid rgba(255,255,255,0.15); border-radius: 8px; color: #fff; font-size: 13px; font-family: var(--font-sans); line-height: 1.5; resize: vertical;" placeholder="Add any feedback, observations, or reflections on the queries or study...">${this.escapeHTML(existingThoughtsObj.thoughts || '')}</textarea>
+        </div>
+
+        <!-- Validation message -->
+        <div id="likert-val-msg" style="display: none; padding: 10px 14px; border-radius: 6px; font-size: 12.5px; margin-bottom: 16px; background: rgba(239, 68, 68, 0.15); border: 1px solid rgba(239, 68, 68, 0.4); color: #f87171;"></div>
+
+        <!-- Actions -->
+        <div class="d-flex justify-between align-center pt-3 border-top" style="border-top: 1px solid rgba(255,255,255,0.1); display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px;">
+          <span style="font-size: 12px; color: #94a3b8;">
+            <i class="fa-solid fa-circle-info text-accent"></i> All Likert items above are required to proceed to extra credit.
+          </span>
+          <button type="button" id="btn-submit-final-thoughts" class="btn btn-primary" style="padding: 11px 28px; font-weight: 700; font-size: 14px; border-radius: 8px; box-shadow: 0 4px 18px rgba(99, 102, 241, 0.45); cursor: pointer; display: inline-flex; align-items: center; gap: 8px;">
+            <span>Continue to Extra Credit</span>
+            <i class="fa-solid fa-arrow-right"></i>
+          </button>
+        </div>
+      </div>
+    `;
+
+    // Clear error border on radio selection
+    likertQuestions.forEach(q => {
+      const inputs = document.querySelectorAll(`input[name="${q.id}"]`);
+      inputs.forEach(inp => {
+        inp.addEventListener('change', () => {
+          const card = document.getElementById(`card-${q.id}`);
+          if (card) card.classList.remove('has-error');
+          const valMsg = document.getElementById('likert-val-msg');
+          if (valMsg) valMsg.style.display = 'none';
+        });
+      });
+    });
+
+    const btnSubmit = document.getElementById('btn-submit-final-thoughts');
+    if (btnSubmit) {
+      btnSubmit.addEventListener('click', () => {
+        const valMsg = document.getElementById('likert-val-msg');
+        let hasMissing = false;
+        const ratings = {};
+
+        likertQuestions.forEach(q => {
+          const selected = document.querySelector(`input[name="${q.id}"]:checked`);
+          const card = document.getElementById(`card-${q.id}`);
+          if (!selected) {
+            hasMissing = true;
+            if (card) card.classList.add('has-error');
+          } else {
+            ratings[q.id] = parseInt(selected.value, 10);
+            if (card) card.classList.remove('has-error');
+          }
+        });
+
+        if (hasMissing) {
+          if (valMsg) {
+            valMsg.style.display = 'block';
+            valMsg.innerHTML = '<i class="fa-solid fa-circle-exclamation"></i> Please answer all Likert scale statements above to continue.';
+          }
+          const firstErr = document.querySelector('.likert-card.has-error');
+          if (firstErr) firstErr.scrollIntoView({ behavior: 'smooth', block: 'center' });
+          return;
+        }
+
+        if (valMsg) valMsg.style.display = 'none';
+
+        const thoughtsInput = document.getElementById('final-thoughts-input');
+        const thoughtsVal = thoughtsInput ? thoughtsInput.value.trim() : '';
+
+        if (this.app && this.app.analytics) {
+          this.app.analytics.saveFinalThoughts({ ratings, thoughts: thoughtsVal });
+          if (typeof this.app.renderAnalyticsDashboard === 'function') {
+            this.app.renderAnalyticsDashboard();
+          }
+        }
+
+        try {
+          localStorage.setItem('sql_study_final_thoughts_done_' + pid, 'true');
+        } catch (e) {}
+
+        this.app.loadIncrementalQuestion('extra_credit');
+      });
+    }
+  }
+
+  renderExtraCreditScreen() {
+    this.currentQuestion = null;
+    this.isAnswered = true;
+    this.isTrainingChallenge = false;
+    this.trainingQuestionNumber = null;
+    this.updateNavCounter();
+    const container = document.getElementById('human-challenge-container');
+    if (!container) return;
+
+    container.innerHTML = `
+      <div class="card quiz-card glow-card" style="max-width: 800px; margin: 20px auto; padding: 32px 28px; background: rgba(18, 22, 34, 0.96); border: 1.5px solid rgba(99, 102, 241, 0.45); border-radius: 14px; box-shadow: 0 16px 50px rgba(0,0,0,0.6);">
+        
+        <!-- Header -->
+        <div class="border-bottom pb-3 mb-3" style="border-bottom: 1px solid rgba(255,255,255,0.1); display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; padding-bottom: 16px; margin-bottom: 22px;">
+          <div class="logo-icon mb-2" style="width: 52px; height: 52px; font-size: 26px; margin: 0 0 10px 0; background: linear-gradient(135deg, #6366f1, #8b5cf6); box-shadow: 0 0 25px rgba(99, 102, 241, 0.5); display: flex; align-items: center; justify-content: center; border-radius: 12px; color: #fff;">
+            <i class="fa-solid fa-graduation-cap"></i>
           </div>
+          <h2 style="font-family: var(--font-title); font-size: 24px; color: #fff; margin: 0 0 4px 0;">Course Extra Credit</h2>
+          <p class="text-muted fs-sm" style="font-size: 13.5px; margin: 4px 0 0 0; color: #cbd5e1;">
+            Enter your student email and course identifier to receive extra credit from your professor.
+          </p>
+        </div>
 
-          <div style="font-size: 12px; color: #a5b4fc; display: flex; align-items: center; gap: 6px; margin-top: 10px; padding: 8px 12px; background: rgba(99, 102, 241, 0.12); border-radius: 6px;">
-            <i class="fa-solid fa-asterisk" style="font-size: 10px; color: #f59e0b;"></i>
-            <span>All fields above are required to unlock the <strong>Finish</strong> button below and receive extra credit.</span>
+        <!-- Confidentiality Notice -->
+        <div style="background: rgba(99, 102, 241, 0.1); border: 1.5px solid rgba(99, 102, 241, 0.35); border-radius: 10px; padding: 14px 18px; margin-bottom: 22px; font-size: 12.5px; color: #cbd5e1; line-height: 1.5;">
+          <div style="display: flex; align-items: flex-start; gap: 10px;">
+            <i class="fa-solid fa-shield-halved text-accent" style="font-size: 16px; margin-top: 2px; flex-shrink: 0;"></i>
+            <div>
+              <strong style="color: #fff;">Confidentiality Protection:</strong>
+              The email and course identifier you provide will be cross-referenced by your professor to grant credit. To protect your confidentiality, <strong style="color: #a5b4fc;">this information is stored in a completely separate file with zero linkage to your answers or study results</strong>.
+            </div>
           </div>
         </div>
 
-        <!-- Final Thoughts Form -->
-        <div id="final-thoughts-form">
-          <div class="form-group mb-3">
-            <label for="final-thoughts-input" style="font-size: 13px; font-weight: 700; margin-bottom: 8px; display: block; color: var(--text-main);">
-              <i class="fa-solid fa-comment-dots text-accent"></i> Share any final thoughts
+        <!-- Input Fields -->
+        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 16px; margin-bottom: 16px;">
+          <div>
+            <label for="extra-credit-email-input" style="display: block; font-size: 12.5px; font-weight: 600; color: #cbd5e1; margin-bottom: 6px;">
+              <i class="fa-solid fa-envelope text-accent"></i> Student University Email
             </label>
-            <textarea id="final-thoughts-input" class="form-control" rows="4" style="width: 100%; padding: 12px; background: rgba(0,0,0,0.4); border: 1px solid rgba(255,255,255,0.15); border-radius: 8px; color: #fff; font-size: 13px; font-family: var(--font-sans); line-height: 1.5; resize: vertical;" placeholder="Add any feedback, observations, or reflections on the queries...">${this.escapeHTML(existingThoughtsObj.thoughts || '')}</textarea>
+            <input type="email" id="extra-credit-email-input" class="form-control" placeholder="student@university.edu" style="width: 100%; padding: 11px 14px; background: rgba(0,0,0,0.4); border: 1px solid rgba(255,255,255,0.18); border-radius: 8px; color: #fff; font-size: 13.5px;">
           </div>
-
-          <div id="final-thoughts-feedback-msg" style="display: none; padding: 10px; border-radius: 6px; font-size: 12px; margin-bottom: 12px;"></div>
-
-          <div class="d-flex justify-between align-center pt-3 border-top" style="border-top: 1px solid rgba(255,255,255,0.1); display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px;">
-            <div id="finish-validation-hint" style="font-size: 12.5px; color: #f59e0b; display: flex; align-items: center; gap: 6px; transition: all 0.2s ease;">
-              <i class="fa-solid fa-lock" style="font-size: 11px;"></i>
-              <span>Enter your email, course number, and identifier above to enable Finish.</span>
+          <div>
+            <label style="display: block; font-size: 12.5px; font-weight: 600; color: #cbd5e1; margin-bottom: 6px;">
+              <i class="fa-solid fa-book-bookmark text-accent"></i> Course Number &amp; Section / Identifier
+            </label>
+            <div style="display: flex; align-items: center; gap: 8px;">
+              <div style="flex: 1.1; min-width: 0;">
+                <input type="text" id="extra-credit-course-dept" class="form-control" placeholder="CS302" maxlength="12" style="width: 100%; padding: 11px 10px; background: rgba(0,0,0,0.4); border: 1px solid rgba(255,255,255,0.18); border-radius: 8px; color: #fff; font-size: 13.5px; font-family: monospace; font-weight: 700; text-transform: uppercase; text-align: center; letter-spacing: 0.5px;" autocomplete="off" spellcheck="false" title="Course Code (e.g. CS302)">
+              </div>
+              <span style="font-size: 18px; font-weight: 700; color: #94a3b8; user-select: none; line-height: 1;">&minus;</span>
+              <div style="flex: 1; min-width: 0;">
+                <input type="text" id="extra-credit-course-sec" class="form-control" placeholder="456" maxlength="12" style="width: 100%; padding: 11px 10px; background: rgba(0,0,0,0.4); border: 1px solid rgba(255,255,255,0.18); border-radius: 8px; color: #fff; font-size: 13.5px; font-family: monospace; font-weight: 700; text-transform: uppercase; text-align: center; letter-spacing: 0.5px;" autocomplete="off" spellcheck="false" title="Identifier or Section (e.g. 456)">
+              </div>
+              <input type="hidden" id="extra-credit-course-input" value="">
             </div>
-            <button type="button" id="btn-finish-study" class="btn btn-success" disabled style="padding: 10px 30px; font-weight: 700; font-size: 14px; border-radius: 8px; box-shadow: 0 4px 15px rgba(16, 185, 129, 0.25); cursor: not-allowed; opacity: 0.55; display: inline-flex; align-items: center; gap: 8px; transition: all 0.2s ease;">
-              <span>Finish</span>
-              <i class="fa-solid fa-check"></i>
-            </button>
+            <div style="font-size: 11.5px; color: #94a3b8; margin-top: 6px; display: flex; align-items: center; gap: 4px;">
+              <i class="fa-solid fa-circle-info" style="font-size: 10.5px; color: var(--color-accent);"></i>
+              <span>Examples: <strong style="color: #e2e8f0; font-family: monospace;">CS302-456</strong>, <strong style="color: #e2e8f0; font-family: monospace;">CS789-2341</strong>, <strong style="color: #e2e8f0; font-family: monospace;">CS130-1001</strong></span>
+            </div>
           </div>
+        </div>
+
+        <div id="finish-validation-hint" style="font-size: 12.5px; color: #f59e0b; display: flex; align-items: center; gap: 6px; margin-bottom: 22px; padding: 8px 12px; background: rgba(245, 158, 11, 0.1); border-radius: 6px;">
+          <i class="fa-solid fa-lock" style="font-size: 11px;"></i>
+          <span>Enter your email, course number, and section above to enable Finish.</span>
+        </div>
+
+        <!-- Action Buttons -->
+        <div class="pt-3 border-top" style="border-top: 1px solid rgba(255,255,255,0.1); display: flex; justify-content: flex-end; align-items: center; gap: 12px;">
+          <button type="button" id="btn-finish-study" class="btn btn-success" disabled style="padding: 11px 32px; font-weight: 700; font-size: 14px; border-radius: 8px; box-shadow: 0 4px 18px rgba(16, 185, 129, 0.25); cursor: not-allowed; opacity: 0.55; display: inline-flex; align-items: center; gap: 8px; transition: all 0.2s ease;">
+            <span>Submit Extra Credit &amp; Finish</span>
+            <i class="fa-solid fa-check"></i>
+          </button>
         </div>
       </div>
     `;
@@ -772,7 +1029,6 @@ class HumanResolver {
     const courseInput = document.getElementById('extra-credit-course-input');
     const btnFinish = document.getElementById('btn-finish-study');
     const finishHint = document.getElementById('finish-validation-hint');
-    const thoughtsInput = document.getElementById('final-thoughts-input');
 
     const isValidEmail = (str) => {
       if (!str) return false;
@@ -788,7 +1044,6 @@ class HumanResolver {
       const emailValid = isValidEmail(email);
       const deptValid = dept.length > 0;
       const secValid = sec.length > 0;
-
       const isAllValid = emailValid && deptValid && secValid;
 
       if (btnFinish) {
@@ -807,13 +1062,15 @@ class HumanResolver {
       if (finishHint) {
         if (isAllValid) {
           finishHint.style.color = '#34d399';
-          finishHint.innerHTML = '<i class="fa-solid fa-circle-check"></i> <span>Ready to submit. Click Finish to complete your study.</span>';
+          finishHint.style.background = 'rgba(16, 185, 129, 0.1)';
+          finishHint.innerHTML = '<i class="fa-solid fa-circle-check"></i> <span>Ready to submit. Click button below to complete.</span>';
         } else {
           const missing = [];
           if (!emailValid) missing.push('email');
           if (!deptValid) missing.push('course number');
-          if (!secValid) missing.push('identifier');
+          if (!secValid) missing.push('section');
           finishHint.style.color = '#f59e0b';
+          finishHint.style.background = 'rgba(245, 158, 11, 0.1)';
           finishHint.innerHTML = `<i class="fa-solid fa-lock" style="font-size: 11px;"></i> <span>Please fill out your ${missing.join(', ')} above to finish.</span>`;
         }
       }
@@ -842,7 +1099,6 @@ class HumanResolver {
     }
 
     if (deptInput && secInput) {
-      // Auto-jump to second box on hyphen, space, or enter
       deptInput.addEventListener('keydown', (e) => {
         if (e.key === '-' || e.key === ' ' || (e.key === 'Enter' && deptInput.value.trim())) {
           e.preventDefault();
@@ -851,7 +1107,6 @@ class HumanResolver {
         }
       });
 
-      // Split pasted full identifier (e.g. CS302-456 or CS789 2341)
       deptInput.addEventListener('paste', (e) => {
         const text = (e.clipboardData || window.clipboardData)?.getData('text')?.trim();
         if (text && (text.includes('-') || text.includes(' '))) {
@@ -866,7 +1121,6 @@ class HumanResolver {
         }
       });
 
-      // Catch typing/IME hyphen in deptInput
       deptInput.addEventListener('input', () => {
         let val = deptInput.value;
         if (val.includes('-')) {
@@ -885,7 +1139,6 @@ class HumanResolver {
         }
       });
 
-      // Navigate back to deptInput on backspace if secInput is empty
       secInput.addEventListener('keydown', (e) => {
         if (e.key === 'Backspace' && secInput.selectionStart === 0 && secInput.selectionEnd === 0) {
           if (!secInput.value || secInput.value.length === 0) {
@@ -899,32 +1152,10 @@ class HumanResolver {
           e.preventDefault();
           if (validateFinishFields()) {
             handleFinishClick();
-          } else {
-            const thoughtsElem = document.getElementById('final-thoughts-input');
-            if (thoughtsElem) thoughtsElem.focus();
           }
         }
       });
 
-      // Split pasted full identifier into both if pasted in secInput while dept is empty
-      secInput.addEventListener('paste', (e) => {
-        const text = (e.clipboardData || window.clipboardData)?.getData('text')?.trim();
-        if (text && text.includes('-')) {
-          e.preventDefault();
-          const parts = text.split('-');
-          if (!deptInput.value.trim()) {
-            deptInput.value = (parts[0] || '').trim().toUpperCase();
-            secInput.value = parts.slice(1).join('-').trim().toUpperCase();
-          } else {
-            secInput.value = text.replace(/-/g, '').trim().toUpperCase();
-          }
-          syncCourseValue();
-          validateFinishFields();
-          secInput.focus();
-        }
-      });
-
-      // Prevent hyphen in secInput
       secInput.addEventListener('input', () => {
         let val = secInput.value;
         if (val.includes('-')) {
@@ -938,19 +1169,7 @@ class HumanResolver {
     }
 
     const handleFinishClick = async () => {
-      if (!validateFinishFields()) {
-        const email = emailInput ? emailInput.value.trim() : '';
-        const dept = deptInput ? deptInput.value.trim() : '';
-        const sec = secInput ? secInput.value.trim() : '';
-        if (!isValidEmail(email) && emailInput) {
-          emailInput.focus();
-        } else if (!dept && deptInput) {
-          deptInput.focus();
-        } else if (!sec && secInput) {
-          secInput.focus();
-        }
-        return;
-      }
+      if (!validateFinishFields()) return;
 
       const email = emailInput ? emailInput.value.trim() : '';
       const deptVal = deptInput ? deptInput.value.trim().toUpperCase() : '';
@@ -962,16 +1181,6 @@ class HumanResolver {
         btnFinish.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Submitting...';
       }
 
-      // 1. Save final thoughts
-      const thoughtsVal = thoughtsInput ? thoughtsInput.value.trim() : '';
-      if (this.app && this.app.analytics) {
-        this.app.analytics.saveFinalThoughts(thoughtsVal);
-        if (typeof this.app.renderAnalyticsDashboard === 'function') {
-          this.app.renderAnalyticsDashboard();
-        }
-      }
-
-      // 2. Submit extra credit email and course info
       try {
         const resp = await fetch('/api/save-extra-credit-email', {
           method: 'POST',
@@ -983,7 +1192,6 @@ class HumanResolver {
           throw new Error(result.message || 'Failed to submit extra credit details');
         }
       } catch (err) {
-        // Fallback for offline or Google Apps Script sync
         if (this.app && this.app.analytics && this.app.analytics.cloudSyncUrl) {
           try {
             await fetch(this.app.analytics.cloudSyncUrl, {
@@ -996,7 +1204,6 @@ class HumanResolver {
         }
       }
 
-      // 3. Mark study and extra credit as completed
       try {
         localStorage.setItem('sql_study_extra_credit_submitted', 'true');
         localStorage.setItem('sql_study_completed_finished', 'true');
@@ -1007,32 +1214,30 @@ class HumanResolver {
       this.extraCreditSubmitted = true;
       this.studyCompletedSuccessfully = true;
 
-      if (typeof this.cleanupExtraCreditExitPrompt === 'function') {
-        this.cleanupExtraCreditExitPrompt();
+      if (this.app && typeof this.app.loadIncrementalQuestion === 'function') {
+        this.app.loadIncrementalQuestion('thank_you');
+      } else {
+        this.renderThankYouScreen(email, course);
       }
-
-      // 4. Change page to say Thank you and inform them they can now close the study
-      this.renderThankYouScreen(email, course);
     };
 
     if (btnFinish) {
       btnFinish.addEventListener('click', handleFinishClick);
     }
 
-    // Run initial validation in case of browser autofill
     validateFinishFields();
-
-    this.setupExtraCreditExitPrompt();
   }
 
   renderThankYouScreen(emailParam, courseParam) {
+    if (this.app) {
+      this.app.currentQuestionNumber = 'thank_you';
+    }
     this.currentQuestion = null;
     this.isAnswered = true;
+    this.isTrainingChallenge = false;
+    this.trainingQuestionNumber = null;
     this.studyCompletedSuccessfully = true;
     this.extraCreditSubmitted = true;
-    if (typeof this.cleanupExtraCreditExitPrompt === 'function') {
-      this.cleanupExtraCreditExitPrompt();
-    }
     this.updateNavCounter();
 
     const container = document.getElementById('human-challenge-container');
@@ -1109,175 +1314,15 @@ class HumanResolver {
   }
 
   setupExtraCreditExitPrompt() {
-    if (typeof this.cleanupExtraCreditExitPrompt === 'function') {
-      this.cleanupExtraCreditExitPrompt();
-    }
+    // All exit modal popup reminder functionality removed as requested
+  }
 
-    const isSubmitted = () => {
-      try {
-        if (localStorage.getItem('sql_study_extra_credit_submitted') === 'true') return true;
-        if (localStorage.getItem('sql_study_completed_finished') === 'true') return true;
-      } catch (e) {}
-      return !!this.extraCreditSubmitted || !!this.studyCompletedSuccessfully;
-    };
-
-    if (isSubmitted()) return;
-
-    let exitPromptDismissed = false;
-
-    // Create exit-intent reminder modal if it doesn't already exist
-    let modalOverlay = document.getElementById('extra-credit-exit-modal');
-    if (!modalOverlay) {
-      modalOverlay = document.createElement('div');
-      modalOverlay.id = 'extra-credit-exit-modal';
-      modalOverlay.style.cssText = `
-        position: fixed;
-        inset: 0;
-        background: rgba(0, 0, 0, 0.78);
-        backdrop-filter: blur(8px);
-        -webkit-backdrop-filter: blur(8px);
-        display: none;
-        align-items: center;
-        justify-content: center;
-        z-index: 10000;
-        padding: 16px;
-      `;
-      modalOverlay.innerHTML = `
-        <div style="background: #181d2f; border: 1.5px solid rgba(99, 102, 241, 0.55); border-radius: 16px; max-width: 500px; width: 100%; padding: 28px 24px; box-shadow: 0 25px 60px rgba(0,0,0,0.85); text-align: center; position: relative;">
-          <button type="button" id="btn-close-exit-modal-x" style="position: absolute; top: 12px; right: 16px; background: transparent; border: none; color: #94a3b8; font-size: 24px; cursor: pointer; padding: 4px 8px; line-height: 1;" title="Close reminder">&times;</button>
-          
-          <div style="width: 58px; height: 58px; border-radius: 50%; background: rgba(99, 102, 241, 0.2); border: 2px solid rgba(99, 102, 241, 0.5); display: flex; align-items: center; justify-content: center; margin: 0 auto 16px; color: #a5b4fc; font-size: 26px; box-shadow: 0 0 25px rgba(99, 102, 241, 0.4);">
-            <i class="fa-solid fa-graduation-cap"></i>
-          </div>
-          
-          <h3 style="font-family: var(--font-title, sans-serif); font-size: 20px; font-weight: 700; color: #fff; margin: 0 0 10px;">Don't Miss Your Course Extra Credit!</h3>
-          
-          <p style="font-size: 13.5px; color: #cbd5e1; line-height: 1.6; margin: 0 0 22px;">
-            You haven't submitted your <strong>email and course identifier</strong> for extra credit yet. If you are completing this experiment for a course, please fill it out before closing this page so your instructor can grant you credit.
-          </p>
-          
-          <div style="display: flex; flex-direction: column; gap: 10px; justify-content: center;">
-            <button type="button" id="btn-modal-fill-credit" class="btn btn-primary" style="padding: 12px 22px; font-weight: 700; font-size: 14px; border-radius: 8px; box-shadow: 0 4px 18px rgba(99, 102, 241, 0.45); cursor: pointer; display: inline-flex; align-items: center; justify-content: center; gap: 8px;">
-              <i class="fa-solid fa-pen-to-square"></i> Fill Out Extra Credit Form
-            </button>
-            <button type="button" id="btn-modal-dismiss-credit" class="btn" style="padding: 9px 18px; font-weight: 600; font-size: 12.5px; border-radius: 8px; background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.15); color: #94a3b8; cursor: pointer;">
-              I Don't Need Credit / Close Anyway
-            </button>
-          </div>
-        </div>
-      `;
-      document.body.appendChild(modalOverlay);
-    }
-
-    const showModal = () => {
-      if (isSubmitted() || exitPromptDismissed) return;
-      if (modalOverlay) {
-        modalOverlay.style.display = 'flex';
-      }
-    };
-
-    const hideModal = () => {
-      if (modalOverlay) {
-        modalOverlay.style.display = 'none';
-      }
-    };
-
-    const btnFill = document.getElementById('btn-modal-fill-credit');
-    if (btnFill) {
-      btnFill.onclick = () => {
-        hideModal();
-        const card = document.getElementById('extra-credit-card');
-        const emailInput = document.getElementById('extra-credit-email-input');
-        const deptInput = document.getElementById('extra-credit-course-dept');
-        if (card) {
-          card.scrollIntoView({ behavior: 'smooth', block: 'center' });
-          card.style.transition = 'box-shadow 0.3s ease, border-color 0.3s ease';
-          card.style.boxShadow = '0 0 30px rgba(99, 102, 241, 0.7)';
-          card.style.borderColor = 'rgba(99, 102, 241, 0.8)';
-          setTimeout(() => {
-            if (card) {
-              card.style.boxShadow = '';
-              card.style.borderColor = 'rgba(99, 102, 241, 0.35)';
-            }
-          }, 2500);
-        }
-        if (emailInput && !emailInput.value.trim()) {
-          setTimeout(() => emailInput.focus(), 350);
-        } else if (deptInput) {
-          setTimeout(() => deptInput.focus(), 350);
-        }
-      };
-    }
-
-    const btnDismiss = document.getElementById('btn-modal-dismiss-credit');
-    if (btnDismiss) {
-      btnDismiss.onclick = () => {
-        exitPromptDismissed = true;
-        hideModal();
-      };
-    }
-
-    const btnX = document.getElementById('btn-close-exit-modal-x');
-    if (btnX) {
-      btnX.onclick = () => {
-        hideModal();
-      };
-    }
-
-    if (modalOverlay) {
-      modalOverlay.onclick = (e) => {
-        if (e.target === modalOverlay) {
-          hideModal();
-        }
-      };
-    }
-
-    const handleKeyDown = (e) => {
-      if (e.key === 'Escape') {
-        hideModal();
-      }
-    };
-
-    // Exit intent: cursor moving towards browser tabs / window top to close
-    const handleMouseLeave = (e) => {
-      if (e.clientY <= 20 && !isSubmitted() && !exitPromptDismissed) {
-        showModal();
-      }
-    };
-
-    // Native browser tab/window close interception
-    const handleBeforeUnload = (e) => {
-      if (!isSubmitted() && !exitPromptDismissed) {
-        e.preventDefault();
-        e.returnValue = 'You have not submitted your course extra credit information yet. Are you sure you want to leave?';
-        return e.returnValue;
-      }
-    };
-
-    document.addEventListener('mouseleave', handleMouseLeave);
-    document.addEventListener('keydown', handleKeyDown);
-    window.addEventListener('beforeunload', handleBeforeUnload);
-
-    this.cleanupExtraCreditExitPrompt = () => {
-      document.removeEventListener('mouseleave', handleMouseLeave);
-      document.removeEventListener('keydown', handleKeyDown);
-      window.removeEventListener('beforeunload', handleBeforeUnload);
-      hideModal();
-      if (modalOverlay && modalOverlay.parentNode) {
-        modalOverlay.parentNode.removeChild(modalOverlay);
-      }
-      this.cleanupExtraCreditExitPrompt = null;
-    };
+  cleanupExtraCreditExitPrompt() {
+    // Safe no-op
   }
 
   startNewChallenge(schema, query, groundTruthResult, targetQNum) {
     if (!this.app.syntaxDialects || !this.app.quizGenerator) return;
-
-    if (typeof this.cleanupExtraCreditExitPrompt === 'function' && targetQNum !== 'final_thoughts' && targetQNum <= 60) {
-      this.cleanupExtraCreditExitPrompt();
-    }
-
-    const isParticipantPage = this.isParticipantView();
 
     if (targetQNum === 'consent') {
       this.renderConsentScreen();
@@ -1295,15 +1340,6 @@ class HumanResolver {
       return;
     }
 
-    if (targetQNum === 'final_thoughts' || targetQNum > 60 || (this.stats && this.stats.totalAnswered >= 60 && !this.adminPreviewGroup)) {
-      if (this.studyCompletedSuccessfully || (typeof localStorage !== 'undefined' && localStorage.getItem('sql_study_completed_finished') === 'true')) {
-        this.renderThankYouScreen();
-        return;
-      }
-      this.renderFinalThoughtsScreen();
-      return;
-    }
-
     if (this.isParticipantView() && !this.hasCompletedDemographics()) {
       this.intakeCompleted = false;
       this.renderIntakeScreen();
@@ -1312,7 +1348,49 @@ class HumanResolver {
       this.intakeCompleted = true;
     }
 
-    const qNum = Math.min(60, Math.max(1, parseInt(targetQNum, 10) || (this.stats ? this.stats.totalAnswered + 1 : 1)));
+    if (targetQNum === 'training_intro') {
+      this.renderTrainingIntroScreen();
+      return;
+    }
+
+    if (targetQNum === 'training_complete') {
+      this.renderTrainingCompleteScreen();
+      return;
+    }
+
+    if (targetQNum === 'extra_credit') {
+      this.renderExtraCreditScreen();
+      return;
+    }
+
+    if (targetQNum === 'thank_you') {
+      this.renderThankYouScreen();
+      return;
+    }
+
+    const isTraining = typeof targetQNum === 'string' && targetQNum.startsWith('training:');
+    let trainingQNum = 1;
+    if (isTraining) {
+      this.isTrainingChallenge = true;
+      trainingQNum = parseInt(targetQNum.split(':')[1], 10) || 1;
+      this.trainingQuestionNumber = trainingQNum;
+    } else {
+      this.isTrainingChallenge = false;
+      this.trainingQuestionNumber = null;
+    }
+
+    if (!isTraining && (targetQNum === 'final_thoughts' || targetQNum > 60 || (this.stats && this.stats.totalAnswered >= 60 && !this.adminPreviewGroup))) {
+      if (this.studyCompletedSuccessfully || (typeof localStorage !== 'undefined' && localStorage.getItem('sql_study_completed_finished') === 'true')) {
+        this.renderThankYouScreen();
+        return;
+      }
+      this.renderFinalThoughtsScreen();
+      return;
+    }
+
+    const qNum = isTraining
+      ? trainingQNum
+      : Math.min(60, Math.max(1, parseInt(targetQNum, 10) || (this.stats ? this.stats.totalAnswered + 1 : 1)));
 
     this.currentSchema = schema;
     this.currentRawQuery = query;
@@ -1337,6 +1415,7 @@ class HumanResolver {
       return;
     }
 
+    this.currentQuestion.isTraining = isTraining;
     this.currentQuestion.qNum = qNum;
     this.currentQuestion.startTime = Date.now();
     this.isAnswered = false;
@@ -1360,7 +1439,12 @@ class HumanResolver {
     this.answerChangeCount = 0;
     this.currentQuestion = null;
     this.intakeCompleted = false;
+    this.isTrainingChallenge = false;
+    this.trainingQuestionNumber = null;
     this.setConsentAccepted(false);
+    if (this.app && this.app.analytics && typeof this.app.analytics.setTrainingCompleted === 'function') {
+      this.app.analytics.setTrainingCompleted(false);
+    }
     this.adminPreviewGroup = null;
     this.updateNavCounter();
   }
@@ -1413,8 +1497,19 @@ class HumanResolver {
       if (qNum === 'consent') {
         navElem.textContent = 'Information Sheet';
       } else if (qNum === 'intake') {
-        navElem.textContent = 'Intake';
+        navElem.textContent = 'Intake Survey';
+      } else if (qNum === 'training_intro') {
+        navElem.textContent = 'Training: Intro';
+      } else if (typeof qNum === 'string' && qNum.startsWith('training:')) {
+        const t = qNum.split(':')[1] || '1';
+        navElem.textContent = `Training: ${t} / 10`;
+      } else if (qNum === 'training_complete') {
+        navElem.textContent = 'Training: Complete';
       } else if (qNum === 'final_thoughts') {
+        navElem.textContent = 'Final Thoughts (60 / 60)';
+      } else if (qNum === 'extra_credit') {
+        navElem.textContent = 'Extra Credit';
+      } else if (qNum === 'thank_you') {
         navElem.textContent = 'Completed (60 / 60)';
       } else {
         navElem.textContent = `${qNum || 1} / 60`;
@@ -1433,6 +1528,8 @@ class HumanResolver {
     const activeDialects = this.app.syntaxDialects.getActiveDialects();
     const currentDialectIdx = this.app.syntaxDialects.currentSelectedDialectIndex;
     const isParticipantPage = this.isParticipantView();
+    const isTraining = Boolean(this.isTrainingChallenge);
+    const trainQNum = this.trainingQuestionNumber || 1;
 
     // Update navbar questions counter badge in Participant ID box
     this.updateNavCounter();
@@ -1442,23 +1539,41 @@ class HumanResolver {
         <div class="card-body p-2" style="display: flex; flex-direction: column; gap: 6px; padding: 6px 12px;">
 
           <!-- Instructions Banner Above Input Schema -->
-          <div class="quiz-instructions-banner" style="padding: 6px 12px; background: rgba(99, 102, 241, 0.1); border: 1px solid rgba(99, 102, 241, 0.3); border-left: 4px solid var(--color-primary); border-radius: 6px; font-size: 13.5px; line-height: 1.45; color: #e2e8f0; display: flex; align-items: flex-start; gap: 8px; box-sizing: border-box;">
-            <i class="fa-solid fa-circle-info text-accent" style="font-size: 15px; margin-top: 2px; flex-shrink: 0;"></i>
-            <div style="flex: 1; min-width: 0;">
-              Please read the query and choose what you believe the resulting table would look like using hotkeys <kbd style="background: rgba(255,255,255,0.15); border: 1px solid rgba(255,255,255,0.25); border-radius: 3px; padding: 1px 5px; font-weight: 700; font-size: 12.5px;">1</kbd>–<kbd style="background: rgba(255,255,255,0.15); border: 1px solid rgba(255,255,255,0.25); border-radius: 3px; padding: 1px 5px; font-weight: 700; font-size: 12.5px;">4</kbd>, push <kbd style="background: rgba(255,255,255,0.15); border: 1px solid rgba(255,255,255,0.25); border-radius: 3px; padding: 1px 5px; font-weight: 700; font-size: 12.5px;">ENTER</kbd> to submit your answer, then push <kbd style="background: rgba(255,255,255,0.15); border: 1px solid rgba(255,255,255,0.25); border-radius: 3px; padding: 1px 5px; font-weight: 700; font-size: 12.5px;">ENTER</kbd> again to move to the next question. Alternatively, use your mouse to click between the four choices to answer.
-              <span style="color: #fca5a5; font-weight: 600; margin-left: 6px; display: inline-block;">
-                <i class="fa-solid fa-triangle-exclamation" style="color: #ef4444; margin-right: 4px;"></i>Do not use the back arrow or refresh button while doing this study.
-              </span>
+          ${isTraining ? `
+            <div class="quiz-instructions-banner" style="padding: 6px 12px; background: rgba(245, 158, 11, 0.12); border: 1px solid rgba(245, 158, 11, 0.4); border-left: 4px solid #f59e0b; border-radius: 6px; font-size: 13.5px; line-height: 1.45; color: #e2e8f0; display: flex; align-items: flex-start; gap: 8px; box-sizing: border-box;">
+              <i class="fa-solid fa-graduation-cap" style="color: #f59e0b; font-size: 16px; margin-top: 2px; flex-shrink: 0;"></i>
+              <div style="flex: 1; min-width: 0;">
+                <strong style="color: #fde68a;">Practice Question ${trainQNum} of 10:</strong> Read the query and choose what you believe the resulting table would look like using hotkeys <kbd style="background: rgba(255,255,255,0.15); border: 1px solid rgba(255,255,255,0.25); border-radius: 3px; padding: 1px 5px; font-weight: 700; font-size: 12.5px;">1</kbd>–<kbd style="background: rgba(255,255,255,0.15); border: 1px solid rgba(255,255,255,0.25); border-radius: 3px; padding: 1px 5px; font-weight: 700; font-size: 12.5px;">4</kbd>, push <kbd style="background: rgba(255,255,255,0.15); border: 1px solid rgba(255,255,255,0.25); border-radius: 3px; padding: 1px 5px; font-weight: 700; font-size: 12.5px;">ENTER</kbd> to submit your answer, then push <kbd style="background: rgba(255,255,255,0.15); border: 1px solid rgba(255,255,255,0.25); border-radius: 3px; padding: 1px 5px; font-weight: 700; font-size: 12.5px;">ENTER</kbd> again to move to the next question.
+                <span style="color: #fca5a5; font-weight: 600; margin-left: 6px; display: inline-block;">
+                  <i class="fa-solid fa-triangle-exclamation" style="color: #ef4444; margin-right: 4px;"></i>Do not use the back arrow or refresh button while doing this study.
+                </span>
+              </div>
             </div>
-          </div>
+          ` : `
+            <div class="quiz-instructions-banner" style="padding: 6px 12px; background: rgba(99, 102, 241, 0.1); border: 1px solid rgba(99, 102, 241, 0.3); border-left: 4px solid var(--color-primary); border-radius: 6px; font-size: 13.5px; line-height: 1.45; color: #e2e8f0; display: flex; align-items: flex-start; gap: 8px; box-sizing: border-box;">
+              <i class="fa-solid fa-circle-info text-accent" style="font-size: 15px; margin-top: 2px; flex-shrink: 0;"></i>
+              <div style="flex: 1; min-width: 0;">
+                Please read the query and choose what you believe the resulting table would look like using hotkeys <kbd style="background: rgba(255,255,255,0.15); border: 1px solid rgba(255,255,255,0.25); border-radius: 3px; padding: 1px 5px; font-weight: 700; font-size: 12.5px;">1</kbd>–<kbd style="background: rgba(255,255,255,0.15); border: 1px solid rgba(255,255,255,0.25); border-radius: 3px; padding: 1px 5px; font-weight: 700; font-size: 12.5px;">4</kbd>, push <kbd style="background: rgba(255,255,255,0.15); border: 1px solid rgba(255,255,255,0.25); border-radius: 3px; padding: 1px 5px; font-weight: 700; font-size: 12.5px;">ENTER</kbd> to submit your answer, then push <kbd style="background: rgba(255,255,255,0.15); border: 1px solid rgba(255,255,255,0.25); border-radius: 3px; padding: 1px 5px; font-weight: 700; font-size: 12.5px;">ENTER</kbd> again to move to the next question. Alternatively, use your mouse to click between the four choices to answer.
+                <span style="color: #fca5a5; font-weight: 600; margin-left: 6px; display: inline-block;">
+                  <i class="fa-solid fa-triangle-exclamation" style="color: #ef4444; margin-right: 4px;"></i>Do not use the back arrow or refresh button while doing this study.
+                </span>
+              </div>
+            </div>
+          `}
           
           <!-- 1. TOP FULL-WIDTH ROW: Input Schema Reference with Distinct Divider Line -->
           <div class="quiz-schema-top-bar" style="padding: 4px 10px; border: 1px solid rgba(255, 255, 255, 0.1); border-bottom: 2px solid var(--color-accent); border-radius: 6px; background: rgba(14, 18, 28, 0.8); width: 100%; box-shadow: 0 4px 12px rgba(0,0,0,0.3);">
             <div class="d-flex justify-between align-center mb-1 pb-1" style="border-bottom: 1px solid rgba(255,255,255,0.06);">
               <div class="d-flex align-center gap-2">
-                <span class="badge" style="font-size: 11px; font-weight: 800; padding: 2px 9px; border-radius: 4px; background: rgba(99, 102, 241, 0.25); border: 1px solid rgba(99, 102, 241, 0.55); color: #c7d2fe; letter-spacing: 0.3px;">
-                  <i class="fa-solid fa-cube"></i> Question ${qNum} / 60
-                </span>
+                ${isTraining ? `
+                  <span class="badge badge-training" style="font-size: 11px; font-weight: 800; padding: 2px 9px; border-radius: 4px; background: rgba(245, 158, 11, 0.25); border: 1px solid rgba(245, 158, 11, 0.6); color: #fde68a; letter-spacing: 0.3px;">
+                    <i class="fa-solid fa-graduation-cap"></i> Practice Question ${trainQNum} / 10
+                  </span>
+                ` : `
+                  <span class="badge" style="font-size: 11px; font-weight: 800; padding: 2px 9px; border-radius: 4px; background: rgba(99, 102, 241, 0.25); border: 1px solid rgba(99, 102, 241, 0.55); color: #c7d2fe; letter-spacing: 0.3px;">
+                    <i class="fa-solid fa-cube"></i> Question ${qNum} / 60
+                  </span>
+                `}
                 <strong style="color: var(--color-accent); font-size: 11px;"><i class="fa-solid fa-table-cells text-accent"></i> Input Schema Reference (${this.app.currentSchema ? this.app.currentSchema.tables.length : 0} Tables)</strong>
               </div>
             </div>
@@ -1498,8 +1613,8 @@ class HumanResolver {
               <!-- Prompt Banner -->
               <div class="prompt-bar p-1 px-2 d-flex justify-between align-center" style="background: rgba(0,0,0,0.25); border-radius: 5px; border-left: 3px solid var(--color-accent);">
                 <div class="d-flex align-center gap-2">
-                  <span class="badge" style="background: rgba(16, 185, 129, 0.2); border: 1px solid rgba(16, 185, 129, 0.4); color: #6ee7b7; font-weight: 700; font-size: 11px; padding: 1px 7px; border-radius: 4px;">
-                    Q${qNum}
+                  <span class="badge" style="${isTraining ? 'background: rgba(245, 158, 11, 0.2); border: 1px solid rgba(245, 158, 11, 0.5); color: #fde68a;' : 'background: rgba(16, 185, 129, 0.2); border: 1px solid rgba(16, 185, 129, 0.4); color: #6ee7b7;'} font-weight: 700; font-size: 11px; padding: 1px 7px; border-radius: 4px;">
+                    ${isTraining ? `Practice Q${trainQNum}` : `Q${qNum}`}
                   </span>
                   <span class="font-weight-bold fs-xs" style="color: var(--text-main); font-size: 11.5px;">
                     <i class="fa-solid fa-circle-question text-accent"></i> ${q.prompt}
@@ -1726,7 +1841,7 @@ class HumanResolver {
 
   submitAnswer() {
     if (this.isAnswered || this.selectedOptionIndex === null || !this.currentQuestion) return;
-    if (this.app && (this.app.currentQuestionNumber === 'final_thoughts' || (this.stats && this.stats.totalAnswered >= 60))) {
+    if (this.app && (this.app.currentQuestionNumber === 'final_thoughts' || (!this.isTrainingChallenge && this.stats && this.stats.totalAnswered >= 60))) {
       return;
     }
 
@@ -1747,47 +1862,77 @@ class HumanResolver {
     // Log telemetry to analytics storage (stored persistently in localStorage)
     if (this.app.analytics) {
       const responseTimeMs = q.startTime ? (Date.now() - q.startTime) : 0;
-      const curQ = this.app.currentQuestionNumber;
-      const parsedQ = (typeof curQ === 'number') ? curQ : parseInt(curQ, 10);
-      const currentQNum = (!isNaN(parsedQ) && parsedQ >= 1 && parsedQ <= 60)
-        ? parsedQ
-        : Math.min(60, (this.stats ? this.stats.totalAnswered + 1 : 1));
-
       const assignedGroup = (this.app.analytics && typeof this.app.analytics.getAssignedGroup === 'function')
         ? this.app.analytics.getAssignedGroup()
         : null;
 
-      this.app.analytics.logResponse({
-        questionNumber: currentQNum,
-        questionCategory: q.type,
-        assignedGroup: q.assignedGroup || (assignedGroup ? assignedGroup.name : 'Unknown'),
-        assignedGroupId: q.assignedGroupId || (assignedGroup ? assignedGroup.id : 'unknown'),
-        assignedGroupName: q.assignedGroup || (assignedGroup ? assignedGroup.name : 'Unknown'),
-        hostLanguage: q.hostLanguage || (assignedGroup ? assignedGroup.hostLanguage : 'javascript'),
-        activeDialect: q.dialect ? q.dialect.id : (assignedGroup ? assignedGroup.sqlDialect : 'pipe'),
-        activeDialectName: q.dialect ? q.dialect.name : (assignedGroup && assignedGroup.sqlDialect === 'quorum' ? 'Quorum Syntax' : 'Google SQL (Pipe Syntax)'),
-        codeSnippet: q.codeSnippet || q.jsCode || '',
-        jsCode: q.codeSnippet || q.jsCode || '',
-        dialectSql: q.dialectSql || q.rawQuery || '',
-        rawQuery: q.rawQuery || '',
-        selectedKey: index + 1,
-        selectedOptionText: `Option ${String.fromCharCode(65 + index)} (${chosenOpt.rows.length} rows)`,
-        correctOptionText: `Option ${String.fromCharCode(65 + q.correctIndex)} (${correctOpt.rows.length} rows)`,
-        isCorrect: isCorrect ? 1 : 0,
-        responseTimeMs: responseTimeMs,
-        tabFocusLost: this.focusMetrics.tabFocusLost ? 1 : 0,
-        tabSwitchCount: this.focusMetrics.tabSwitchCount,
-        focusLostDurationMs: Math.round(this.focusMetrics.totalFocusLostTimeMs),
-        answerChangeCount: this.answerChangeCount || 0
-      });
+      if (this.isTrainingChallenge) {
+        if (typeof this.app.analytics.logTrainingResponse === 'function') {
+          this.app.analytics.logTrainingResponse({
+            questionNumber: this.trainingQuestionNumber || 1,
+            questionCategory: q.type,
+            assignedGroup: q.assignedGroup || (assignedGroup ? assignedGroup.name : 'Unknown'),
+            assignedGroupId: q.assignedGroupId || (assignedGroup ? assignedGroup.id : 'unknown'),
+            assignedGroupName: q.assignedGroup || (assignedGroup ? assignedGroup.name : 'Unknown'),
+            hostLanguage: q.hostLanguage || (assignedGroup ? assignedGroup.hostLanguage : 'javascript'),
+            activeDialect: q.dialect ? q.dialect.id : (assignedGroup ? assignedGroup.sqlDialect : 'pipe'),
+            activeDialectName: q.dialect ? q.dialect.name : (assignedGroup && assignedGroup.sqlDialect === 'quorum' ? 'Quorum Syntax' : 'Google SQL (Pipe Syntax)'),
+            codeSnippet: q.codeSnippet || q.jsCode || '',
+            jsCode: q.codeSnippet || q.jsCode || '',
+            dialectSql: q.dialectSql || q.rawQuery || '',
+            rawQuery: q.rawQuery || '',
+            selectedKey: index + 1,
+            selectedOptionText: `Option ${String.fromCharCode(65 + index)} (${chosenOpt.rows.length} rows)`,
+            correctOptionText: `Option ${String.fromCharCode(65 + q.correctIndex)} (${correctOpt.rows.length} rows)`,
+            isCorrect: isCorrect ? 1 : 0,
+            responseTimeMs: responseTimeMs,
+            tabFocusLost: this.focusMetrics.tabFocusLost ? 1 : 0,
+            tabSwitchCount: this.focusMetrics.tabSwitchCount,
+            focusLostDurationMs: Math.round(this.focusMetrics.totalFocusLostTimeMs),
+            answerChangeCount: this.answerChangeCount || 0
+          });
+        }
+      } else {
+        const curQ = this.app.currentQuestionNumber;
+        const parsedQ = (typeof curQ === 'number') ? curQ : parseInt(curQ, 10);
+        const currentQNum = (!isNaN(parsedQ) && parsedQ >= 1 && parsedQ <= 60)
+          ? parsedQ
+          : Math.min(60, (this.stats ? this.stats.totalAnswered + 1 : 1));
 
-      if (typeof this.app.renderAnalyticsDashboard === 'function') {
-        this.app.renderAnalyticsDashboard();
+        this.app.analytics.logResponse({
+          questionNumber: currentQNum,
+          questionCategory: q.type,
+          assignedGroup: q.assignedGroup || (assignedGroup ? assignedGroup.name : 'Unknown'),
+          assignedGroupId: q.assignedGroupId || (assignedGroup ? assignedGroup.id : 'unknown'),
+          assignedGroupName: q.assignedGroup || (assignedGroup ? assignedGroup.name : 'Unknown'),
+          hostLanguage: q.hostLanguage || (assignedGroup ? assignedGroup.hostLanguage : 'javascript'),
+          activeDialect: q.dialect ? q.dialect.id : (assignedGroup ? assignedGroup.sqlDialect : 'pipe'),
+          activeDialectName: q.dialect ? q.dialect.name : (assignedGroup && assignedGroup.sqlDialect === 'quorum' ? 'Quorum Syntax' : 'Google SQL (Pipe Syntax)'),
+          codeSnippet: q.codeSnippet || q.jsCode || '',
+          jsCode: q.codeSnippet || q.jsCode || '',
+          dialectSql: q.dialectSql || q.rawQuery || '',
+          rawQuery: q.rawQuery || '',
+          selectedKey: index + 1,
+          selectedOptionText: `Option ${String.fromCharCode(65 + index)} (${chosenOpt.rows.length} rows)`,
+          correctOptionText: `Option ${String.fromCharCode(65 + q.correctIndex)} (${correctOpt.rows.length} rows)`,
+          isCorrect: isCorrect ? 1 : 0,
+          responseTimeMs: responseTimeMs,
+          tabFocusLost: this.focusMetrics.tabFocusLost ? 1 : 0,
+          tabSwitchCount: this.focusMetrics.tabSwitchCount,
+          focusLostDurationMs: Math.round(this.focusMetrics.totalFocusLostTimeMs),
+          answerChangeCount: this.answerChangeCount || 0
+        });
+
+        if (typeof this.app.renderAnalyticsDashboard === 'function') {
+          this.app.renderAnalyticsDashboard();
+        }
       }
     }
 
     // Update stats counter & navbar counter AFTER logging response
-    this.stats.totalAnswered++;
+    if (!this.isTrainingChallenge) {
+      this.stats.totalAnswered++;
+    }
     this.updateNavCounter();
 
     // Lock option cards visually
@@ -1828,22 +1973,50 @@ class HumanResolver {
     if (feedbackBox) {
       feedbackBox.style.display = 'block';
       feedbackBox.className = 'quiz-feedback-box p-1 px-2';
-      feedbackBox.style.background = 'rgba(255, 255, 255, 0.1)';
-      feedbackBox.style.border = '1px solid rgba(255, 255, 255, 0.2)';
-      feedbackBox.style.color = '#cbd5e1';
-      feedbackBox.innerHTML = `
-        <div style="display: flex; align-items: center; justify-content: space-between; font-size: 11px; white-space: nowrap; gap: 8px; line-height: 1.4;">
-          <div style="display: flex; align-items: center; gap: 6px; white-space: nowrap;">
-            <div class="fb-icon" style="font-size: 12px; color: #94a3b8;"><i class="fa-solid fa-circle-check"></i></div>
-            <h4 class="m-0" style="font-size: 11px; color: #cbd5e1; white-space: nowrap; font-weight: 600;">Answer Recorded: Option ${String.fromCharCode(65 + index)}</h4>
+      if (this.isTrainingChallenge) {
+        feedbackBox.style.background = 'rgba(245, 158, 11, 0.12)';
+        feedbackBox.style.border = '1px solid rgba(245, 158, 11, 0.35)';
+        feedbackBox.style.color = '#fde68a';
+        const isLastPractice = ((this.trainingQuestionNumber || 1) >= 10);
+        feedbackBox.innerHTML = `
+          <div style="display: flex; align-items: center; justify-content: space-between; font-size: 11px; white-space: nowrap; gap: 8px; line-height: 1.4;">
+            <div style="display: flex; align-items: center; gap: 6px; white-space: nowrap;">
+              <div class="fb-icon" style="font-size: 12px; color: #f59e0b;"><i class="fa-solid fa-graduation-cap"></i></div>
+              <h4 class="m-0" style="font-size: 11px; color: #fde68a; white-space: nowrap; font-weight: 600;">Practice Answer Recorded: Option ${String.fromCharCode(65 + index)}</h4>
+            </div>
+            <span class="text-muted" style="font-size: 10px; white-space: nowrap;">Push <kbd style="font-size: 9px; padding: 1px 4px; background: rgba(255,255,255,0.15); border-radius: 3px;">ENTER</kbd> to ${isLastPractice ? 'complete training' : 'move to next practice question'}</span>
           </div>
-          <span class="text-muted" style="font-size: 10px; white-space: nowrap;">Push <kbd style="font-size: 9px; padding: 1px 4px; background: rgba(255,255,255,0.15); border-radius: 3px;">ENTER</kbd> to move to the next question</span>
-        </div>
-      `;
+        `;
+      } else {
+        feedbackBox.style.background = 'rgba(255, 255, 255, 0.1)';
+        feedbackBox.style.border = '1px solid rgba(255, 255, 255, 0.2)';
+        feedbackBox.style.color = '#cbd5e1';
+        feedbackBox.innerHTML = `
+          <div style="display: flex; align-items: center; justify-content: space-between; font-size: 11px; white-space: nowrap; gap: 8px; line-height: 1.4;">
+            <div style="display: flex; align-items: center; gap: 6px; white-space: nowrap;">
+              <div class="fb-icon" style="font-size: 12px; color: #94a3b8;"><i class="fa-solid fa-circle-check"></i></div>
+              <h4 class="m-0" style="font-size: 11px; color: #cbd5e1; white-space: nowrap; font-weight: 600;">Answer Recorded: Option ${String.fromCharCode(65 + index)}</h4>
+            </div>
+            <span class="text-muted" style="font-size: 10px; white-space: nowrap;">Push <kbd style="font-size: 9px; padding: 1px 4px; background: rgba(255,255,255,0.15); border-radius: 3px;">ENTER</kbd> to move to the next question</span>
+          </div>
+        `;
+      }
     }
   }
 
   nextQuestion() {
+    if (this.isTrainingChallenge) {
+      const curT = this.trainingQuestionNumber || 1;
+      if (curT < 10) {
+        this.app.loadIncrementalQuestion(`training:${curT + 1}`);
+      } else {
+        if (this.app && this.app.analytics && typeof this.app.analytics.setTrainingCompleted === 'function') {
+          this.app.analytics.setTrainingCompleted(true);
+        }
+        this.app.loadIncrementalQuestion('training_complete');
+      }
+      return;
+    }
     this.app.generateNextIncrementalQuestion();
   }
 

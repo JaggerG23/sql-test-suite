@@ -1169,6 +1169,213 @@ body.admin-locked .app-container {
   outline-offset: 1px;
 }
 
+/* Admin Training Question Grid Buttons (Amber theme for practice) */
+.admin-qgrid-train-btn {
+  font-size: 11px;
+  padding: 5px 0;
+  border-radius: 5px;
+  cursor: pointer;
+  font-weight: 600;
+  border: 1.5px solid rgba(245, 158, 11, 0.25);
+  background: rgba(245, 158, 11, 0.08);
+  color: #fbbf24;
+  transition: all 0.15s ease;
+  width: 100%;
+  outline: none;
+}
+
+.admin-qgrid-train-btn:hover:not(.active) {
+  background: rgba(245, 158, 11, 0.25) !important;
+  color: #fef08a !important;
+  border-color: rgba(245, 158, 11, 0.6) !important;
+}
+
+.admin-qgrid-train-btn.active {
+  border: 1.5px solid rgba(245, 158, 11, 0.95) !important;
+  background: rgba(245, 158, 11, 0.38) !important;
+  color: #ffffff !important;
+  box-shadow: 0 0 10px rgba(245, 158, 11, 0.35);
+}
+
+.admin-qgrid-train-btn:focus {
+  outline: none;
+}
+
+.admin-qgrid-train-btn:focus-visible {
+  outline: 2px solid rgba(245, 158, 11, 0.9);
+  outline-offset: 1px;
+}
+
+/* Likert Scales & Final Thoughts Styling */
+.likert-group {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  margin-bottom: 24px;
+}
+
+.likert-card {
+  background: rgba(14, 18, 28, 0.7);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: var(--radius-md);
+  padding: 16px 18px;
+  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+.likert-card:hover {
+  border-color: rgba(99, 102, 241, 0.35);
+}
+
+.likert-card.has-error {
+  border-color: rgba(239, 68, 68, 0.6) !important;
+  background: rgba(239, 68, 68, 0.06) !important;
+}
+
+.likert-statement {
+  font-size: 13.5px;
+  font-weight: 600;
+  color: #e2e8f0;
+  margin-bottom: 12px;
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  line-height: 1.45;
+}
+
+.likert-statement-num {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: rgba(99, 102, 241, 0.2);
+  border: 1px solid rgba(99, 102, 241, 0.4);
+  color: #c7d2fe;
+  font-size: 11px;
+  font-weight: 700;
+  flex-shrink: 0;
+}
+
+.likert-scale {
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  gap: 8px;
+}
+
+@media (max-width: 640px) {
+  .likert-scale {
+    grid-template-columns: 1fr;
+    gap: 6px;
+  }
+}
+
+.likert-option-label {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  padding: 10px 6px;
+  border-radius: var(--radius-sm);
+  background: rgba(255, 255, 255, 0.03);
+  border: 1.5px solid rgba(255, 255, 255, 0.09);
+  cursor: pointer;
+  transition: all 0.18s ease;
+  user-select: none;
+  min-height: 60px;
+}
+
+.likert-option-label:hover {
+  background: rgba(99, 102, 241, 0.12);
+  border-color: rgba(99, 102, 241, 0.4);
+  transform: translateY(-1px);
+}
+
+.likert-option-input {
+  position: absolute;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.likert-option-num {
+  font-size: 13px;
+  font-weight: 700;
+  color: #94a3b8;
+  margin-bottom: 3px;
+}
+
+.likert-option-text {
+  font-size: 11px;
+  font-weight: 500;
+  color: #cbd5e1;
+  line-height: 1.25;
+}
+
+.likert-option-input:checked + .likert-option-label {
+  background: rgba(99, 102, 241, 0.22);
+  border-color: var(--color-primary);
+  box-shadow: 0 0 14px rgba(99, 102, 241, 0.35);
+}
+
+.likert-option-input:checked + .likert-option-label .likert-option-num {
+  color: #a5b4fc;
+}
+
+.likert-option-input:checked + .likert-option-label .likert-option-text {
+  color: #ffffff;
+  font-weight: 700;
+}
+
+/* Training Phase Badges & Cards */
+.badge-training {
+  background: rgba(245, 158, 11, 0.18);
+  border: 1.5px solid rgba(245, 158, 11, 0.5);
+  color: #fbbf24;
+  font-weight: 800;
+  font-size: 11px;
+  letter-spacing: 0.3px;
+  padding: 3px 10px;
+  border-radius: 5px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.training-info-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 14px;
+  margin-bottom: 24px;
+}
+
+.training-info-box {
+  background: rgba(14, 18, 28, 0.85);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: var(--radius-md);
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.training-info-box h4 {
+  font-size: 13px;
+  font-weight: 700;
+  color: #e2e8f0;
+  margin: 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.training-info-box p {
+  font-size: 12.5px;
+  color: #94a3b8;
+  line-height: 1.5;
+  margin: 0;
+}
+
 
 
 
