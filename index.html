@@ -11,7 +11,7 @@
   <!-- FontAwesome Icons -->
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
   <!-- CSS -->
-  <link rel="stylesheet" href="styles.css?v=26">
+  <link rel="stylesheet" href="styles.css?v=28">
   <!-- sql.js (SQLite WASM) library -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/sql.js/1.8.0/sql-wasm.js"></script>
 </head>
@@ -137,11 +137,6 @@
                         <option value="training:3">Practice Q3 (T3)</option>
                         <option value="training:4">Practice Q4 (T4)</option>
                         <option value="training:5">Practice Q5 (T5)</option>
-                        <option value="training:6">Practice Q6 (T6)</option>
-                        <option value="training:7">Practice Q7 (T7)</option>
-                        <option value="training:8">Practice Q8 (T8)</option>
-                        <option value="training:9">Practice Q9 (T9)</option>
-                        <option value="training:10">Practice Q10 (T10)</option>
                         <option value="training_complete">Screen After Training (Ready for Study)</option>
                       </optgroup>
                       <optgroup label="3. Official Study (60 Questions)" id="jump-select-study-group">
@@ -235,7 +230,7 @@
                   <!-- 2. Training Phase (Practice) -->
                   <div style="font-size:10px;font-weight:700;color:#fbbf24;text-transform:uppercase;letter-spacing:0.5px;margin:10px 0 5px 0; display:flex; align-items:center; justify-content:space-between;">
                     <span><i class="fa-solid fa-graduation-cap"></i> 2. Practice Training Phase</span>
-                    <span style="font-size:9.5px;color:rgba(251,191,36,0.6);">10 Questions</span>
+                    <span style="font-size:9.5px;color:rgba(251,191,36,0.6);">5 Questions</span>
                   </div>
                   <div style="display:flex; flex-direction:column; gap:5px; margin-bottom:10px; background:rgba(245, 158, 11, 0.05); border:1px solid rgba(245, 158, 11, 0.18); border-radius:7px; padding:8px;">
                     <!-- Screen Before Training -->
@@ -244,11 +239,11 @@
                       <span>Preview <strong>Screen Before Training (Intro)</strong></span>
                     </button>
 
-                    <!-- Practice Questions 1-10 Grid -->
+                    <!-- Practice Questions 1-5 Grid -->
                     <div style="margin:4px 0 2px 0;">
-                      <div style="font-size:9.5px;color:rgba(255,255,255,0.4);margin-bottom:3px;text-align:center;">Practice Questions (T1 – T10)</div>
+                      <div style="font-size:9.5px;color:rgba(255,255,255,0.4);margin-bottom:3px;text-align:center;">Practice Questions (T1 – T5)</div>
                       <div id="admin-training-question-grid" style="display:grid; grid-template-columns:repeat(5, 1fr); gap:4px;">
-                        <!-- Populated dynamically by app.js (T1 through T10) -->
+                        <!-- Populated dynamically by app.js (T1 through T5) -->
                       </div>
                     </div>
 
@@ -469,12 +464,12 @@
   <script src="js/schemaGenerator.js?v=21"></script>
   <script src="js/queryGenerator.js?v=21"></script>
   <script src="js/syntaxDialects.js?v=21"></script>
-  <script src="js/quizGenerator.js?v=22"></script>
+  <script src="js/quizGenerator.js?v=29"></script>
   <script src="js/participantAnalytics.js?v=24"></script>
   <script src="js/engines/sqliteEngine.js?v=21"></script>
   <script src="js/engines/customJsEngine.js?v=21"></script>
   <script src="js/engines/optimizerEngine.js?v=21"></script>
-  <script src="js/humanResolver.js?v=47"></script>
-  <script src="js/app.js?v=29"></script>
+  <script src="js/humanResolver.js?v=55"></script>
+  <script src="js/app.js?v=34"></script>
 </body>
 </html>

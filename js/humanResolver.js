@@ -190,29 +190,90 @@ class HumanResolver {
   }
 
   bindFocusListeners() {
-    const handleBlur = () => {
+    const handleBlur = (source = 'unknown') => {
       if (this.isAnswered || !this.currentQuestion) return;
       if (!this.focusMetrics.lastBlurTime) {
         this.focusMetrics.lastBlurTime = Date.now();
         this.focusMetrics.tabFocusLost = true;
         this.focusMetrics.tabSwitchCount++;
+        console.warn(`[Focus Tracking] Focus lost (source: ${source}, switchCount: ${this.focusMetrics.tabSwitchCount})`);
       }
     };
 
-    const handleFocus = () => {
+    const handleFocus = (source = 'unknown') => {
       if (this.focusMetrics.lastBlurTime) {
         const awayMs = Date.now() - this.focusMetrics.lastBlurTime;
-        this.focusMetrics.totalFocusLostTimeMs += awayMs;
+        this.focusMetrics.totalFocusLostTimeMs += Math.max(0, awayMs);
         this.focusMetrics.lastBlurTime = null;
+        this.focusMetrics.tabFocusLost = true;
+        console.log(`[Focus Tracking] Focus restored (source: ${source}, awayMs: ${awayMs})`);
       }
     };
 
-    window.addEventListener('blur', handleBlur);
-    window.addEventListener('focus', handleFocus);
+    // 1. Standard window & document visibility listeners (capture phase)
+    window.addEventListener('blur', () => handleBlur('window-blur'), true);
+    window.addEventListener('focus', () => handleFocus('window-focus'), true);
     document.addEventListener('visibilitychange', () => {
-      if (document.visibilityState === 'hidden') handleBlur();
-      else if (document.visibilityState === 'visible') handleFocus();
-    });
+      if (document.visibilityState === 'hidden') {
+        handleBlur('visibility-hidden');
+      } else if (document.visibilityState === 'visible' && (typeof document.hasFocus !== 'function' || document.hasFocus())) {
+        handleFocus('visibility-visible');
+      }
+    }, true);
+
+    // 2. Extra window lifecycle and focusout listeners
+    window.addEventListener('focusout', () => {
+      if (!document.hasFocus() || document.visibilityState === 'hidden') {
+        handleBlur('window-focusout');
+      }
+    }, true);
+    window.addEventListener('deactivate', () => handleBlur('window-deactivate'), true);
+    window.addEventListener('pagehide', () => handleBlur('window-pagehide'), true);
+
+    // 3. Screenshot keys & shortcut interceptors (PrintScreen, Win+Shift+S, Cmd+Shift+3/4/5)
+    const handleScreenshotKey = (e) => {
+      if (e.key === 'PrintScreen' || e.keyCode === 44 || e.code === 'PrintScreen') {
+        handleBlur('printscreen-key');
+        return;
+      }
+      if ((e.metaKey || e.ctrlKey) && e.shiftKey && (e.key === 's' || e.key === 'S' || e.code === 'KeyS')) {
+        handleBlur('snipping-tool-shortcut');
+        return;
+      }
+      if (e.metaKey && e.shiftKey && ['3', '4', '5'].includes(e.key)) {
+        handleBlur('macos-screenshot-shortcut');
+        return;
+      }
+    };
+    window.addEventListener('keydown', handleScreenshotKey, true);
+    window.addEventListener('keyup', handleScreenshotKey, true);
+
+    // 4. Mouse leaving window (often precedes clicking another app or snipping tool)
+    document.addEventListener('mouseleave', () => {
+      if (this.isAnswered || !this.currentQuestion) return;
+      setTimeout(() => {
+        if (!document.hasFocus() || document.visibilityState === 'hidden') {
+          handleBlur('mouseleave-unfocused');
+        }
+      }, 75);
+    }, true);
+
+    // 5. Continuous high-frequency heartbeat (every 75ms)
+    // Catches clicks into other applications, screenshot tool overlays, and OS window switches
+    if (this._focusPollingInterval) {
+      clearInterval(this._focusPollingInterval);
+    }
+    this._focusPollingInterval = setInterval(() => {
+      if (this.isAnswered || !this.currentQuestion) return;
+      const docHasFocus = (typeof document.hasFocus === 'function') ? document.hasFocus() : true;
+      const isVisible = (document.visibilityState !== 'hidden');
+
+      if (!docHasFocus || !isVisible) {
+        handleBlur('heartbeat-unfocused');
+      } else if (this.focusMetrics.lastBlurTime && docHasFocus && isVisible) {
+        handleFocus('heartbeat-refocused');
+      }
+    }, 75);
   }
 
   bindKeyboardShortcuts() {
@@ -692,15 +753,15 @@ class HumanResolver {
           <span class="badge-training mb-2"><i class="fa-solid fa-graduation-cap"></i> Practice Phase</span>
           <h2 style="font-family: var(--font-title); font-size: 26px; color: #fff; margin: 6px 0 6px 0;">Get Ready for Training!</h2>
           <p class="text-muted fs-sm" style="font-size: 13.5px; margin: 0; color: #cbd5e1; max-width: 620px; line-height: 1.5;">
-            Before you begin, you will complete a <strong>10-question practice phase</strong> to familiarize yourself with the layout of the study.
+            Before you begin, you will complete a <strong>5-question practice phase</strong> to familiarize yourself with the layout of the study.
           </p>
         </div>
 
         <!-- Highlight cards -->
         <div class="training-info-grid">
           <div class="training-info-box">
-            <h4><i class="fa-solid fa-list-ol text-accent"></i> 10 Practice Questions</h4>
-            <p>You will see 10 questions with the same structure as the official study: database schema tables, code snippet, and four candidate output tables.</p>
+            <h4><i class="fa-solid fa-list-ol text-accent"></i> 5 Practice Questions</h4>
+            <p>You will see 5 questions with the same structure as the official study: database schema tables, code snippet, and four candidate output tables.</p>
           </div>
           <div class="training-info-box">
             <h4><i class="fa-solid fa-keyboard text-accent"></i> Easy Controls</h4>
@@ -716,7 +777,7 @@ class HumanResolver {
 
         <div style="text-align: center;">
           <button type="button" id="btn-start-training" class="btn btn-primary" style="padding: 12px 36px; font-weight: 700; font-size: 15px; border-radius: 8px; box-shadow: 0 4px 20px rgba(99, 102, 241, 0.45); cursor: pointer; display: inline-flex; align-items: center; gap: 8px;">
-            <span>Start Training Phase (10 Questions)</span>
+            <span>Start Training Phase (5 Questions)</span>
             <i class="fa-solid fa-arrow-right"></i>
           </button>
         </div>
@@ -753,7 +814,7 @@ class HumanResolver {
           </span>
           <h2 style="font-family: var(--font-title); font-size: 26px; color: #fff; margin: 4px 0 6px 0;">Training Finished!</h2>
           <p class="text-muted fs-sm" style="font-size: 14px; margin: 0; color: #cbd5e1; max-width: 620px; line-height: 1.55;">
-            You have successfully completed all 10 practice questions. You are now familiar with the interface and are ready to begin the official study.
+            You have successfully completed all 5 practice questions. You are now familiar with the interface and are ready to begin the official study.
           </p>
         </div>
 
@@ -955,8 +1016,16 @@ class HumanResolver {
     if (!container) return;
 
     container.innerHTML = `
-      <div class="card quiz-card glow-card" style="max-width: 800px; margin: 20px auto; padding: 32px 28px; background: rgba(18, 22, 34, 0.96); border: 1.5px solid rgba(99, 102, 241, 0.45); border-radius: 14px; box-shadow: 0 16px 50px rgba(0,0,0,0.6);">
+      <div class="card quiz-card glow-card" style="max-width: 800px; margin: 20px auto; padding: 32px 28px; background: rgba(18, 22, 34, 0.96); border: 1.5px solid rgba(99, 102, 241, 0.45); border-radius: 14px; box-shadow: 0 16px 50px rgba(0,0,0,0.6); position: relative;">
         
+        <!-- Skip for No Extra Credit (Top Right) -->
+        <div style="position: absolute; top: 20px; right: 24px; z-index: 10;">
+          <button type="button" id="btn-skip-extra-credit" class="btn" style="padding: 7px 15px; font-size: 12px; font-weight: 600; border-radius: 6px; background: rgba(255, 255, 255, 0.08); border: 1px solid rgba(255, 255, 255, 0.2); color: #cbd5e1; cursor: pointer; display: inline-flex; align-items: center; gap: 6px; transition: all 0.2s ease;">
+            <span>Skip for No Extra Credit</span>
+            <i class="fa-solid fa-angles-right" style="font-size: 11px;"></i>
+          </button>
+        </div>
+
         <!-- Header -->
         <div class="border-bottom pb-3 mb-3" style="border-bottom: 1px solid rgba(255,255,255,0.1); display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; padding-bottom: 16px; margin-bottom: 22px;">
           <div class="logo-icon mb-2" style="width: 52px; height: 52px; font-size: 26px; margin: 0 0 10px 0; background: linear-gradient(135deg, #6366f1, #8b5cf6); box-shadow: 0 0 25px rgba(99, 102, 241, 0.5); display: flex; align-items: center; justify-content: center; border-radius: 12px; color: #fff;">
@@ -1225,6 +1294,38 @@ class HumanResolver {
       btnFinish.addEventListener('click', handleFinishClick);
     }
 
+    const btnSkip = document.getElementById('btn-skip-extra-credit');
+    if (btnSkip) {
+      btnSkip.addEventListener('mouseenter', () => {
+        btnSkip.style.background = 'rgba(239, 68, 68, 0.15)';
+        btnSkip.style.borderColor = 'rgba(239, 68, 68, 0.4)';
+        btnSkip.style.color = '#fca5a5';
+      });
+      btnSkip.addEventListener('mouseleave', () => {
+        btnSkip.style.background = 'rgba(255, 255, 255, 0.08)';
+        btnSkip.style.borderColor = 'rgba(255, 255, 255, 0.2)';
+        btnSkip.style.color = '#cbd5e1';
+      });
+      btnSkip.addEventListener('click', () => {
+        try {
+          localStorage.setItem('sql_study_extra_credit_submitted', 'false');
+          localStorage.setItem('sql_study_extra_credit_skipped', 'true');
+          localStorage.setItem('sql_study_completed_finished', 'true');
+          localStorage.removeItem('sql_study_final_email');
+          localStorage.removeItem('sql_study_final_course');
+        } catch (e) {}
+
+        this.extraCreditSubmitted = false;
+        this.studyCompletedSuccessfully = true;
+
+        if (this.app && typeof this.app.loadIncrementalQuestion === 'function') {
+          this.app.loadIncrementalQuestion('thank_you');
+        } else {
+          this.renderThankYouScreen('', '');
+        }
+      });
+    }
+
     validateFinishFields();
   }
 
@@ -1402,13 +1503,22 @@ class HumanResolver {
       ? this.app.analytics.getAssignedGroup()
       : null);
 
-    this.currentQuestion = this.app.quizGenerator.generateQuestion(
-      query,
-      schema,
-      this.app.syntaxDialects,
-      this.currentGroundTruth,
-      assignedGroup
-    );
+    if (isTraining && (trainingQNum >= 1 && trainingQNum <= 5) && typeof this.app.quizGenerator.generateTrainingQuestion === 'function') {
+      this.currentQuestion = this.app.quizGenerator.generateTrainingQuestion(
+        trainingQNum,
+        schema,
+        this.app.syntaxDialects,
+        assignedGroup
+      );
+    } else {
+      this.currentQuestion = this.app.quizGenerator.generateQuestion(
+        query,
+        schema,
+        this.app.syntaxDialects,
+        this.currentGroundTruth,
+        assignedGroup
+      );
+    }
 
     if (!this.currentQuestion) {
       console.warn('QuizGenerator returned null for query:', query);
@@ -1421,7 +1531,7 @@ class HumanResolver {
     this.isAnswered = false;
     this.selectedOptionIndex = null;
     this.answerChangeCount = 0;
-    const isFocused = document.hasFocus() && document.visibilityState !== 'hidden';
+    const isFocused = (typeof document.hasFocus === 'function' ? document.hasFocus() : true) && document.visibilityState !== 'hidden';
     this.focusMetrics = {
       tabFocusLost: !isFocused,
       tabSwitchCount: isFocused ? 0 : 1,
@@ -1441,6 +1551,12 @@ class HumanResolver {
     this.intakeCompleted = false;
     this.isTrainingChallenge = false;
     this.trainingQuestionNumber = null;
+    this.focusMetrics = {
+      tabFocusLost: false,
+      tabSwitchCount: 0,
+      totalFocusLostTimeMs: 0,
+      lastBlurTime: null
+    };
     this.setConsentAccepted(false);
     if (this.app && this.app.analytics && typeof this.app.analytics.setTrainingCompleted === 'function') {
       this.app.analytics.setTrainingCompleted(false);
@@ -1454,6 +1570,21 @@ class HumanResolver {
 
     this.app.syntaxDialects.setCurrentDialectIndex(dialectIdx);
     const currentDialect = this.app.syntaxDialects.getCurrentDialect();
+
+    if (this.isTrainingChallenge && (this.trainingQuestionNumber >= 1 && this.trainingQuestionNumber <= 5)) {
+      const group = this.adminPreviewGroup || (this.app.analytics ? this.app.analytics.getAssignedGroup() : null);
+      this.currentQuestion = this.app.quizGenerator.generateTrainingQuestion(
+        this.trainingQuestionNumber,
+        this.currentSchema,
+        this.app.syntaxDialects,
+        group
+      );
+      this.currentQuestion.isTraining = true;
+      this.currentQuestion.qNum = this.trainingQuestionNumber;
+      this.renderQuizUI();
+      return;
+    }
+
     const dialectSql = this.app.syntaxDialects.formatQueryToDialect(this.currentRawQuery, currentDialect.id);
     const hostLang = this.currentQuestion.hostLanguage || 'javascript';
     const code = this.app.quizGenerator.generateCodeSnippet(this.currentRawQuery, this.currentSchema, dialectSql, hostLang);
@@ -1475,6 +1606,20 @@ class HumanResolver {
 
     this.adminPreviewGroup = group;
     if (this.app) this.app._adminPreviewGroupId = groupId;
+
+    if (this.isTrainingChallenge && (this.trainingQuestionNumber >= 1 && this.trainingQuestionNumber <= 5)) {
+      this.currentQuestion = this.app.quizGenerator.generateTrainingQuestion(
+        this.trainingQuestionNumber,
+        this.currentSchema,
+        this.app.syntaxDialects,
+        group
+      );
+      this.currentQuestion.isTraining = true;
+      this.currentQuestion.qNum = this.trainingQuestionNumber;
+      this.renderQuizUI();
+      return;
+    }
+
     const dialect = this.app.syntaxDialects.availableDialects[group.sqlDialect] || this.app.syntaxDialects.availableDialects.pipe;
     const dialectSql = this.app.syntaxDialects.formatQueryToDialect(this.currentRawQuery, dialect.id);
     const code = this.app.quizGenerator.generateCodeSnippet(this.currentRawQuery, this.currentSchema, dialectSql, group.hostLanguage);
@@ -1502,7 +1647,7 @@ class HumanResolver {
         navElem.textContent = 'Training: Intro';
       } else if (typeof qNum === 'string' && qNum.startsWith('training:')) {
         const t = qNum.split(':')[1] || '1';
-        navElem.textContent = `Training: ${t} / 10`;
+        navElem.textContent = `Training: ${t} / 5`;
       } else if (qNum === 'training_complete') {
         navElem.textContent = 'Training: Complete';
       } else if (qNum === 'final_thoughts') {
@@ -1567,14 +1712,14 @@ class HumanResolver {
               <div class="d-flex align-center gap-2">
                 ${isTraining ? `
                   <span class="badge badge-training" style="font-size: 11px; font-weight: 800; padding: 2px 9px; border-radius: 4px; background: rgba(245, 158, 11, 0.25); border: 1px solid rgba(245, 158, 11, 0.6); color: #fde68a; letter-spacing: 0.3px;">
-                    <i class="fa-solid fa-graduation-cap"></i> Practice Question ${trainQNum} / 10
+                    <i class="fa-solid fa-graduation-cap"></i> Practice Question ${trainQNum} / 5
                   </span>
                 ` : `
                   <span class="badge" style="font-size: 11px; font-weight: 800; padding: 2px 9px; border-radius: 4px; background: rgba(99, 102, 241, 0.25); border: 1px solid rgba(99, 102, 241, 0.55); color: #c7d2fe; letter-spacing: 0.3px;">
                     <i class="fa-solid fa-cube"></i> Question ${qNum} / 60
                   </span>
                 `}
-                <strong style="color: var(--color-accent); font-size: 11px;"><i class="fa-solid fa-table-cells text-accent"></i> Input Schema Reference (${this.app.currentSchema ? this.app.currentSchema.tables.length : 0} Tables)</strong>
+                <strong style="color: var(--color-accent); font-size: 11px;"><i class="fa-solid fa-table-cells text-accent"></i> Database Schema</strong>
               </div>
             </div>
             ${this.renderCompactSchemaHTML(this.app.currentSchema)}
@@ -1626,18 +1771,18 @@ class HumanResolver {
               <!-- 4 Candidate Output Tables (2x2 Grid Capped to NOT exceed Coding Box height) -->
               <div class="quiz-options-grid" style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 6px; max-height: 315px;">
                 ${q.options.map((opt, idx) => `
-                  <div class="quiz-option-card table-option-card" id="opt-btn-${idx}" data-idx="${idx}" style="cursor: pointer; border: 1px solid rgba(255,255,255,0.1); border-radius: 6px; background: rgba(18, 24, 38, 0.7); overflow: hidden; display: flex; flex-direction: column; max-height: 153px; transition: border-color 0.15s ease, background 0.15s ease;">
+                  <div class="quiz-option-card table-option-card" id="opt-btn-${idx}" data-idx="${idx}" style="cursor: pointer; border: 1px solid rgba(255,255,255,0.1); border-radius: 6px; background: rgba(18, 24, 38, 0.7); overflow: hidden; display: flex; flex-direction: column; max-height: 153px; padding: 0 !important; transition: border-color 0.15s ease, background 0.15s ease;">
                     <div class="opt-header p-1 px-2 d-flex justify-between align-center" style="border-bottom: 1px solid rgba(255,255,255,0.08); background: rgba(0,0,0,0.3); font-size: 10.5px; min-height: 25px;">
                       <div class="d-flex align-center gap-1" style="width: 100%; justify-content: center;">
                         <kbd style="background: var(--color-primary); color: #fff; padding: 1px 5px; font-size: 9.5px; font-weight: 700; border-radius: 3px;">${idx + 1}</kbd>
                         <strong style="color: var(--text-main); font-size: 10.5px;">Opt ${String.fromCharCode(65 + idx)}</strong>
-                        <span class="text-muted" style="font-size: 9px;">(${opt.rows.length} rows)</span>
+                        <span class="text-muted" style="font-size: 9px;">${isTraining && trainQNum === 2 ? `(${opt.rows.length} ${opt.rows.length === 1 ? 'table' : 'tables'})` : (isTraining && trainQNum === 3 ? `(${opt.rows.length} ${opt.rows.length === 1 ? 'column' : 'columns'})` : (isTraining && trainQNum === 1 ? `(1 choice)` : `(${opt.rows.length} ${opt.rows.length === 1 ? 'row' : 'rows'})`))}</span>
                       </div>
                       <div class="opt-status-icon" id="opt-icon-${idx}"></div>
                     </div>
                     <!-- Data Preview Table: Capped height under title bar with 0 top gap -->
-                    <div class="opt-body" style="display: flex; justify-content: center; align-items: flex-start; overflow-x: auto; overflow-y: auto; width: 100%; flex: 1; padding: 2px 4px 4px 4px; margin: 0; max-height: 123px;">
-                      ${this.renderOptionTableHTML(opt.columns, opt.rows)}
+                    <div class="opt-body" style="display: flex; justify-content: center; align-items: flex-start; overflow-x: auto; overflow-y: auto; width: 100%; flex: 1; padding: 0; margin: 0; max-height: 123px;">
+                      ${this.renderOptionContentHTML(opt, isTraining, trainQNum)}
                     </div>
                   </div>
                 `).join('')}
@@ -1855,8 +2000,12 @@ class HumanResolver {
     // Finalize focus loss duration
     if (this.focusMetrics.lastBlurTime) {
       const awayMs = Date.now() - this.focusMetrics.lastBlurTime;
-      this.focusMetrics.totalFocusLostTimeMs += awayMs;
+      this.focusMetrics.totalFocusLostTimeMs += Math.max(0, awayMs);
       this.focusMetrics.lastBlurTime = null;
+      this.focusMetrics.tabFocusLost = true;
+    }
+    if (this.focusMetrics.tabSwitchCount > 0 || this.focusMetrics.totalFocusLostTimeMs > 0) {
+      this.focusMetrics.tabFocusLost = true;
     }
 
     // Log telemetry to analytics storage (stored persistently in localStorage)
@@ -1882,8 +2031,8 @@ class HumanResolver {
             dialectSql: q.dialectSql || q.rawQuery || '',
             rawQuery: q.rawQuery || '',
             selectedKey: index + 1,
-            selectedOptionText: `Option ${String.fromCharCode(65 + index)} (${chosenOpt.rows.length} rows)`,
-            correctOptionText: `Option ${String.fromCharCode(65 + q.correctIndex)} (${correctOpt.rows.length} rows)`,
+            selectedOptionText: `Option ${String.fromCharCode(65 + index)} (${chosenOpt.rows.length} ${chosenOpt.rows.length === 1 ? 'row' : 'rows'})`,
+            correctOptionText: `Option ${String.fromCharCode(65 + q.correctIndex)} (${correctOpt.rows.length} ${correctOpt.rows.length === 1 ? 'row' : 'rows'})`,
             isCorrect: isCorrect ? 1 : 0,
             responseTimeMs: responseTimeMs,
             tabFocusLost: this.focusMetrics.tabFocusLost ? 1 : 0,
@@ -1913,8 +2062,8 @@ class HumanResolver {
           dialectSql: q.dialectSql || q.rawQuery || '',
           rawQuery: q.rawQuery || '',
           selectedKey: index + 1,
-          selectedOptionText: `Option ${String.fromCharCode(65 + index)} (${chosenOpt.rows.length} rows)`,
-          correctOptionText: `Option ${String.fromCharCode(65 + q.correctIndex)} (${correctOpt.rows.length} rows)`,
+          selectedOptionText: `Option ${String.fromCharCode(65 + index)} (${chosenOpt.rows.length} ${chosenOpt.rows.length === 1 ? 'row' : 'rows'})`,
+          correctOptionText: `Option ${String.fromCharCode(65 + q.correctIndex)} (${correctOpt.rows.length} ${correctOpt.rows.length === 1 ? 'row' : 'rows'})`,
           isCorrect: isCorrect ? 1 : 0,
           responseTimeMs: responseTimeMs,
           tabFocusLost: this.focusMetrics.tabFocusLost ? 1 : 0,
@@ -1977,7 +2126,7 @@ class HumanResolver {
         feedbackBox.style.background = 'rgba(245, 158, 11, 0.12)';
         feedbackBox.style.border = '1px solid rgba(245, 158, 11, 0.35)';
         feedbackBox.style.color = '#fde68a';
-        const isLastPractice = ((this.trainingQuestionNumber || 1) >= 10);
+        const isLastPractice = ((this.trainingQuestionNumber || 1) >= 5);
         feedbackBox.innerHTML = `
           <div style="display: flex; align-items: center; justify-content: space-between; font-size: 11px; white-space: nowrap; gap: 8px; line-height: 1.4;">
             <div style="display: flex; align-items: center; gap: 6px; white-space: nowrap;">
@@ -2007,7 +2156,7 @@ class HumanResolver {
   nextQuestion() {
     if (this.isTrainingChallenge) {
       const curT = this.trainingQuestionNumber || 1;
-      if (curT < 10) {
+      if (curT < 5) {
         this.app.loadIncrementalQuestion(`training:${curT + 1}`);
       } else {
         if (this.app && this.app.analytics && typeof this.app.analytics.setTrainingCompleted === 'function') {
@@ -2020,20 +2169,61 @@ class HumanResolver {
     this.app.generateNextIncrementalQuestion();
   }
 
+  renderOptionContentHTML(opt, isTraining, trainQNum) {
+    if (isTraining && trainQNum === 1) {
+      const text = (opt.rows && opt.rows[0] && opt.rows[0][0]) || '';
+      const isWrong = text === 'WRONG';
+      return `
+        <div style="display: flex; flex-direction: column; align-items: center; justify-content: center; width: 100%; height: 100%; min-height: 100px; padding: 12px; box-sizing: border-box;">
+          <span style="font-family: var(--font-mono); font-size: 15px; font-weight: 800; letter-spacing: 0.5px; padding: 8px 22px; border-radius: 6px; background: ${isWrong ? 'rgba(239, 68, 68, 0.2)' : 'rgba(255, 255, 255, 0.06)'}; border: 1.5px solid ${isWrong ? 'rgba(239, 68, 68, 0.45)' : 'rgba(255, 255, 255, 0.15)'}; color: ${isWrong ? '#fca5a5' : '#e2e8f0'}; box-shadow: 0 2px 8px rgba(0,0,0,0.3);">
+            ${this.escapeHTML(text)}
+          </span>
+        </div>
+      `;
+    }
+
+    if (isTraining && (trainQNum === 2 || trainQNum === 3)) {
+      const headerTitle = (opt.columns && opt.columns[0]) ? opt.columns[0] : (trainQNum === 2 ? 'Database Tables' : 'products Columns');
+      const items = (opt.rows || []).map(r => Array.isArray(r) ? r[0] : r);
+      const iconClass = trainQNum === 2 ? 'fa-table-cells' : 'fa-columns';
+      const itemIcon = trainQNum === 2 ? 'fa-table' : 'fa-cube';
+
+      return `
+        <div class="schema-option-display" style="display: flex; flex-direction: column; width: 100%; margin: 0; padding: 0;">
+          <!-- Sticky Opaque Header Line (Zero text bleed-through when scrolled) -->
+          <div class="schema-opt-header-line">
+            <i class="fa-solid ${iconClass} text-accent" style="font-size: 10px; margin-right: 4px;"></i>
+            <span>${this.escapeHTML(headerTitle)}</span>
+          </div>
+          <!-- Wrapped Item Chips (Fits on screen without vertical scrolling) -->
+          <div class="schema-opt-chips-wrap">
+            ${items.map(item => `
+              <span class="schema-item-chip">
+                ${this.escapeHTML(item)}
+              </span>
+            `).join('')}
+          </div>
+        </div>
+      `;
+    }
+
+    return this.renderOptionTableHTML(opt.columns, opt.rows);
+  }
+
   renderOptionTableHTML(columns, rows) {
     if (!columns || columns.length === 0) {
       return `<div class="p-1 text-muted fs-xs text-center">Empty Dataset</div>`;
     }
 
     let html = `
-      <div style="display: flex; justify-content: center; width: 100%; margin: 0;">
-        <table class="data-table opt-table" style="width: 100%; margin: 0 auto; border-collapse: collapse; border-radius: 4px; border: 1px solid rgba(255,255,255,0.12); font-size: 11px; background: rgba(10, 14, 26, 0.65);">
+      <div style="display: flex; justify-content: center; width: 100%; margin: 0; padding: 0;">
+        <table class="data-table opt-table" style="width: 100%; margin: 0 auto; border-collapse: separate; border-spacing: 0; border-radius: 4px; border: 1px solid rgba(255,255,255,0.12); font-size: 11px; background: rgba(10, 14, 26, 0.65);">
           <thead>
             <tr>
     `;
 
     columns.forEach(col => {
-      html += `<th style="padding: 4px 12px; background: rgba(0,0,0,0.6); text-transform: none; font-size: 10.5px; border-bottom: 1px solid rgba(255,255,255,0.15); color: var(--color-accent); font-weight: 600; text-align: center;">${this.escapeHTML(col)}</th>`;
+      html += `<th style="position: sticky; top: 0; z-index: 10; padding: 4px 10px; background: #0e1424; text-transform: none; font-size: 10.5px; border-bottom: 1px solid rgba(255,255,255,0.18); box-shadow: 0 1px 3px rgba(0,0,0,0.5); color: var(--color-accent); font-weight: 600; text-align: center;">${this.escapeHTML(col)}</th>`;
     });
 
     html += `</tr></thead><tbody>`;
@@ -2046,7 +2236,7 @@ class HumanResolver {
         const rowVals = Array.isArray(row) ? row : columns.map(c => (row && row[c] !== undefined ? row[c] : null));
         rowVals.forEach(val => {
           const dispVal = (val === null || val === undefined) ? '<span class="text-muted">NULL</span>' : this.escapeHTML(val);
-          html += `<td style="padding: 3px 12px; border-bottom: 1px solid rgba(255,255,255,0.05); white-space: nowrap; font-family: var(--font-mono); text-align: center;">${dispVal}</td>`;
+          html += `<td style="padding: 2.5px 10px; border-bottom: 1px solid rgba(255,255,255,0.05); white-space: nowrap; font-family: var(--font-mono); text-align: center;">${dispVal}</td>`;
         });
         html += `</tr>`;
       });
@@ -2063,11 +2253,10 @@ class HumanResolver {
       <div class="compact-schema-grid" style="display: grid; grid-template-columns: repeat(${Math.min(schema.tables.length, 5)}, 1fr); gap: 8px;">
         ${schema.tables.map(tbl => `
           <div class="schema-tbl-card p-1 px-2" style="background: rgba(0,0,0,0.35); border: 1px solid rgba(255,255,255,0.06); border-radius: 4px;">
-            <div class="d-flex justify-between align-center mb-1 pb-1" style="font-size: 10px; border-bottom: 1px solid rgba(255,255,255,0.06);">
+            <div class="d-flex align-center mb-1 pb-1" style="font-size: 10px; border-bottom: 1px solid rgba(255,255,255,0.06);">
               <strong style="color: var(--color-accent); font-family: var(--font-mono);">
                 <i class="fa-solid fa-table text-primary"></i> ${tbl.name}
               </strong>
-              <span class="text-muted" style="font-size: 8.5px;">(${tbl.rows.length} rows, ${tbl.columns.length} cols)</span>
             </div>
             <div class="col-badges mt-1" style="display: flex; flex-direction: column; gap: 2px; font-family: var(--font-mono);">
               ${tbl.columns.map(c => `

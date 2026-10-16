@@ -59,6 +59,354 @@ class QuizGenerator {
   }
 
   /**
+   * Generates custom instructional practice/training questions (T1, T2, T3)
+   */
+  generateTrainingQuestion(trainingQNum, schema, dialectManager, targetGroup = null) {
+    let group = targetGroup;
+    if (!group && typeof window !== 'undefined' && window.app && window.app.analytics && typeof window.app.analytics.getAssignedGroup === 'function') {
+      group = window.app.analytics.getAssignedGroup();
+    }
+
+    const hostLanguage = group && group.hostLanguage ? group.hostLanguage : 'javascript';
+    const dialectKey = group && group.sqlDialect ? group.sqlDialect : (dialectManager ? dialectManager.getCurrentDialect().id : 'pipe');
+    const currentDialect = (dialectManager && dialectManager.availableDialects && dialectManager.availableDialects[dialectKey])
+      ? dialectManager.availableDialects[dialectKey]
+      : (dialectManager ? dialectManager.getCurrentDialect(null, 42, group) : { name: 'Google SQL (Pipe Syntax)', id: 'pipe' });
+
+    const isPython = (hostLanguage === 'python');
+
+    if (trainingQNum === 1) {
+      // Training Question 1: Interface Orientation (Not a query)
+      const codeSnippet = isPython
+        ? `# Please click the answer choice that says WRONG below.\n#\n# NOTE: You will not receive feedback for any of your answers throughout the study.`
+        : `// Please click the answer choice that says WRONG below.\n//\n// NOTE: You will not receive feedback for any of your answers throughout the study.`;
+
+      const rawOptions = [
+        {
+          columns: ['Answer'],
+          rows: [['WRONG']],
+          isCorrect: true,
+          explanation: 'Matches the instruction to select WRONG.'
+        },
+        {
+          columns: ['Answer'],
+          rows: [['NOT WRONG']],
+          isCorrect: false,
+          explanation: 'This answer choice says NOT WRONG.'
+        },
+        {
+          columns: ['Answer'],
+          rows: [['NOT WRONG']],
+          isCorrect: false,
+          explanation: 'This answer choice says NOT WRONG.'
+        },
+        {
+          columns: ['Answer'],
+          rows: [['NOT WRONG']],
+          isCorrect: false,
+          explanation: 'This answer choice says NOT WRONG.'
+        }
+      ];
+
+      const shuffled = this.shuffleAndAssignKeys(rawOptions);
+
+      return {
+        type: 'Training: Interface Orientation',
+        title: 'Practice Question 1 (T1)',
+        prompt: 'Click the answer that says WRONG below:',
+        codeSnippet: codeSnippet,
+        jsCode: codeSnippet,
+        hostLanguage: hostLanguage,
+        rawQuery: '-- Practice Q1: Interface orientation (no query)',
+        dialectSql: '-- Practice Q1: Interface orientation (no query)',
+        dialect: currentDialect,
+        assignedGroup: group ? group.name : 'Unknown',
+        assignedGroupId: group ? group.id : 'unknown',
+        options: shuffled.options,
+        correctIndex: shuffled.correctIndex,
+        correctKey: shuffled.correctIndex + 1,
+        isTraining: true,
+        qNum: 1
+      };
+    }
+
+    if (trainingQNum === 2) {
+      // Training Question 2: Schema Reading & Table Identification
+      const codeSnippet = isPython
+        ? `# Read the "Database Schema" banner shown at the top of the screen.\n#\n# Read the database schema and identify the names of all the tables in it.`
+        : `// Read the "Database Schema" banner shown at the top of the screen.\n//\n// Read the database schema and identify the names of all the tables in it.`;
+
+      const tableNames = (schema && schema.tables && schema.tables.length > 0)
+        ? schema.tables.map(t => t.name)
+        : ['users', 'products', 'orders', 'categories', 'reviews'];
+
+      const rawOptions = [
+        // 1 Correct answer
+        {
+          columns: ['Database Tables'],
+          rows: tableNames.map(name => [name]),
+          isCorrect: true,
+          explanation: 'Correctly identifies all table names in the database schema.'
+        },
+        // Distractor 1: not enough names
+        {
+          columns: ['Database Tables'],
+          rows: tableNames.slice(0, 2).map(name => [name]),
+          isCorrect: false,
+          explanation: 'Incomplete: only contains 2 table names instead of all tables in the schema.'
+        },
+        // Distractor 2: names that don't exist
+        {
+          columns: ['Database Tables'],
+          rows: [['users'], ['products'], ['flights'], ['passengers'], ['airports']],
+          isCorrect: false,
+          explanation: 'Contains table names that do not exist in the schema (flights, passengers, airports).'
+        },
+        // Distractor 3: very obviously wrong / fabricated
+        {
+          columns: ['Database Tables'],
+          rows: [['animals'], ['vehicles'], ['planets']],
+          isCorrect: false,
+          explanation: 'Completely fabricated names that do not exist in the schema.'
+        }
+      ];
+
+      const shuffled = this.shuffleAndAssignKeys(rawOptions);
+
+      return {
+        type: 'Training: Schema Identification',
+        title: 'Practice Question 2 (T2)',
+        prompt: 'Read the Database Schema above and identify the names of the tables in it:',
+        codeSnippet: codeSnippet,
+        jsCode: codeSnippet,
+        hostLanguage: hostLanguage,
+        rawQuery: '-- Practice Q2: Schema Table Identification',
+        dialectSql: '-- Practice Q2: Schema Table Identification',
+        dialect: currentDialect,
+        assignedGroup: group ? group.name : 'Unknown',
+        assignedGroupId: group ? group.id : 'unknown',
+        options: shuffled.options,
+        correctIndex: shuffled.correctIndex,
+        correctKey: shuffled.correctIndex + 1,
+        isTraining: true,
+        qNum: 2
+      };
+    }
+
+    if (trainingQNum === 3) {
+      // Training Question 3: Column Identification for products Table
+      const codeSnippet = isPython
+        ? `# Look at the "Database Schema" banner at the top of the screen.\n# Find the "products" table and inspect its columns.\n#\n# Identify the columns that belong to the products table.\n# Select the answer choice below that correctly lists the product columns.`
+        : `// Look at the "Database Schema" banner at the top of the screen.\n// Find the "products" table and inspect its columns.\n//\n// Identify the columns that belong to the products table.\n// Select the answer choice below that correctly lists the product columns.`;
+
+      const prodTable = schema && schema.tables ? schema.tables.find(t => t.name === 'products') : null;
+      const prodCols = prodTable ? prodTable.columns.map(c => c.name) : ['id', 'user_id', 'title', 'price'];
+
+      const otherTable = schema && schema.tables ? schema.tables.find(t => t.name === 'orders' || t.name === 'categories') : null;
+      const otherCols = otherTable ? otherTable.columns.map(c => c.name) : ['id', 'amount', 'status', 'quantity'];
+
+      const rawOptions = [
+        // 1 Correct answer
+        {
+          columns: ['products Columns'],
+          rows: prodCols.map(c => [c]),
+          isCorrect: true,
+          explanation: 'Matches all columns in the products table.'
+        },
+        // Distractor 1: columns from another table
+        {
+          columns: ['products Columns'],
+          rows: otherCols.map(c => [c]),
+          isCorrect: false,
+          explanation: 'These columns belong to another table (orders), not products.'
+        },
+        // Distractor 2: nonexistent product attributes
+        {
+          columns: ['products Columns'],
+          rows: [['barcode'], ['shelf_number'], ['warehouse_zone'], ['expiration_date']],
+          isCorrect: false,
+          explanation: 'Fabricated column names that do not exist in the products table.'
+        },
+        // Distractor 3: completely irrelevant columns
+        {
+          columns: ['products Columns'],
+          rows: [['latitude'], ['longitude'], ['gps_altitude']],
+          isCorrect: false,
+          explanation: 'Irrelevant coordinates columns that do not exist in the products table.'
+        }
+      ];
+
+      const shuffled = this.shuffleAndAssignKeys(rawOptions);
+
+      return {
+        type: 'Training: Column Identification',
+        title: 'Practice Question 3 (T3)',
+        prompt: 'Identify the columns from the products table in the schema above:',
+        codeSnippet: codeSnippet,
+        jsCode: codeSnippet,
+        hostLanguage: hostLanguage,
+        rawQuery: '-- Practice Q3: Column Identification for products Table',
+        dialectSql: '-- Practice Q3: Column Identification for products Table',
+        dialect: currentDialect,
+        assignedGroup: group ? group.name : 'Unknown',
+        assignedGroupId: group ? group.id : 'unknown',
+        options: shuffled.options,
+        correctIndex: shuffled.correctIndex,
+        correctKey: shuffled.correctIndex + 1,
+        isTraining: true,
+        qNum: 3
+      };
+    }
+
+    if (trainingQNum === 4) {
+      // Training Question 4: Select column name from categories table (Direct and simple, 3 lines of data, no scrolling)
+      const rawSql = 'SELECT name FROM categories;';
+      const dialectSql = dialectManager ? dialectManager.formatQueryToDialect(rawSql, currentDialect.id) : rawSql;
+
+      // Direct and simple: NO additional code (no loops, no status lists, no step counters, no execution logs)
+      const codeSnippet = isPython
+        ? `query = """\n${dialectSql}\n"""\n\nresult_table = db.execute(query)`
+        : `const query = \`\n${dialectSql}\n\`;\n\nconst resultTable = db.execute(query);`;
+
+      const catTable = schema && schema.tables ? schema.tables.find(t => t.name === 'categories') : null;
+      const prodTable = schema && schema.tables ? schema.tables.find(t => t.name === 'products') : null;
+
+      // 3 sample lines of data from categories table (fits within card with ZERO scrolling, <= 4 lines)
+      const sampleCatRows = catTable && catTable.rows && catTable.rows.length >= 3
+        ? catTable.rows.slice(0, 3)
+        : [
+            { id: 1, name: 'Electronics', priority: 1 },
+            { id: 2, name: 'Home & Kitchen', priority: 2 },
+            { id: 3, name: 'Books', priority: 3 }
+          ];
+
+      const correctNameRows = sampleCatRows.map(r => [r.name]);
+      const priorityRows = sampleCatRows.map(r => [r.priority !== undefined ? r.priority : 1]);
+
+      const sampleProdRows = prodTable && prodTable.rows && prodTable.rows.length >= 3
+        ? prodTable.rows.slice(0, 3).map(r => [r.title || r.name || 'Item'])
+        : [['Laptop'], ['Smartphone'], ['Headphones']];
+
+      const rawOptions = [
+        // 1 Correct answer: 3 lines of data from the name column in categories
+        {
+          columns: ['name'],
+          rows: correctNameRows,
+          isCorrect: true,
+          explanation: 'Matches the name column from the categories table.'
+        },
+        // Distractor 1: priority column from categories
+        {
+          columns: ['priority'],
+          rows: priorityRows,
+          isCorrect: false,
+          explanation: 'Selects the priority column instead of the name column.'
+        },
+        // Distractor 2: obviously wrong column (status from orders, completely distinct from name)
+        {
+          columns: ['status'],
+          rows: [['PENDING'], ['COMPLETED'], ['CANCELLED']],
+          isCorrect: false,
+          explanation: 'Selects the status column from orders instead of the name column.'
+        },
+        // Distractor 3: title column from another table (products)
+        {
+          columns: ['title'],
+          rows: sampleProdRows,
+          isCorrect: false,
+          explanation: 'Selects the title column from the products table instead of categories.'
+        }
+      ];
+
+      const shuffled = this.shuffleAndAssignKeys(rawOptions);
+
+      return {
+        type: 'Training: Query Execution',
+        title: 'Practice Question 4 (T4)',
+        prompt: 'Select the table output for the query selecting the name column from categories:',
+        codeSnippet: codeSnippet,
+        jsCode: codeSnippet,
+        hostLanguage: hostLanguage,
+        rawQuery: rawSql,
+        dialectSql: dialectSql,
+        dialect: currentDialect,
+        assignedGroup: group ? group.name : 'Unknown',
+        assignedGroupId: group ? group.id : 'unknown',
+        options: shuffled.options,
+        correctIndex: shuffled.correctIndex,
+        correctKey: shuffled.correctIndex + 1,
+        isTraining: true,
+        qNum: 4
+      };
+    }
+
+    if (trainingQNum === 5) {
+      // Training Question 5: SELECT column id, JOIN with another column of same type, WHERE filter (< 3)
+      const rawSql = 'SELECT orders.id FROM orders JOIN users ON orders.user_id = users.id WHERE orders.id < 3;';
+      const dialectSql = dialectManager ? dialectManager.formatQueryToDialect(rawSql, currentDialect.id) : rawSql;
+
+      // Respective code above the query with simple looping counter to the same number as the WHERE statement (3)
+      const codeSnippet = isPython
+        ? `counter = 0\nfor i in range(3):\n    counter += 1\n\nquery = """\n${dialectSql}\n"""\n\nresult_table = db.execute(query)`
+        : `let counter = 0;\nfor (let i = 0; i < 3; i++) {\n  counter++;\n}\n\nconst query = \`\n${dialectSql}\n\`;\n\nconst resultTable = db.execute(query);`;
+
+      const rawOptions = [
+        // 1 Correct answer: id values from joined orders strictly matching WHERE orders.id < 3 (only 1 and 2)
+        {
+          columns: ['id'],
+          rows: [[1], [2]],
+          isCorrect: true,
+          explanation: 'Matches orders.id for orders joined with users where orders.id < 3.'
+        },
+        // Distractor 1: obviously wrong column (title from products, no confusing overlap)
+        {
+          columns: ['title'],
+          rows: [['Laptop'], ['Smartphone']],
+          isCorrect: false,
+          explanation: 'Selects the title column from products instead of orders.id.'
+        },
+        // Distractor 2: obviously wrong column (status from orders)
+        {
+          columns: ['status'],
+          rows: [['PENDING'], ['COMPLETED']],
+          isCorrect: false,
+          explanation: 'Selects the status column instead of the id column.'
+        },
+        // Distractor 3: obviously wrong column (amount from orders)
+        {
+          columns: ['amount'],
+          rows: [[29.99], [49.99]],
+          isCorrect: false,
+          explanation: 'Selects the amount column instead of the id column.'
+        }
+      ];
+
+      const shuffled = this.shuffleAndAssignKeys(rawOptions);
+
+      return {
+        type: 'Training: Query Execution',
+        title: 'Practice Question 5 (T5)',
+        prompt: 'Select the table output for the joined query with WHERE filter:',
+        codeSnippet: codeSnippet,
+        jsCode: codeSnippet,
+        hostLanguage: hostLanguage,
+        rawQuery: rawSql,
+        dialectSql: dialectSql,
+        dialect: currentDialect,
+        assignedGroup: group ? group.name : 'Unknown',
+        assignedGroupId: group ? group.id : 'unknown',
+        options: shuffled.options,
+        correctIndex: shuffled.correctIndex,
+        correctKey: shuffled.correctIndex + 1,
+        isTraining: true,
+        qNum: 5
+      };
+    }
+
+    return null;
+  }
+
+  /**
    * Routes code generation to Python or JavaScript based on hostLanguage.
    */
   generateCodeSnippet(sql, schema, dialectSql, hostLanguage = 'javascript') {
