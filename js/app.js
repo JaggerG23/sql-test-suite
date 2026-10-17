@@ -169,7 +169,7 @@ class QueryExperimentApp {
       if (trainCount === 0) {
         this.currentQuestionNumber = 'training_intro';
         await this.loadIncrementalQuestion('training_intro');
-      } else if (trainCount < 10) {
+      } else if (trainCount < 4) {
         const nextTrain = trainCount + 1;
         this.currentQuestionNumber = `training:${nextTrain}`;
         await this.loadIncrementalQuestion(`training:${nextTrain}`);
@@ -386,15 +386,15 @@ class QueryExperimentApp {
    * to highlight the currently active cell.
    */
   populateAdminQuestionGrid() {
-    // 1. Populate Training Questions Grid (T1 to T5)
+    // 1. Populate Training Questions Grid (T1 to T4)
     const trainGrid = document.getElementById('admin-training-question-grid');
     if (trainGrid) {
       trainGrid.innerHTML = '';
-      for (let t = 1; t <= 5; t++) {
+      for (let t = 1; t <= 4; t++) {
         const tBtn = document.createElement('button');
         tBtn.id = `admin-qgrid-btn-train-${t}`;
         tBtn.className = 'admin-qgrid-train-btn';
-        tBtn.title = `Practice Question ${t} / 5`;
+        tBtn.title = `Practice Question ${t} / 4`;
         tBtn.textContent = `T${t}`;
         tBtn.dataset.trainNum = t;
 
@@ -502,8 +502,8 @@ class QueryExperimentApp {
       btn.style.borderColor = '';
     }
 
-    // 2. Practice Training Questions 1-5
-    for (let t = 1; t <= 5; t++) {
+    // 2. Practice Training Questions 1-4
+    for (let t = 1; t <= 4; t++) {
       const tBtn = document.getElementById(`admin-qgrid-btn-train-${t}`);
       if (!tBtn) continue;
       const isActive = (trainQNum !== null && t === trainQNum);
@@ -605,7 +605,7 @@ class QueryExperimentApp {
         stageBadge.style.color = '#fde68a';
         stageBadge.style.borderColor = 'rgba(245, 158, 11, 0.5)';
       } else if (trainQNum !== null) {
-        stageBadge.textContent = `Previewing: Practice Question ${trainQNum} / 10 (Training Phase)`;
+        stageBadge.textContent = `Previewing: Practice Question ${trainQNum} / 4 (Training Phase)`;
         stageBadge.style.color = '#fbbf24';
         stageBadge.style.borderColor = 'rgba(245, 158, 11, 0.6)';
       } else if (activeQNum === 'training_complete') {
@@ -826,10 +826,10 @@ class QueryExperimentApp {
     optTrainIntro.textContent = '🎓 Training: Introduction';
     select.appendChild(optTrainIntro);
 
-    for (let t = 1; t <= 5; t++) {
+    for (let t = 1; t <= 4; t++) {
       const optT = document.createElement('option');
       optT.value = `training:${t}`;
-      optT.textContent = `🎯 Training Practice Q ${t} / 5`;
+      optT.textContent = `🎯 Training Practice Q ${t} / 4`;
       select.appendChild(optT);
     }
 
@@ -979,10 +979,10 @@ class QueryExperimentApp {
       this.humanResolver.intakeCompleted = true;
     }
 
-    // Handle Training Challenge Questions (training:1 .. training:5)
+    // Handle Training Challenge Questions (training:1 .. training:4)
     const isTraining = typeof targetQNum === 'string' && targetQNum.startsWith('training:');
     if (isTraining) {
-      const tNum = Math.max(1, Math.min(5, parseInt(targetQNum.split(':')[1], 10) || 1));
+      const tNum = Math.max(1, Math.min(4, parseInt(targetQNum.split(':')[1], 10) || 1));
       this.currentQuestionNumber = `training:${tNum}`;
 
       const select = document.getElementById('question-jump-select');
@@ -1009,7 +1009,7 @@ class QueryExperimentApp {
         return;
       }
 
-      if (tNum <= 5) {
+      if (tNum <= 4) {
         if (tNum === 1) {
           this.currentQuery = '-- Practice Question 1: Interface Orientation (No Query)';
         } else if (tNum === 2) {
@@ -1018,8 +1018,6 @@ class QueryExperimentApp {
           this.currentQuery = '-- Practice Question 3: Column Identification for products Table';
         } else if (tNum === 4) {
           this.currentQuery = 'SELECT name FROM categories;';
-        } else {
-          this.currentQuery = 'SELECT orders.id FROM orders JOIN users ON orders.user_id = users.id WHERE orders.id < 3;';
         }
         const editor = document.getElementById('sql-editor');
         if (editor) editor.value = this.currentQuery;
@@ -1080,11 +1078,19 @@ class QueryExperimentApp {
       return;
     }
 
-    this.queryGenerator = new QueryGenerator(blockSeed);
-    this.currentQuery = this.queryGenerator.generateIncrementalQuery(this.currentSchema, 'medium', true, variationIndex);
+    if (qNum === 1) {
+      this.currentQuery = 'SELECT orders.id FROM orders JOIN users ON orders.user_id = users.id WHERE orders.id < 3;';
+    } else {
+      this.queryGenerator = new QueryGenerator(blockSeed);
+      this.currentQuery = this.queryGenerator.generateIncrementalQuery(this.currentSchema, 'medium', true, variationIndex, qNum);
+    }
 
     const editor = document.getElementById('sql-editor');
     if (editor) editor.value = this.currentQuery;
+
+    // Ensure pristine database state before executing question query
+    await this.sqliteEngine.loadSchemaAndData(this.currentSchema);
+    this.customJsEngine.loadSchemaAndData(this.currentSchema);
 
     const r1 = this.sqliteEngine.executeQuery(this.currentQuery);
     const r2 = this.customJsEngine.executeQuery(this.currentQuery);
@@ -1120,7 +1126,7 @@ class QueryExperimentApp {
       await this.loadIncrementalQuestion('training:1');
     } else if (typeof cur === 'string' && cur.startsWith('training:')) {
       const tNum = parseInt(cur.split(':')[1], 10) || 1;
-      if (tNum < 5) {
+      if (tNum < 4) {
         await this.loadIncrementalQuestion(`training:${tNum + 1}`);
       } else {
         if (this.analytics && typeof this.analytics.setTrainingCompleted === 'function') {
@@ -1157,7 +1163,7 @@ class QueryExperimentApp {
     } else if (cur === 1 || cur === '1') {
       await this.loadIncrementalQuestion('training_complete');
     } else if (cur === 'training_complete') {
-      await this.loadIncrementalQuestion('training:5');
+      await this.loadIncrementalQuestion('training:4');
     } else if (typeof cur === 'string' && cur.startsWith('training:')) {
       const t = parseInt(cur.split(':')[1], 10) || 1;
       if (t <= 1) {

@@ -165,6 +165,25 @@ class SyntaxDialectManager {
     if (!sql) return '';
     const cleanSql = sql.trim().replace(/;$/, '');
 
+    // Handle DML statements directly
+    if (/^(INSERT|UPDATE|DELETE)\b/i.test(cleanSql)) {
+      return cleanSql + ';';
+    }
+
+    // Handle UNION
+    if (/\bUNION\b/i.test(cleanSql)) {
+      const parts = cleanSql.split(/\bUNION\b/i);
+      const pipeParts = parts.map(p => this.formatToPipeSyntax(p.trim()));
+      if (pipeParts.length > 1) {
+        let res = pipeParts[0];
+        for (let i = 1; i < pipeParts.length; i++) {
+          const indented = pipeParts[i].split('\n').map(l => '  ' + l).join('\n');
+          res += `\n|> UNION DISTINCT (\n${indented}\n)`;
+        }
+        return res;
+      }
+    }
+
     const selectMatch = cleanSql.match(/SELECT\s+([\s\S]+?)(?=\s+FROM\b)/i);
     const fromMatch = cleanSql.match(/FROM\s+([\s\S]+?)(?=\s+WHERE\b|\s+GROUP BY\b|\s+HAVING\b|\s+ORDER BY\b|\s+LIMIT\b|$)/i);
     const whereMatch = cleanSql.match(/\bWHERE\s+([\s\S]+?)(?=\s+GROUP BY\b|\s+HAVING\b|\s+ORDER BY\b|\s+LIMIT\b|$)/i);
@@ -253,6 +272,17 @@ class SyntaxDialectManager {
   formatToQuorumSyntax(sql) {
     if (!sql) return '';
     const cleanSql = sql.trim().replace(/;$/, '');
+
+    // Handle DML statements directly
+    if (/^(INSERT|UPDATE|DELETE)\b/i.test(cleanSql)) {
+      return cleanSql + ';';
+    }
+
+    // Handle UNION
+    if (/\bUNION\b/i.test(cleanSql)) {
+      const parts = cleanSql.split(/\bUNION\b/i);
+      return parts.map(p => this.formatToQuorumSyntax(p.trim())).join('\n\n');
+    }
 
     const selectMatch = cleanSql.match(/SELECT\s+([\s\S]+?)(?=\s+FROM\b)/i);
     const fromMatch = cleanSql.match(/FROM\s+([\s\S]+?)(?=\s+WHERE\b|\s+GROUP BY\b|\s+HAVING\b|\s+ORDER BY\b|\s+LIMIT\b|$)/i);

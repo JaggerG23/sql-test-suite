@@ -753,15 +753,15 @@ class HumanResolver {
           <span class="badge-training mb-2"><i class="fa-solid fa-graduation-cap"></i> Practice Phase</span>
           <h2 style="font-family: var(--font-title); font-size: 26px; color: #fff; margin: 6px 0 6px 0;">Get Ready for Training!</h2>
           <p class="text-muted fs-sm" style="font-size: 13.5px; margin: 0; color: #cbd5e1; max-width: 620px; line-height: 1.5;">
-            Before you begin, you will complete a <strong>5-question practice phase</strong> to familiarize yourself with the layout of the study.
+            Before you begin, you will complete a <strong>4-question practice phase</strong> to familiarize yourself with the layout of the study.
           </p>
         </div>
 
         <!-- Highlight cards -->
         <div class="training-info-grid">
           <div class="training-info-box">
-            <h4><i class="fa-solid fa-list-ol text-accent"></i> 5 Practice Questions</h4>
-            <p>You will see 5 questions with the same structure as the official study: database schema tables, code snippet, and four candidate output tables.</p>
+            <h4><i class="fa-solid fa-list-ol text-accent"></i> 4 Practice Questions</h4>
+            <p>You will see 4 questions with the same structure as the official study: database schema tables, code snippet, and four candidate output tables.</p>
           </div>
           <div class="training-info-box">
             <h4><i class="fa-solid fa-keyboard text-accent"></i> Easy Controls</h4>
@@ -777,7 +777,7 @@ class HumanResolver {
 
         <div style="text-align: center;">
           <button type="button" id="btn-start-training" class="btn btn-primary" style="padding: 12px 36px; font-weight: 700; font-size: 15px; border-radius: 8px; box-shadow: 0 4px 20px rgba(99, 102, 241, 0.45); cursor: pointer; display: inline-flex; align-items: center; gap: 8px;">
-            <span>Start Training Phase (5 Questions)</span>
+            <span>Start Training Phase (4 Questions)</span>
             <i class="fa-solid fa-arrow-right"></i>
           </button>
         </div>
@@ -814,7 +814,7 @@ class HumanResolver {
           </span>
           <h2 style="font-family: var(--font-title); font-size: 26px; color: #fff; margin: 4px 0 6px 0;">Training Finished!</h2>
           <p class="text-muted fs-sm" style="font-size: 14px; margin: 0; color: #cbd5e1; max-width: 620px; line-height: 1.55;">
-            You have successfully completed all 5 practice questions. You are now familiar with the interface and are ready to begin the official study.
+            You have successfully completed all 4 practice questions. You are now familiar with the interface and are ready to begin the official study.
           </p>
         </div>
 
@@ -1558,7 +1558,7 @@ class HumanResolver {
       ? this.app.analytics.getAssignedGroup()
       : null);
 
-    if (isTraining && (trainingQNum >= 1 && trainingQNum <= 5) && typeof this.app.quizGenerator.generateTrainingQuestion === 'function') {
+    if (isTraining && (trainingQNum >= 1 && trainingQNum <= 4) && typeof this.app.quizGenerator.generateTrainingQuestion === 'function') {
       this.currentQuestion = this.app.quizGenerator.generateTrainingQuestion(
         trainingQNum,
         schema,
@@ -1571,7 +1571,8 @@ class HumanResolver {
         schema,
         this.app.syntaxDialects,
         this.currentGroundTruth,
-        assignedGroup
+        assignedGroup,
+        qNum
       );
     }
 
@@ -1626,7 +1627,7 @@ class HumanResolver {
     this.app.syntaxDialects.setCurrentDialectIndex(dialectIdx);
     const currentDialect = this.app.syntaxDialects.getCurrentDialect();
 
-    if (this.isTrainingChallenge && (this.trainingQuestionNumber >= 1 && this.trainingQuestionNumber <= 5)) {
+    if (this.isTrainingChallenge && (this.trainingQuestionNumber >= 1 && this.trainingQuestionNumber <= 4)) {
       const group = this.adminPreviewGroup || (this.app.analytics ? this.app.analytics.getAssignedGroup() : null);
       this.currentQuestion = this.app.quizGenerator.generateTrainingQuestion(
         this.trainingQuestionNumber,
@@ -1642,7 +1643,8 @@ class HumanResolver {
 
     const dialectSql = this.app.syntaxDialects.formatQueryToDialect(this.currentRawQuery, currentDialect.id);
     const hostLang = this.currentQuestion.hostLanguage || 'javascript';
-    const code = this.app.quizGenerator.generateCodeSnippet(this.currentRawQuery, this.currentSchema, dialectSql, hostLang);
+    const qNum = this.currentQuestion ? this.currentQuestion.qNum : null;
+    const code = this.app.quizGenerator.generateCodeSnippet(this.currentRawQuery, this.currentSchema, dialectSql, hostLang, qNum, this.app.syntaxDialects, currentDialect);
 
     this.currentQuestion.dialect = currentDialect;
     this.currentQuestion.dialectSql = dialectSql;
@@ -1662,7 +1664,7 @@ class HumanResolver {
     this.adminPreviewGroup = group;
     if (this.app) this.app._adminPreviewGroupId = groupId;
 
-    if (this.isTrainingChallenge && (this.trainingQuestionNumber >= 1 && this.trainingQuestionNumber <= 5)) {
+    if (this.isTrainingChallenge && (this.trainingQuestionNumber >= 1 && this.trainingQuestionNumber <= 4)) {
       this.currentQuestion = this.app.quizGenerator.generateTrainingQuestion(
         this.trainingQuestionNumber,
         this.currentSchema,
@@ -1677,7 +1679,8 @@ class HumanResolver {
 
     const dialect = this.app.syntaxDialects.availableDialects[group.sqlDialect] || this.app.syntaxDialects.availableDialects.pipe;
     const dialectSql = this.app.syntaxDialects.formatQueryToDialect(this.currentRawQuery, dialect.id);
-    const code = this.app.quizGenerator.generateCodeSnippet(this.currentRawQuery, this.currentSchema, dialectSql, group.hostLanguage);
+    const qNum = this.currentQuestion ? this.currentQuestion.qNum : null;
+    const code = this.app.quizGenerator.generateCodeSnippet(this.currentRawQuery, this.currentSchema, dialectSql, group.hostLanguage, qNum, this.app.syntaxDialects, dialect);
 
     this.currentQuestion.dialect = dialect;
     this.currentQuestion.dialectSql = dialectSql;
@@ -1702,7 +1705,7 @@ class HumanResolver {
         navElem.textContent = 'Training: Intro';
       } else if (typeof qNum === 'string' && qNum.startsWith('training:')) {
         const t = qNum.split(':')[1] || '1';
-        navElem.textContent = `Training: ${t} / 5`;
+        navElem.textContent = `Training: ${t} / 4`;
       } else if (qNum === 'training_complete') {
         navElem.textContent = 'Training: Complete';
       } else if (qNum === 'final_thoughts') {
@@ -1743,7 +1746,7 @@ class HumanResolver {
             <div class="quiz-instructions-banner" style="padding: 6px 12px; background: rgba(245, 158, 11, 0.12); border: 1px solid rgba(245, 158, 11, 0.4); border-left: 4px solid #f59e0b; border-radius: 6px; font-size: 13.5px; line-height: 1.45; color: #e2e8f0; display: flex; align-items: flex-start; gap: 8px; box-sizing: border-box;">
               <i class="fa-solid fa-graduation-cap" style="color: #f59e0b; font-size: 16px; margin-top: 2px; flex-shrink: 0;"></i>
               <div style="flex: 1; min-width: 0;">
-                <strong style="color: #fde68a;">Practice Question ${trainQNum} of 10:</strong> Read the query and choose what you believe the resulting table would look like using hotkeys <kbd style="background: rgba(255,255,255,0.15); border: 1px solid rgba(255,255,255,0.25); border-radius: 3px; padding: 1px 5px; font-weight: 700; font-size: 12.5px;">1</kbd>–<kbd style="background: rgba(255,255,255,0.15); border: 1px solid rgba(255,255,255,0.25); border-radius: 3px; padding: 1px 5px; font-weight: 700; font-size: 12.5px;">4</kbd>, push <kbd style="background: rgba(255,255,255,0.15); border: 1px solid rgba(255,255,255,0.25); border-radius: 3px; padding: 1px 5px; font-weight: 700; font-size: 12.5px;">ENTER</kbd> to submit your answer, then push <kbd style="background: rgba(255,255,255,0.15); border: 1px solid rgba(255,255,255,0.25); border-radius: 3px; padding: 1px 5px; font-weight: 700; font-size: 12.5px;">ENTER</kbd> again to move to the next question.
+                <strong style="color: #fde68a;">Practice Question ${trainQNum} of 4:</strong> Read the query and choose what you believe the resulting table would look like using hotkeys <kbd style="background: rgba(255,255,255,0.15); border: 1px solid rgba(255,255,255,0.25); border-radius: 3px; padding: 1px 5px; font-weight: 700; font-size: 12.5px;">1</kbd>–<kbd style="background: rgba(255,255,255,0.15); border: 1px solid rgba(255,255,255,0.25); border-radius: 3px; padding: 1px 5px; font-weight: 700; font-size: 12.5px;">4</kbd>, push <kbd style="background: rgba(255,255,255,0.15); border: 1px solid rgba(255,255,255,0.25); border-radius: 3px; padding: 1px 5px; font-weight: 700; font-size: 12.5px;">ENTER</kbd> to submit your answer, then push <kbd style="background: rgba(255,255,255,0.15); border: 1px solid rgba(255,255,255,0.25); border-radius: 3px; padding: 1px 5px; font-weight: 700; font-size: 12.5px;">ENTER</kbd> again to move to the next question.
                 <span style="color: #fca5a5; font-weight: 600; margin-left: 6px; display: inline-block;">
                   <i class="fa-solid fa-triangle-exclamation" style="color: #ef4444; margin-right: 4px;"></i>Do not use the back arrow or refresh button while doing this study.
                 </span>
@@ -1767,7 +1770,7 @@ class HumanResolver {
               <div class="d-flex align-center gap-2">
                 ${isTraining ? `
                   <span class="badge badge-training" style="font-size: 11px; font-weight: 800; padding: 2px 9px; border-radius: 4px; background: rgba(245, 158, 11, 0.25); border: 1px solid rgba(245, 158, 11, 0.6); color: #fde68a; letter-spacing: 0.3px;">
-                    <i class="fa-solid fa-graduation-cap"></i> Practice Question ${trainQNum} / 5
+                    <i class="fa-solid fa-graduation-cap"></i> Practice Question ${trainQNum} / 4
                   </span>
                 ` : `
                   <span class="badge" style="font-size: 11px; font-weight: 800; padding: 2px 9px; border-radius: 4px; background: rgba(99, 102, 241, 0.25); border: 1px solid rgba(99, 102, 241, 0.55); color: #c7d2fe; letter-spacing: 0.3px;">
@@ -1784,10 +1787,10 @@ class HumanResolver {
           <div style="height: 1px; background: linear-gradient(90deg, transparent, var(--color-accent), transparent); margin: 1px 0 4px 0; opacity: 0.7;"></div>
 
           <!-- 2. MAIN 2-COLUMN SPLIT ROW (Left: Shrunk Coding Window, Right: Expanded Solution Boxes) -->
-          <div class="quiz-main-split" style="display: grid; grid-template-columns: 0.7fr 1.3fr; gap: 12px; align-items: flex-start;">
+          <div class="quiz-main-split" style="display: grid; grid-template-columns: 0.7fr 1.3fr; gap: 12px; align-items: stretch;">
             
             <!-- LEFT COLUMN: Fully Extended Coding Window (All Code Lines Visible at Once) -->
-            <div class="quiz-left-column" style="display: flex; flex-direction: column; gap: 4px;">
+            <div class="quiz-left-column" style="display: flex; flex-direction: column; gap: 4px; height: 100%; min-height: 0;">
               ${!isParticipantPage ? `
                 <div class="dialect-config-bar p-1 px-2 d-flex justify-between align-center" style="background: rgba(0, 0, 0, 0.3); border-radius: 5px; font-size: 10.5px;">
                   <div class="group-tabs d-flex align-center gap-1 flex-wrap">
@@ -1802,8 +1805,8 @@ class HumanResolver {
               ` : ''}
 
               <!-- Coding Window: Displays all code lines at once with no scrolling required -->
-              <div class="query-code-preview p-2" style="border: 1px solid rgba(16, 185, 129, 0.3); border-radius: 6px; background: rgba(10, 14, 26, 0.95); flex: 1; min-height: 320px; max-height: 350px; overflow: visible;">
-                <pre style="margin: 0; font-family: var(--font-mono); font-size: 11.5px; line-height: 1.45; color: #e2e8f0; white-space: pre-wrap; overflow: visible;"><code>${this.escapeHTML(q.codeSnippet || q.jsCode)}</code></pre>
+              <div class="query-code-preview p-2" style="border: 1px solid rgba(16, 185, 129, 0.3); border-radius: 6px; background: rgba(10, 14, 26, 0.95); flex: 1; display: flex; flex-direction: column; min-height: 0; box-sizing: border-box; overflow: hidden;">
+                <pre style="margin: 0; font-family: var(--font-mono); font-size: 11.5px; line-height: 1.45; color: #e2e8f0; white-space: pre-wrap; flex: 1; height: 100%; box-sizing: border-box; overflow-y: auto;"><code>${this.escapeHTML(q.codeSnippet || q.jsCode)}</code></pre>
               </div>
             </div>
 
@@ -2181,7 +2184,7 @@ class HumanResolver {
         feedbackBox.style.background = 'rgba(245, 158, 11, 0.12)';
         feedbackBox.style.border = '1px solid rgba(245, 158, 11, 0.35)';
         feedbackBox.style.color = '#fde68a';
-        const isLastPractice = ((this.trainingQuestionNumber || 1) >= 5);
+        const isLastPractice = ((this.trainingQuestionNumber || 1) >= 4);
         feedbackBox.innerHTML = `
           <div style="display: flex; align-items: center; justify-content: space-between; font-size: 11px; white-space: nowrap; gap: 8px; line-height: 1.4;">
             <div style="display: flex; align-items: center; gap: 6px; white-space: nowrap;">
@@ -2211,7 +2214,7 @@ class HumanResolver {
   nextQuestion() {
     if (this.isTrainingChallenge) {
       const curT = this.trainingQuestionNumber || 1;
-      if (curT < 5) {
+      if (curT < 4) {
         this.app.loadIncrementalQuestion(`training:${curT + 1}`);
       } else {
         if (this.app && this.app.analytics && typeof this.app.analytics.setTrainingCompleted === 'function') {

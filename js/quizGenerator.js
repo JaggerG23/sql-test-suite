@@ -9,7 +9,7 @@ class QuizGenerator {
     this.seed = seed;
   }
 
-  generateQuestion(rawSql, schema, dialectManager, groundTruthResult, targetGroup = null) {
+  generateQuestion(rawSql, schema, dialectManager, groundTruthResult, targetGroup = null, qNum = null) {
     if (!rawSql || !schema) {
       return null;
     }
@@ -28,21 +28,77 @@ class QuizGenerator {
 
     const dialectSql = dialectManager ? dialectManager.formatQueryToDialect(rawSql, currentDialect.id) : rawSql;
 
-    const codeSnippet = this.generateCodeSnippet(rawSql, schema, dialectSql, hostLanguage);
-    const options = this.generateTableOptions(groundTruthResult, schema, rawSql);
+    const isQuestion1 = (qNum === 1 || (rawSql && rawSql.startsWith('SELECT orders.id FROM orders JOIN users')));
+    const isStudy2to60 = (!isQuestion1 && qNum !== null && qNum !== undefined && parseInt(qNum, 10) >= 2 && parseInt(qNum, 10) <= 60);
 
-    // Shuffle options and assign hotkeys [1, 2, 3, 4]
-    const shuffled = this.shuffleAndAssignKeys(options);
+    let codeSnippet;
+    let shuffled;
+    let questionSpec = null;
 
-    const questionType = rawSql.includes('GROUP BY') 
-      ? 'Group & Aggregate Transformation'
-      : rawSql.includes('JOIN')
-        ? 'Relational Join Transformation'
-        : 'Filter & Projection Transformation';
+    if (isQuestion1) {
+      const isPython = (hostLanguage === 'python');
+      codeSnippet = isPython
+        ? `counter = 0\nfor i in range(3):\n    counter += 1\n\nquery = """\n${dialectSql}\n"""\n\nresult_table = db.execute(query)`
+        : `let counter = 0;\nfor (let i = 0; i < 3; i++) {\n  counter++;\n}\n\nconst query = \`\n${dialectSql}\n\`;\n\nconst resultTable = db.execute(query);`;
+
+      const rawOptions = [
+        // 1 Correct answer: id values from joined orders strictly matching WHERE orders.id < 3 (only 1 and 2)
+        {
+          columns: ['id'],
+          rows: [[1], [2]],
+          isCorrect: true,
+          explanation: 'Matches orders.id for orders joined with users where orders.id < 3.'
+        },
+        // Distractor 1: obviously wrong column (title from products, no confusing overlap)
+        {
+          columns: ['title'],
+          rows: [['Laptop'], ['Smartphone']],
+          isCorrect: false,
+          explanation: 'Selects the title column from products instead of orders.id.'
+        },
+        // Distractor 2: obviously wrong column (status from orders)
+        {
+          columns: ['status'],
+          rows: [['PENDING'], ['COMPLETED']],
+          isCorrect: false,
+          explanation: 'Selects the status column instead of the id column.'
+        },
+        // Distractor 3: obviously wrong column (amount from orders)
+        {
+          columns: ['amount'],
+          rows: [[29.99], [49.99]],
+          isCorrect: false,
+          explanation: 'Selects the amount column instead of the id column.'
+        }
+      ];
+
+      shuffled = this.shuffleAndAssignKeys(rawOptions);
+    } else if (isStudy2to60) {
+      const qGenerator = (typeof window !== 'undefined' && window.app && window.app.queryGenerator)
+        ? window.app.queryGenerator
+        : new QueryGenerator();
+      questionSpec = qGenerator.getStudyQuestionSpec(schema, parseInt(qNum, 10));
+
+      codeSnippet = this.generateStudyCodeSnippet(questionSpec, schema, dialectManager, currentDialect, hostLanguage);
+      const options = this.generateTableOptions(groundTruthResult, schema, rawSql);
+      shuffled = this.shuffleAndAssignKeys(options);
+    } else {
+      codeSnippet = this.generateCodeSnippet(rawSql, schema, dialectSql, hostLanguage, qNum, dialectManager, currentDialect);
+      const options = this.generateTableOptions(groundTruthResult, schema, rawSql);
+      shuffled = this.shuffleAndAssignKeys(options);
+    }
+
+    const questionType = questionSpec
+      ? `Embedded Query (${(questionSpec.operators || []).join(', ')})`
+      : (rawSql.includes('GROUP BY') 
+        ? 'Group & Aggregate Transformation'
+        : rawSql.includes('JOIN')
+          ? 'Relational Join Transformation'
+          : 'Filter & Projection Transformation');
 
     return {
       type: questionType,
-      title: 'Embedded Query Execution Question',
+      title: isStudy2to60 ? `Embedded Query (Study Question ${qNum} / 60)` : 'Embedded Query Execution Question',
       prompt: 'Select the correct final table output:',
       codeSnippet: codeSnippet,
       jsCode: codeSnippet, // For backward compatibility with existing views
@@ -54,12 +110,16 @@ class QuizGenerator {
       assignedGroupId: group ? group.id : 'unknown',
       options: shuffled.options,
       correctIndex: shuffled.correctIndex,
-      correctKey: shuffled.correctIndex + 1
+      correctKey: shuffled.correctIndex + 1,
+      isTraining: false,
+      qNum: qNum || 1,
+      structureType: questionSpec ? questionSpec.structureType : null,
+      operatorsUsed: questionSpec ? questionSpec.operators : null
     };
   }
 
   /**
-   * Generates custom instructional practice/training questions (T1, T2, T3)
+   * Generates custom instructional practice/training questions (T1, T2, T3, T4)
    */
   generateTrainingQuestion(trainingQNum, schema, dialectManager, targetGroup = null) {
     let group = targetGroup;
@@ -340,80 +400,146 @@ class QuizGenerator {
       };
     }
 
-    if (trainingQNum === 5) {
-      // Training Question 5: SELECT column id, JOIN with another column of same type, WHERE filter (< 3)
-      const rawSql = 'SELECT orders.id FROM orders JOIN users ON orders.user_id = users.id WHERE orders.id < 3;';
-      const dialectSql = dialectManager ? dialectManager.formatQueryToDialect(rawSql, currentDialect.id) : rawSql;
-
-      // Respective code above the query with simple looping counter to the same number as the WHERE statement (3)
-      const codeSnippet = isPython
-        ? `counter = 0\nfor i in range(3):\n    counter += 1\n\nquery = """\n${dialectSql}\n"""\n\nresult_table = db.execute(query)`
-        : `let counter = 0;\nfor (let i = 0; i < 3; i++) {\n  counter++;\n}\n\nconst query = \`\n${dialectSql}\n\`;\n\nconst resultTable = db.execute(query);`;
-
-      const rawOptions = [
-        // 1 Correct answer: id values from joined orders strictly matching WHERE orders.id < 3 (only 1 and 2)
-        {
-          columns: ['id'],
-          rows: [[1], [2]],
-          isCorrect: true,
-          explanation: 'Matches orders.id for orders joined with users where orders.id < 3.'
-        },
-        // Distractor 1: obviously wrong column (title from products, no confusing overlap)
-        {
-          columns: ['title'],
-          rows: [['Laptop'], ['Smartphone']],
-          isCorrect: false,
-          explanation: 'Selects the title column from products instead of orders.id.'
-        },
-        // Distractor 2: obviously wrong column (status from orders)
-        {
-          columns: ['status'],
-          rows: [['PENDING'], ['COMPLETED']],
-          isCorrect: false,
-          explanation: 'Selects the status column instead of the id column.'
-        },
-        // Distractor 3: obviously wrong column (amount from orders)
-        {
-          columns: ['amount'],
-          rows: [[29.99], [49.99]],
-          isCorrect: false,
-          explanation: 'Selects the amount column instead of the id column.'
-        }
-      ];
-
-      const shuffled = this.shuffleAndAssignKeys(rawOptions);
-
-      return {
-        type: 'Training: Query Execution',
-        title: 'Practice Question 5 (T5)',
-        prompt: 'Select the table output for the joined query with WHERE filter:',
-        codeSnippet: codeSnippet,
-        jsCode: codeSnippet,
-        hostLanguage: hostLanguage,
-        rawQuery: rawSql,
-        dialectSql: dialectSql,
-        dialect: currentDialect,
-        assignedGroup: group ? group.name : 'Unknown',
-        assignedGroupId: group ? group.id : 'unknown',
-        options: shuffled.options,
-        correctIndex: shuffled.correctIndex,
-        correctKey: shuffled.correctIndex + 1,
-        isTraining: true,
-        qNum: 5
-      };
-    }
-
     return null;
   }
 
   /**
-   * Routes code generation to Python or JavaScript based on hostLanguage.
+   * Routes code generation to Python or JavaScript based on hostLanguage and structure.
    */
-  generateCodeSnippet(sql, schema, dialectSql, hostLanguage = 'javascript') {
+  generateCodeSnippet(sql, schema, dialectSql, hostLanguage = 'javascript', qNum = null, dialectManager = null, dialect = null) {
+    if (sql && sql.startsWith('SELECT orders.id FROM orders JOIN users')) {
+      return (hostLanguage === 'python')
+        ? `counter = 0\nfor i in range(3):\n    counter += 1\n\nquery = """\n${dialectSql}\n"""\n\nresult_table = db.execute(query)`
+        : `let counter = 0;\nfor (let i = 0; i < 3; i++) {\n  counter++;\n}\n\nconst query = \`\n${dialectSql}\n\`;\n\nconst resultTable = db.execute(query);`;
+    }
+
+    if (qNum !== null && qNum !== undefined && parseInt(qNum, 10) >= 2 && parseInt(qNum, 10) <= 60) {
+      const qGenerator = (typeof window !== 'undefined' && window.app && window.app.queryGenerator)
+        ? window.app.queryGenerator
+        : new QueryGenerator();
+      const spec = qGenerator.getStudyQuestionSpec(schema, parseInt(qNum, 10));
+      return this.generateStudyCodeSnippet(spec, schema, dialectManager, dialect, hostLanguage);
+    }
+
     if (hostLanguage === 'python') {
       return this.generatePythonCodeFromSql(sql, schema, dialectSql);
     }
     return this.generateJsCodeFromSql(sql, schema, dialectSql);
+  }
+
+  /**
+   * Generates code for the 5 randomized structures:
+   * 1- [Python/JavaScript], [Query], [Execute]
+   * 2- [Query], [Python/JavaScript], [Query], [Execute]
+   * 3- [Python/JavaScript], [Query], [Python/JavaScript], [Execute]
+   * 4- [Query], [Python/JavaScript], [Execute]
+   * 5- [Query], [Execute], [Python/JavaScript], [Query], [Execute]
+   */
+  generateStudyCodeSnippet(spec, schema, dialectManager, dialect, hostLanguage = 'javascript') {
+    const isPython = (hostLanguage === 'python');
+    const dialectId = dialect ? dialect.id : (dialectManager ? dialectManager.getCurrentDialect().id : 'pipe');
+
+    const finalDialectSql = dialectManager
+      ? dialectManager.formatQueryToDialect(spec.finalSql, dialectId)
+      : spec.finalSql;
+
+    const initialDialectSql = (spec.initialSql && dialectManager)
+      ? dialectManager.formatQueryToDialect(spec.initialSql, dialectId)
+      : (spec.initialSql || finalDialectSql);
+
+    const setupDialectSql = (spec.setupSql && dialectManager)
+      ? dialectManager.formatQueryToDialect(spec.setupSql, dialectId)
+      : (spec.setupSql || '');
+
+    const structureType = spec.structureType || 1;
+    const blocks = [];
+
+    switch (structureType) {
+      case 1:
+        // Structure 1: [Python/JavaScript], [Query], [Execute]
+        if (isPython) {
+          blocks.push(`status_codes = [200, 201, 204]\nvalid_count = 0\nfor code in status_codes:\n    valid_count += 1`);
+          blocks.push(`query = """\n${finalDialectSql}\n"""`);
+          blocks.push(`result_table = db.execute(query)`);
+        } else {
+          blocks.push(`let statusCodes = [200, 201, 204];\nlet validCount = 0;\nfor (let code of statusCodes) {\n  validCount++;\n}`);
+          blocks.push(`const query = \`\n${finalDialectSql}\n\`;`);
+          blocks.push(`const resultTable = db.execute(query);`);
+        }
+        break;
+
+      case 2:
+        // Structure 2: [Query], [Python/JavaScript], [Query], [Execute]
+        if (isPython) {
+          blocks.push(`initial_query = """\n${initialDialectSql}\n"""`);
+          blocks.push(`clean_sql = initial_query.strip()\nif "WHERE" in clean_sql:\n    active_filter = "valid query criteria"`);
+          blocks.push(`final_query = """\n${finalDialectSql}\n"""`);
+          blocks.push(`result_table = db.execute(final_query)`);
+        } else {
+          blocks.push(`const initialQuery = \`\n${initialDialectSql}\n\`;`);
+          blocks.push(`let cleanSql = initialQuery.trim();\nlet activeFilter = "";\nif (cleanSql.includes("WHERE")) {\n  activeFilter = "valid query criteria";\n}`);
+          blocks.push(`const finalQuery = \`\n${finalDialectSql}\n\`;`);
+          blocks.push(`const resultTable = db.execute(finalQuery);`);
+        }
+        break;
+
+      case 3:
+        // Structure 3: [Python/JavaScript], [Query], [Python/JavaScript], [Execute]
+        if (isPython) {
+          blocks.push(`retry_counter = 0\nwhile retry_counter < 2:\n    retry_counter += 1`);
+          blocks.push(`query = """\n${finalDialectSql}\n"""`);
+          blocks.push(`audit_trail = []\naudit_trail.append(f"Attempt {retry_counter} successfully parsed")`);
+          blocks.push(`result_table = db.execute(query)`);
+        } else {
+          blocks.push(`let retryCounter = 0;\nwhile (retryCounter < 2) {\n  retryCounter++;\n}`);
+          blocks.push(`const query = \`\n${finalDialectSql}\n\`;`);
+          blocks.push(`let auditTrail = [];\nauditTrail.push(\`Attempt \${retryCounter} successfully parsed\`);`);
+          blocks.push(`const resultTable = db.execute(query);`);
+        }
+        break;
+
+      case 4:
+        // Structure 4: [Query], [Python/JavaScript], [Execute]
+        if (isPython) {
+          blocks.push(`query = """\n${finalDialectSql}\n"""`);
+          blocks.push(`batch_records = ["batch_a", "batch_b", "batch_c"]\nprocessed_count = 0\nfor record in batch_records:\n    processed_count += 1`);
+          blocks.push(`result_table = db.execute(query)`);
+        } else {
+          blocks.push(`const query = \`\n${finalDialectSql}\n\`;`);
+          blocks.push(`let batchRecords = ["batch_a", "batch_b", "batch_c"];\nlet processedCount = 0;\nfor (let record of batchRecords) {\n  processedCount++;\n}`);
+          blocks.push(`const resultTable = db.execute(query);`);
+        }
+        break;
+
+      case 5:
+        // Structure 5: [Query], [Execute], [Python/JavaScript], [Query], [Execute]
+        if (isPython) {
+          blocks.push(`setup_query = """\n${setupDialectSql}\n"""`);
+          blocks.push(`db.execute(setup_query)`);
+          blocks.push(`sync_checkpoints = ["checkpoint_1", "checkpoint_2"]\nsync_progress = 0\nfor cp in sync_checkpoints:\n    sync_progress += 1`);
+          blocks.push(`final_query = """\n${finalDialectSql}\n"""`);
+          blocks.push(`result_table = db.execute(final_query)`);
+        } else {
+          blocks.push(`const setupQuery = \`\n${setupDialectSql}\n\`;`);
+          blocks.push(`db.execute(setupQuery);`);
+          blocks.push(`let syncCheckpoints = ["checkpoint_1", "checkpoint_2"];\nlet syncProgress = 0;\nfor (let cp of syncCheckpoints) {\n  syncProgress++;\n}`);
+          blocks.push(`const finalQuery = \`\n${finalDialectSql}\n\`;`);
+          blocks.push(`const resultTable = db.execute(finalQuery);`);
+        }
+        break;
+
+      default:
+        if (isPython) {
+          blocks.push(`query = """\n${finalDialectSql}\n"""`);
+          blocks.push(`result_table = db.execute(query)`);
+        } else {
+          blocks.push(`const query = \`\n${finalDialectSql}\n\`;`);
+          blocks.push(`const resultTable = db.execute(query);`);
+        }
+        break;
+    }
+
+    return blocks.join('\n\n');
   }
 
   /**

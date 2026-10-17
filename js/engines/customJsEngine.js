@@ -17,6 +17,39 @@ class CustomJsEngine {
     try {
       if (!this.schema) throw new Error('Schema not loaded in JS Engine');
 
+      // Check for multi-statement execution (e.g. UPDATE; SELECT)
+      if (sqlQuery && sqlQuery.includes(';') && sqlQuery.trim().split(';').filter(s => s.trim().length > 0).length > 1) {
+        const stmts = sqlQuery.trim().split(';').map(s => s.trim()).filter(s => s.length > 0);
+        const selectStmt = stmts.find(s => /^SELECT\b/i.test(s)) || stmts[stmts.length - 1];
+        return this.executeQuery(selectStmt);
+      }
+
+      // Check for UNION
+      if (sqlQuery && /\bUNION\b/i.test(sqlQuery)) {
+        const parts = sqlQuery.split(/\bUNION\b/i);
+        const res1 = this.executeQuery(parts[0].trim());
+        const res2 = this.executeQuery(parts[1].trim());
+        if (res1.success && res2.success) {
+          const seen = new Set();
+          const combinedRows = [];
+          [...res1.rows, ...res2.rows].forEach(r => {
+            const key = JSON.stringify(r);
+            if (!seen.has(key)) {
+              seen.add(key);
+              combinedRows.push(r);
+            }
+          });
+          return {
+            success: true,
+            columns: res1.columns.length > 0 ? res1.columns : res2.columns,
+            rows: combinedRows,
+            rowCount: combinedRows.length,
+            executionTimeMs: parseFloat((performance.now() - startTime).toFixed(3)),
+            astTrace: [...res1.astTrace, '[UNION] Combined distinct tuples', ...res2.astTrace]
+          };
+        }
+      }
+
       traceLogs.push(`[AST PARSER] Parsing query token sequence...`);
       const ast = this.parseQuery(sqlQuery);
       traceLogs.push(`[AST TREE] Main Table: '${ast.mainTable}' | Joins: ${ast.joins.length} | Aggregations: ${ast.aggregates.length}`);
@@ -455,6 +488,17 @@ class CustomJsEngine {
       if (op === '<') return Number(leftVal) < numVal;
       if (op === '>=') return Number(leftVal) >= numVal;
       if (op === '<=') return Number(leftVal) <= numVal;
+    }
+
+    // Handle LIKE operator
+    const likeMatch = condStr.match(/([a-zA-Z0-9._]+)\s+LIKE\s+['"](.*?)['"]/i);
+    if (likeMatch) {
+      const leftCol = likeMatch[1].trim();
+      const pattern = likeMatch[2];
+      const leftVal = String(tuple[leftCol] !== undefined ? tuple[leftCol] : (tuple[Object.keys(tuple).find(k => k.endsWith(`.${leftCol}`))] || ''));
+      const escaped = pattern.replace(/[.+^${}()|[\]\\]/g, '\\$&').replace(/%/g, '.*').replace(/_/g, '.');
+      const regex = new RegExp(`^${escaped}$`, 'i');
+      return regex.test(leftVal);
     }
 
     return true;
