@@ -1007,6 +1007,11 @@ class HumanResolver {
   }
 
   renderExtraCreditScreen() {
+    if (this._skipCountdownInterval) {
+      clearInterval(this._skipCountdownInterval);
+      this._skipCountdownInterval = null;
+    }
+
     this.currentQuestion = null;
     this.isAnswered = true;
     this.isTrainingChallenge = false;
@@ -1018,10 +1023,10 @@ class HumanResolver {
     container.innerHTML = `
       <div class="card quiz-card glow-card" style="max-width: 800px; margin: 20px auto; padding: 32px 28px; background: rgba(18, 22, 34, 0.96); border: 1.5px solid rgba(99, 102, 241, 0.45); border-radius: 14px; box-shadow: 0 16px 50px rgba(0,0,0,0.6); position: relative;">
         
-        <!-- Skip for No Extra Credit (Top Right) -->
+        <!-- Skip for No Extra Credit (Top Right) with 5-second safety delay -->
         <div style="position: absolute; top: 20px; right: 24px; z-index: 10;">
-          <button type="button" id="btn-skip-extra-credit" class="btn" style="padding: 7px 15px; font-size: 12px; font-weight: 600; border-radius: 6px; background: rgba(255, 255, 255, 0.08); border: 1px solid rgba(255, 255, 255, 0.2); color: #cbd5e1; cursor: pointer; display: inline-flex; align-items: center; gap: 6px; transition: all 0.2s ease;">
-            <span>Skip for No Extra Credit</span>
+          <button type="button" id="btn-skip-extra-credit" class="btn" disabled title="Available in 5 seconds" style="padding: 7px 15px; font-size: 12px; font-weight: 600; border-radius: 6px; background: rgba(255, 255, 255, 0.05); border: 1px solid rgba(255, 255, 255, 0.12); color: #64748b; cursor: not-allowed; opacity: 0.55; display: inline-flex; align-items: center; gap: 6px; transition: all 0.2s ease;">
+            <span id="btn-skip-text">Skip for No Extra Credit (5s)</span>
             <i class="fa-solid fa-angles-right" style="font-size: 11px;"></i>
           </button>
         </div>
@@ -1283,6 +1288,11 @@ class HumanResolver {
       this.extraCreditSubmitted = true;
       this.studyCompletedSuccessfully = true;
 
+      if (this._skipCountdownInterval) {
+        clearInterval(this._skipCountdownInterval);
+        this._skipCountdownInterval = null;
+      }
+
       if (this.app && typeof this.app.loadIncrementalQuestion === 'function') {
         this.app.loadIncrementalQuestion('thank_you');
       } else {
@@ -1295,18 +1305,59 @@ class HumanResolver {
     }
 
     const btnSkip = document.getElementById('btn-skip-extra-credit');
+    const btnSkipText = document.getElementById('btn-skip-text');
+
+    // 5-second delay to prevent accidental skips
+    let remainingSkipSeconds = 5;
+    this._skipCountdownInterval = setInterval(() => {
+      remainingSkipSeconds--;
+      if (remainingSkipSeconds > 0) {
+        if (btnSkipText) {
+          btnSkipText.textContent = `Skip for No Extra Credit (${remainingSkipSeconds}s)`;
+        }
+        if (btnSkip) {
+          btnSkip.title = `Available in ${remainingSkipSeconds} second${remainingSkipSeconds === 1 ? '' : 's'}`;
+        }
+      } else {
+        if (this._skipCountdownInterval) {
+          clearInterval(this._skipCountdownInterval);
+          this._skipCountdownInterval = null;
+        }
+        if (btnSkip) {
+          btnSkip.disabled = false;
+          btnSkip.style.opacity = '1';
+          btnSkip.style.cursor = 'pointer';
+          btnSkip.style.color = '#cbd5e1';
+          btnSkip.style.background = 'rgba(255, 255, 255, 0.08)';
+          btnSkip.style.borderColor = 'rgba(255, 255, 255, 0.2)';
+          btnSkip.removeAttribute('title');
+        }
+        if (btnSkipText) {
+          btnSkipText.textContent = 'Skip for No Extra Credit';
+        }
+      }
+    }, 1000);
+
     if (btnSkip) {
       btnSkip.addEventListener('mouseenter', () => {
+        if (btnSkip.disabled) return;
         btnSkip.style.background = 'rgba(239, 68, 68, 0.15)';
         btnSkip.style.borderColor = 'rgba(239, 68, 68, 0.4)';
         btnSkip.style.color = '#fca5a5';
       });
       btnSkip.addEventListener('mouseleave', () => {
+        if (btnSkip.disabled) return;
         btnSkip.style.background = 'rgba(255, 255, 255, 0.08)';
         btnSkip.style.borderColor = 'rgba(255, 255, 255, 0.2)';
         btnSkip.style.color = '#cbd5e1';
       });
       btnSkip.addEventListener('click', () => {
+        if (btnSkip.disabled) return;
+        if (this._skipCountdownInterval) {
+          clearInterval(this._skipCountdownInterval);
+          this._skipCountdownInterval = null;
+        }
+
         try {
           localStorage.setItem('sql_study_extra_credit_submitted', 'false');
           localStorage.setItem('sql_study_extra_credit_skipped', 'true');
@@ -1330,6 +1381,10 @@ class HumanResolver {
   }
 
   renderThankYouScreen(emailParam, courseParam) {
+    if (this._skipCountdownInterval) {
+      clearInterval(this._skipCountdownInterval);
+      this._skipCountdownInterval = null;
+    }
     if (this.app) {
       this.app.currentQuestionNumber = 'thank_you';
     }
