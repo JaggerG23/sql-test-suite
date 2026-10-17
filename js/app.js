@@ -1940,10 +1940,10 @@ class QueryExperimentApp {
           const chevronIcon = isOpen ? 'fa-chevron-up' : 'fa-chevron-down';
 
           return `
-            <div class="user-folder-card mb-2" style="border: 1px solid ${isLatestUser ? 'var(--color-accent)' : 'rgba(255,255,255,0.1)'}; border-radius: 8px; background: rgba(14, 18, 28, 0.85); overflow: hidden; box-shadow: 0 4px 12px rgba(0,0,0,0.25);">
+            <div class="user-folder-card mb-2" style="border: 1px solid ${isLatestUser ? 'var(--color-accent)' : 'rgba(255,255,255,0.1)'}; border-radius: 8px; background: rgba(14, 18, 28, 0.85); overflow: hidden; box-shadow: 0 4px 12px rgba(0,0,0,0.25); max-width: 100%; min-width: 0;">
               <!-- Folder Header Bar -->
-              <div class="user-folder-header p-2 px-3 d-flex justify-between align-center" style="background: rgba(0,0,0,0.4); cursor: pointer; border-bottom: 1px solid rgba(255,255,255,0.08); display: flex; justify-content: space-between; align-items: center;" onclick="window.app.toggleUserFolder('${safeUidId}')">
-                <div class="d-flex align-center gap-2" style="display: flex; align-items: center; gap: 8px;">
+              <div class="user-folder-header p-2 px-3 d-flex justify-between align-center" style="background: rgba(0,0,0,0.4); cursor: pointer; border-bottom: 1px solid rgba(255,255,255,0.08); display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px; min-width: 0;" onclick="window.app.toggleUserFolder('${safeUidId}')">
+                <div class="d-flex align-center gap-2 flex-wrap" style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap; flex: 1; min-width: 0;">
                   <i class="fa-solid ${folderIcon} text-warning" id="folder-icon-${safeUidId}" style="font-size: 16px;"></i>
                   <strong style="color: var(--color-primary); font-size: 13px;">User ID: ${this.escapeHTML(uid)}</strong>
                   <span class="badge" style="background: rgba(99, 102, 241, 0.2); border: 1px solid rgba(99, 102, 241, 0.4); color: #a5b4fc; font-size: 10px;"><i class="fa-solid fa-layer-group"></i> ${this.escapeHTML(group.assignedGroupName || 'Unassigned')}</span>
@@ -1953,11 +1953,11 @@ class QueryExperimentApp {
                   <span class="badge badge-outline text-muted" style="font-size: 10px;" title="Answer Changes: ${group.totalAnswerChanges || 0} total (avg ${group.avgAnswerChanges || '0.00'}/q)"><i class="fa-solid fa-arrows-rotate"></i> ${group.totalAnswerChanges || 0} changes</span>
                   ${group.focusLostCount > 0 ? `<span class="badge badge-danger" style="font-size: 9.5px;" title="Focus lost ${group.focusLostCount} times"><i class="fa-solid fa-triangle-exclamation"></i> Focus Lost (${group.focusLostCount}x)</span>` : ''}
                 </div>
-                <div class="d-flex align-center gap-2" style="display: flex; align-items: center; gap: 8px;" onclick="event.stopPropagation();">
-                  <button class="btn btn-sm btn-accent" style="padding: 2px 8px; font-size: 10.5px;" onclick="window.app.exportUserCSV('${this.escapeHTML(uid)}')" title="Export CSV for ${this.escapeHTML(uid)}">
+                <div class="d-flex align-center gap-2" style="display: flex; align-items: center; gap: 8px; flex-shrink: 0; margin-left: auto;" onclick="event.stopPropagation();">
+                  <button class="btn btn-sm btn-accent" style="padding: 2px 8px; font-size: 10.5px; white-space: nowrap;" onclick="window.app.exportUserCSV('${this.escapeHTML(uid)}')" title="Export CSV for ${this.escapeHTML(uid)}">
                     <i class="fa-solid fa-file-csv"></i> Export CSV
                   </button>
-                  <button class="btn btn-sm btn-danger" style="padding: 2px 8px; font-size: 10.5px; background: rgba(239,68,68,0.2); border-color: rgba(239,68,68,0.4); color: #f87171;" onclick="window.app.deleteUserResponses('${this.escapeHTML(uid)}')" title="Delete data for ${this.escapeHTML(uid)}">
+                  <button class="btn btn-sm btn-danger" style="padding: 2px 8px; font-size: 10.5px; background: rgba(239,68,68,0.2); border-color: rgba(239,68,68,0.4); color: #f87171; white-space: nowrap;" onclick="window.app.deleteUserResponses('${this.escapeHTML(uid)}')" title="Delete data for ${this.escapeHTML(uid)}">
                     <i class="fa-solid fa-trash-can"></i>
                   </button>
                   <i class="fa-solid ${chevronIcon} text-muted" id="folder-chevron-${safeUidId}" style="font-size: 12px; transition: transform 0.2s;"></i>
@@ -1965,7 +1965,7 @@ class QueryExperimentApp {
               </div>
 
               <!-- Folder Body (Table of Event Logs for this User) -->
-              <div class="user-folder-body p-2" id="folder-body-${safeUidId}" style="display: ${displayStyle}; background: rgba(10, 14, 26, 0.95);">
+              <div class="user-folder-body p-2" id="folder-body-${safeUidId}" style="display: ${displayStyle}; background: rgba(10, 14, 26, 0.95); width: 100%; max-width: 100%; min-width: 0; box-sizing: border-box; overflow: hidden;">
                 ${group.demographics || group.finalThoughts ? `
                   <div class="user-demo-bar p-2 mb-2" style="background: rgba(99, 102, 241, 0.08); border: 1px solid rgba(99, 102, 241, 0.2); border-radius: 6px; font-size: 11px;">
                     ${group.demographics ? `
@@ -1989,8 +1989,8 @@ class QueryExperimentApp {
                     ` : ''}
                   </div>
                 ` : ''}
-                <div class="table-responsive" style="max-height: 320px; overflow: auto; border: 1px solid rgba(255,255,255,0.06); border-radius: 6px;">
-                  <table class="batch-results-table" style="white-space: nowrap; font-size: 11px;">
+                <div class="table-responsive" style="max-height: 380px; overflow-x: auto; overflow-y: auto; width: 100%; max-width: 100%; min-width: 0; box-sizing: border-box; border: 1px solid rgba(255,255,255,0.08); border-radius: 6px;">
+                  <table class="batch-results-table" style="width: max-content; min-width: 100%; border-collapse: collapse; white-space: nowrap; font-size: 11px;">
                     <thead>
                       <tr style="position: sticky; top: 0; background: #111520; z-index: 2;">
                         <th>#</th>

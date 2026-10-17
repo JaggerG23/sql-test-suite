@@ -13,13 +13,20 @@ class AdminAuthManager {
     this.injectStyles();
     this.patchFetch();
 
+    // If user has no token stored, lock immediately without any network wait
+    if (!this.getToken()) {
+      this.lockDashboard();
+    }
+
     if (document.readyState === 'loading') {
       document.addEventListener('DOMContentLoaded', () => {
         this.bindLogoutButton();
+        this.bindLoginForm();
         this.checkAuthStatus();
       });
     } else {
       this.bindLogoutButton();
+      this.bindLoginForm();
       this.checkAuthStatus();
     }
   }
@@ -29,27 +36,19 @@ class AdminAuthManager {
     const style = document.createElement('style');
     style.id = 'admin-auth-styles';
     style.textContent = `
-      body.admin-locked .app-container {
+      html.admin-locked .app-container,
+      body.admin-locked .app-container,
+      body.admin-verifying .app-container {
         display: none !important;
       }
 
-      .admin-modal-overlay {
-        position: fixed;
-        top: 0;
-        left: 0;
-        width: 100vw;
-        height: 100vh;
-        background: rgba(8, 12, 24, 0.94);
-        backdrop-filter: blur(16px);
-        -webkit-backdrop-filter: blur(16px);
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        z-index: 999999;
-        padding: 20px;
-        box-sizing: border-box;
+      html.admin-locked #admin-login-overlay,
+      body.admin-locked #admin-login-overlay {
+        display: flex !important;
       }
 
+      body.admin-verifying #admin-login-overlay,
+      body.admin-unlocked #admin-login-overlay,
       .admin-modal-overlay.hidden {
         display: none !important;
       }
@@ -253,13 +252,50 @@ class AdminAuthManager {
   }
 
   lockDashboard() {
-    document.body.classList.add('admin-locked');
+    if (document.documentElement) {
+      document.documentElement.classList.add('admin-locked');
+      document.documentElement.classList.remove('admin-unlocked', 'has-admin-token');
+    }
+    if (document.body) {
+      document.body.classList.add('admin-locked');
+      document.body.classList.remove('admin-unlocked', 'admin-verifying');
+    }
     this.showLoginModal();
   }
 
   unlockDashboard() {
-    document.body.classList.remove('admin-locked');
+    if (document.documentElement) {
+      document.documentElement.classList.remove('admin-locked');
+      document.documentElement.classList.add('admin-unlocked');
+    }
+    if (document.body) {
+      document.body.classList.remove('admin-locked', 'admin-verifying');
+      document.body.classList.add('admin-unlocked');
+    }
     this.hideLoginModal();
+  }
+
+  bindLoginForm(modal = document.getElementById('admin-login-overlay')) {
+    if (!modal || modal.dataset.bound === 'true') return;
+    modal.dataset.bound = 'true';
+
+    const form = modal.querySelector('#admin-login-form');
+    if (form) {
+      form.addEventListener('submit', (e) => {
+        e.preventDefault();
+        this.handleLogin();
+      });
+    }
+
+    const toggleBtn = modal.querySelector('#btn-toggle-pass');
+    const passInput = modal.querySelector('#admin-pass-input');
+    if (toggleBtn && passInput) {
+      toggleBtn.addEventListener('click', () => {
+        const isPass = passInput.type === 'password';
+        passInput.type = isPass ? 'text' : 'password';
+        toggleBtn.innerHTML = isPass ? '<i class="fa-solid fa-eye-slash"></i>' : '<i class="fa-solid fa-eye"></i>';
+      });
+    }
   }
 
   showLoginModal() {
@@ -280,7 +316,7 @@ class AdminAuthManager {
               <label for="admin-pass-input"><i class="fa-solid fa-key"></i> Admin Password:</label>
               <div class="input-wrapper">
                 <input type="password" id="admin-pass-input" placeholder="Enter admin password..." required autofocus autocomplete="current-password">
-                <button type="button" id="btn-toggle-pass" class="btn-toggle-eye" title="Toggle Visibility">
+                <button type="button" id="btn-toggle-pass" class="btn-toggle-eye" title="Toggle Visibility" tabindex="-1">
                   <i class="fa-solid fa-eye"></i>
                 </button>
               </div>
@@ -297,29 +333,18 @@ class AdminAuthManager {
           </form>
         </div>
       `;
-      document.body.appendChild(modal);
-
-      const form = modal.querySelector('#admin-login-form');
-      form.addEventListener('submit', (e) => {
-        e.preventDefault();
-        this.handleLogin();
-      });
-
-      const toggleBtn = modal.querySelector('#btn-toggle-pass');
-      const passInput = modal.querySelector('#admin-pass-input');
-      toggleBtn.addEventListener('click', () => {
-        const isPass = passInput.type === 'password';
-        passInput.type = isPass ? 'text' : 'password';
-        toggleBtn.innerHTML = isPass ? '<i class="fa-solid fa-eye-slash"></i>' : '<i class="fa-solid fa-eye"></i>';
-      });
+      if (document.body) {
+        document.body.appendChild(modal);
+      }
     }
 
+    this.bindLoginForm(modal);
     modal.classList.remove('hidden');
     modal.style.display = 'flex';
     setTimeout(() => {
       const passInput = document.getElementById('admin-pass-input');
       if (passInput) passInput.focus();
-    }, 100);
+    }, 50);
   }
 
   hideLoginModal() {
@@ -327,7 +352,6 @@ class AdminAuthManager {
     if (modal) {
       modal.classList.add('hidden');
       modal.style.display = 'none';
-      modal.remove();
     }
   }
 

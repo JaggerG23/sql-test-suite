@@ -136,15 +136,18 @@ body {
 /* Main Layout */
 .main-layout {
   display: grid;
-  grid-template-columns: 1fr;
+  grid-template-columns: minmax(0, 1fr);
   gap: 20px;
   padding: 20px;
   flex: 1;
+  min-width: 0;
+  max-width: 100%;
+  box-sizing: border-box;
 }
 
 @media (max-width: 1024px) {
   .main-layout {
-    grid-template-columns: 1fr;
+    grid-template-columns: minmax(0, 1fr);
   }
 }
 
@@ -158,6 +161,9 @@ body {
   overflow: hidden;
   display: flex;
   flex-direction: column;
+  min-width: 0;
+  max-width: 100%;
+  box-sizing: border-box;
 }
 
 .card-header {
@@ -167,6 +173,9 @@ body {
   justify-content: space-between;
   align-items: center;
   background: rgba(255, 255, 255, 0.02);
+  min-width: 0;
+  max-width: 100%;
+  box-sizing: border-box;
 }
 
 .card-header h3, .card-header h4 {
@@ -180,6 +189,9 @@ body {
 
 .card-body {
   padding: 16px;
+  min-width: 0;
+  max-width: 100%;
+  box-sizing: border-box;
 }
 
 .sidebar-panel {
@@ -192,6 +204,9 @@ body {
   display: flex;
   flex-direction: column;
   gap: 16px;
+  min-width: 0;
+  max-width: 100%;
+  box-sizing: border-box;
 }
 
 /* Form Inputs & Buttons */
@@ -490,8 +505,41 @@ input[type="range"] {
 
 /* Tables & Results Data */
 .table-responsive {
-  max-height: 280px;
-  overflow: auto;
+  max-height: 380px;
+  overflow-x: auto !important;
+  overflow-y: auto !important;
+  width: 100% !important;
+  max-width: 100% !important;
+  min-width: 0 !important;
+  box-sizing: border-box !important;
+  display: block;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 6px;
+  background: rgba(10, 14, 26, 0.7);
+  scrollbar-color: rgba(99, 102, 241, 0.6) rgba(0, 0, 0, 0.4);
+  scrollbar-width: thin;
+  -webkit-overflow-scrolling: touch;
+}
+
+.table-responsive::-webkit-scrollbar {
+  height: 10px;
+  width: 8px;
+}
+
+.table-responsive::-webkit-scrollbar-track {
+  background: rgba(0, 0, 0, 0.45);
+  border-radius: 6px;
+  margin: 0 4px;
+}
+
+.table-responsive::-webkit-scrollbar-thumb {
+  background: rgba(99, 102, 241, 0.6);
+  border-radius: 6px;
+  border: 2px solid rgba(15, 20, 32, 0.9);
+}
+
+.table-responsive::-webkit-scrollbar-thumb:hover {
+  background: rgba(99, 102, 241, 0.9);
 }
 
 table.data-table {
@@ -578,21 +626,65 @@ table.data-table tr:nth-child(even) {
 .stat-danger .stat-value { color: var(--color-danger); }
 
 .batch-results-table {
-  width: 100%;
+  width: max-content !important;
+  min-width: 100% !important;
   border-collapse: collapse;
-  font-size: 12px;
+  font-size: 11.5px;
+  white-space: nowrap;
 }
 
 .batch-results-table th {
   text-align: left;
   padding: 8px 12px;
-  background: rgba(255, 255, 255, 0.04);
-  color: var(--text-muted);
+  background: #111520;
+  color: #94a3b8;
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.4);
+  white-space: nowrap;
 }
 
 .batch-results-table td {
   padding: 8px 12px;
   border-bottom: 1px solid rgba(255, 255, 255, 0.04);
+  vertical-align: middle;
+  white-space: nowrap;
+}
+
+.batch-results-table th:last-child,
+.batch-results-table td:last-child {
+  padding-right: 32px !important;
+}
+
+.batch-results-table tr:hover td {
+  background: rgba(255, 255, 255, 0.03);
+}
+
+/* User Folder Accordion & Width Bounds */
+.user-folder-card {
+  min-width: 0 !important;
+  max-width: 100% !important;
+  box-sizing: border-box !important;
+}
+
+.user-folder-header {
+  min-width: 0 !important;
+  max-width: 100% !important;
+  box-sizing: border-box !important;
+}
+
+.user-folder-body {
+  min-width: 0 !important;
+  max-width: 100% !important;
+  box-sizing: border-box !important;
+}
+
+#analytics-user-folders-container {
+  min-width: 0 !important;
+  max-width: 100% !important;
+  box-sizing: border-box !important;
 }
 
 .text-muted { color: var(--text-muted); }
@@ -1006,7 +1098,20 @@ kbd {
    Admin Dashboard Access Control & Login Modal
    ========================================================================== */
 
-body.admin-locked .app-container {
+html.admin-locked .app-container,
+body.admin-locked .app-container,
+body.admin-verifying .app-container {
+  display: none !important;
+}
+
+html.admin-locked #admin-login-overlay,
+body.admin-locked #admin-login-overlay {
+  display: flex !important;
+}
+
+body.admin-verifying #admin-login-overlay,
+body.admin-unlocked #admin-login-overlay,
+.admin-modal-overlay.hidden {
   display: none !important;
 }
 
@@ -1016,14 +1121,15 @@ body.admin-locked .app-container {
   left: 0;
   width: 100vw;
   height: 100vh;
-  background: rgba(8, 12, 24, 0.92);
+  background: rgba(8, 12, 24, 0.94);
   backdrop-filter: blur(16px);
   -webkit-backdrop-filter: blur(16px);
   display: flex;
   align-items: center;
   justify-content: center;
-  z-index: 99999;
+  z-index: 999999;
   padding: 20px;
+  box-sizing: border-box;
 }
 
 .admin-modal-card {

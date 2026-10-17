@@ -1,9 +1,42 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en" class="admin-locked">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Admin Dashboard</title>
+  <!-- Critical Anti-FOUC & Admin Security Guard: Hide admin dashboard before initial paint -->
+  <style id="admin-critical-auth-css">
+    html.admin-locked .app-container,
+    body.admin-locked .app-container,
+    body.admin-verifying .app-container {
+      display: none !important;
+    }
+    html.admin-locked #admin-login-overlay,
+    body.admin-locked #admin-login-overlay {
+      display: flex !important;
+    }
+    body.admin-verifying #admin-login-overlay,
+    body.admin-unlocked #admin-login-overlay,
+    #admin-login-overlay.hidden {
+      display: none !important;
+    }
+  </style>
+  <script>
+    // Synchronous pre-render check to ensure 0ms flash of admin controls
+    (function() {
+      try {
+        var token = sessionStorage.getItem('admin_session_token');
+        if (token) {
+          document.documentElement.classList.remove('admin-locked');
+          document.documentElement.classList.add('has-admin-token');
+        } else {
+          document.documentElement.classList.add('admin-locked');
+        }
+      } catch(e) {
+        document.documentElement.classList.add('admin-locked');
+      }
+    })();
+  </script>
   <!-- Google Fonts -->
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -11,11 +44,49 @@
   <!-- FontAwesome Icons -->
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
   <!-- CSS -->
-  <link rel="stylesheet" href="styles.css?v=28">
+  <link rel="stylesheet" href="styles.css?v=30">
   <!-- sql.js (SQLite WASM) library -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/sql.js/1.8.0/sql-wasm.js"></script>
 </head>
-<body class="dark-theme">
+<body class="dark-theme admin-locked">
+  <script>
+    if (sessionStorage.getItem('admin_session_token')) {
+      document.body.classList.remove('admin-locked');
+      document.body.classList.add('admin-verifying');
+    }
+  </script>
+
+  <!-- Admin Authentication Modal (Statically embedded for immediate 0ms display with zero content flash) -->
+  <div id="admin-login-overlay" class="admin-modal-overlay">
+    <div class="admin-modal-card">
+      <div class="admin-modal-header">
+        <div class="admin-modal-icon"><i class="fa-solid fa-user-shield"></i></div>
+        <h2>Admin Dashboard Restricted</h2>
+        <p>Authentication required to access administrative SQL matrix controls.</p>
+      </div>
+      <form id="admin-login-form" class="admin-modal-form" onsubmit="return false;">
+        <div class="form-group">
+          <label for="admin-pass-input"><i class="fa-solid fa-key"></i> Admin Password:</label>
+          <div class="input-wrapper">
+            <input type="password" id="admin-pass-input" placeholder="Enter admin password..." required autofocus autocomplete="current-password">
+            <button type="button" id="btn-toggle-pass" class="btn-toggle-eye" title="Toggle Visibility" tabindex="-1">
+              <i class="fa-solid fa-eye"></i>
+            </button>
+          </div>
+        </div>
+        <div id="admin-login-error" class="admin-error-badge" style="display: none;"></div>
+        <div class="admin-modal-actions">
+          <button type="submit" id="btn-admin-login-submit" class="btn btn-primary btn-block">
+            <i class="fa-solid fa-lock-open"></i> Unlock Dashboard
+          </button>
+          <a href="participant.html?new_participant=1" class="btn btn-secondary btn-block text-center" style="margin-top: 8px; text-decoration: none; text-align: center; display: block;">
+            <i class="fa-solid fa-arrow-left"></i> Go to Public Participant View
+          </a>
+        </div>
+      </form>
+    </div>
+  </div>
+
   <div class="app-container">
     <!-- Header Navbar -->
     <header class="app-header" style="padding: 6px 16px;">
@@ -395,7 +466,7 @@
               </div>
 
               <!-- Raw Telemetry Folders (Grouped per unique UserID) -->
-              <div class="section-title mb-2 d-flex justify-between align-center" style="display: flex; justify-content: space-between; align-items: center;">
+              <div class="section-title mb-2 d-flex justify-between align-center" style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px;">
                 <h4><i class="fa-solid fa-folder-tree text-warning"></i> Raw Event Log Data (Grouped per User ID)</h4>
                 <div class="d-flex align-center gap-2" style="display: flex; align-items: center; gap: 8px;">
                   <button id="btn-expand-all-folders" class="btn btn-sm btn-ghost" title="Expand All User Folders" style="font-size: 11px; padding: 2px 8px; border: 1px solid rgba(255,255,255,0.15);">
@@ -460,7 +531,7 @@
 
   <!-- JS Module Scripts -->
   <script src="js/config.js?v=22"></script>
-  <script src="js/adminAuth.js?v=22"></script>
+  <script src="js/adminAuth.js?v=23"></script>
   <script src="js/schemaGenerator.js?v=21"></script>
   <script src="js/queryGenerator.js?v=21"></script>
   <script src="js/syntaxDialects.js?v=21"></script>
@@ -470,6 +541,6 @@
   <script src="js/engines/customJsEngine.js?v=21"></script>
   <script src="js/engines/optimizerEngine.js?v=21"></script>
   <script src="js/humanResolver.js?v=55"></script>
-  <script src="js/app.js?v=34"></script>
+  <script src="js/app.js?v=35"></script>
 </body>
 </html>
