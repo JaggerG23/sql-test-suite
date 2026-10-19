@@ -28,7 +28,7 @@ class QuizGenerator {
 
     const dialectSql = dialectManager ? dialectManager.formatQueryToDialect(rawSql, currentDialect.id) : rawSql;
 
-    const isQuestion1 = (qNum === 1 || (rawSql && rawSql.startsWith('SELECT orders.id FROM orders JOIN users')));
+    const isQuestion1 = (qNum === 1 || (rawSql && rawSql.includes('FROM orders JOIN users ON orders.user_id = users.id')));
     const isStudy2to60 = (!isQuestion1 && qNum !== null && qNum !== undefined && parseInt(qNum, 10) >= 2 && parseInt(qNum, 10) <= 60);
 
     let codeSnippet;
@@ -38,41 +38,11 @@ class QuizGenerator {
     if (isQuestion1) {
       const isPython = (hostLanguage === 'python');
       codeSnippet = isPython
-        ? `counter = 0\nfor i in range(3):\n    counter += 1\n\nquery = """\n${dialectSql}\n"""\n\nresult_table = db.execute(query)`
-        : `let counter = 0;\nfor (let i = 0; i < 3; i++) {\n  counter++;\n}\n\nconst query = \`\n${dialectSql}\n\`;\n\nconst resultTable = db.execute(query);`;
+        ? `counter = 0\nfor i in range(6):\n    counter += 1\n\nquery = """\n${dialectSql}\n"""\n\nresult_table = db.execute(query)`
+        : `let counter = 0;\nfor (let i = 0; i < 6; i++) {\n  counter++;\n}\n\nconst query = \`\n${dialectSql}\n\`;\n\nconst resultTable = db.execute(query);`;
 
-      const rawOptions = [
-        // 1 Correct answer: id values from joined orders strictly matching WHERE orders.id < 3 (only 1 and 2)
-        {
-          columns: ['id'],
-          rows: [[1], [2]],
-          isCorrect: true,
-          explanation: 'Matches orders.id for orders joined with users where orders.id < 3.'
-        },
-        // Distractor 1: obviously wrong column (title from products, no confusing overlap)
-        {
-          columns: ['title'],
-          rows: [['Laptop'], ['Smartphone']],
-          isCorrect: false,
-          explanation: 'Selects the title column from products instead of orders.id.'
-        },
-        // Distractor 2: obviously wrong column (status from orders)
-        {
-          columns: ['status'],
-          rows: [['PENDING'], ['COMPLETED']],
-          isCorrect: false,
-          explanation: 'Selects the status column instead of the id column.'
-        },
-        // Distractor 3: obviously wrong column (amount from orders)
-        {
-          columns: ['amount'],
-          rows: [[29.99], [49.99]],
-          isCorrect: false,
-          explanation: 'Selects the amount column instead of the id column.'
-        }
-      ];
-
-      shuffled = this.shuffleAndAssignKeys(rawOptions);
+      const options = this.generateTableOptions(groundTruthResult, schema, rawSql, null, 1);
+      shuffled = this.shuffleAndAssignKeys(options);
     } else if (isStudy2to60) {
       const qGenerator = (typeof window !== 'undefined' && window.app && window.app.queryGenerator)
         ? window.app.queryGenerator
@@ -80,11 +50,11 @@ class QuizGenerator {
       questionSpec = qGenerator.getStudyQuestionSpec(schema, parseInt(qNum, 10));
 
       codeSnippet = this.generateStudyCodeSnippet(questionSpec, schema, dialectManager, currentDialect, hostLanguage);
-      const options = this.generateTableOptions(groundTruthResult, schema, rawSql);
+      const options = this.generateTableOptions(groundTruthResult, schema, rawSql, questionSpec, parseInt(qNum, 10));
       shuffled = this.shuffleAndAssignKeys(options);
     } else {
       codeSnippet = this.generateCodeSnippet(rawSql, schema, dialectSql, hostLanguage, qNum, dialectManager, currentDialect);
-      const options = this.generateTableOptions(groundTruthResult, schema, rawSql);
+      const options = this.generateTableOptions(groundTruthResult, schema, rawSql, null, qNum);
       shuffled = this.shuffleAndAssignKeys(options);
     }
 
@@ -407,10 +377,10 @@ class QuizGenerator {
    * Routes code generation to Python or JavaScript based on hostLanguage and structure.
    */
   generateCodeSnippet(sql, schema, dialectSql, hostLanguage = 'javascript', qNum = null, dialectManager = null, dialect = null) {
-    if (sql && sql.startsWith('SELECT orders.id FROM orders JOIN users')) {
+    if (qNum === 1 || (sql && sql.includes('FROM orders JOIN users ON orders.user_id = users.id'))) {
       return (hostLanguage === 'python')
-        ? `counter = 0\nfor i in range(3):\n    counter += 1\n\nquery = """\n${dialectSql}\n"""\n\nresult_table = db.execute(query)`
-        : `let counter = 0;\nfor (let i = 0; i < 3; i++) {\n  counter++;\n}\n\nconst query = \`\n${dialectSql}\n\`;\n\nconst resultTable = db.execute(query);`;
+        ? `counter = 0\nfor i in range(6):\n    counter += 1\n\nquery = """\n${dialectSql}\n"""\n\nresult_table = db.execute(query)`
+        : `let counter = 0;\nfor (let i = 0; i < 6; i++) {\n  counter++;\n}\n\nconst query = \`\n${dialectSql}\n\`;\n\nconst resultTable = db.execute(query);`;
     }
 
     if (qNum !== null && qNum !== undefined && parseInt(qNum, 10) >= 2 && parseInt(qNum, 10) <= 60) {
@@ -454,6 +424,120 @@ class QuizGenerator {
     const structureType = spec.structureType || 1;
     const blocks = [];
 
+    // Study Question 2: Simple query, use python/javascript to delete it, new query, execute
+    if (spec.manipulation === 'delete_query' || spec.qNum === 2) {
+      if (isPython) {
+        blocks.push(`query = """\n${initialDialectSql}\n"""`);
+        blocks.push(`del query`);
+        blocks.push(`query = """\n${finalDialectSql}\n"""`);
+        blocks.push(`result_table = db.execute(query)`);
+      } else {
+        blocks.push(`let query = \`\n${initialDialectSql}\n\`;`);
+        blocks.push(`delete query;`);
+        blocks.push(`query = \`\n${finalDialectSql}\n\`;`);
+        blocks.push(`const resultTable = db.execute(query);`);
+      }
+      return blocks.join('\n\n');
+    }
+
+    // Study Question 3: Function related to appending to query that doesn't affect query, query, call function saved to variable, execute
+    if (spec.manipulation === 'append_function' || spec.qNum === 3) {
+      if (isPython) {
+        blocks.push(`def append_to_query(clause):\n    log_buffer = ["audit_marker"]\n    log_buffer.append(clause)\n    return len(log_buffer)`);
+        blocks.push(`query = """\n${finalDialectSql}\n"""`);
+        blocks.push(`append_status = append_to_query("ORDER BY id DESC")`);
+        blocks.push(`result_table = db.execute(query)`);
+      } else {
+        blocks.push(`function appendToQuery(clause) {\n  let logBuffer = ["audit_marker"];\n  logBuffer.push(clause);\n  return logBuffer.length;\n}`);
+        blocks.push(`const query = \`\n${finalDialectSql}\n\`;`);
+        blocks.push(`const appendStatus = appendToQuery("ORDER BY id DESC");`);
+        blocks.push(`const resultTable = db.execute(query);`);
+      }
+      return blocks.join('\n\n');
+    }
+
+    // Study Question 4: [Query], conduct a string operation on the query that looks like it makes a change but doesn't, [Execute]
+    if (spec.manipulation === 'noop_replace' || spec.qNum === 4) {
+      if (isPython) {
+        blocks.push(`query = """\n${finalDialectSql}\n"""`);
+        blocks.push(`query.replace("A%", "B%")`);
+        blocks.push(`result_table = db.execute(query)`);
+      } else {
+        blocks.push(`const query = \`\n${finalDialectSql}\n\`;`);
+        blocks.push(`query.replace("A%", "B%");`);
+        blocks.push(`const resultTable = db.execute(query);`);
+      }
+      return blocks.join('\n\n');
+    }
+
+    // Study Question 5: First execution of undefined variable, complex string manipulation on query 1, query 2 overwrites query, execute query 2
+    if (spec.manipulation === 'overwrite_query' || spec.qNum === 5) {
+      if (isPython) {
+        blocks.push(`query = """\n${initialDialectSql}\n"""`);
+        blocks.push(`db.execute(pending_query)`);
+        blocks.push(`filters = ["status = 'COMPLETED'", "amount > 20"]\nquery = query.replace("WHERE amount > 50", "WHERE " + " AND ".join(filters))\nquery = query + " ORDER BY amount DESC"`);
+        blocks.push(`query = """\n${finalDialectSql}\n"""`);
+        blocks.push(`result_table = db.execute(query)`);
+      } else {
+        blocks.push(`let query = \`\n${initialDialectSql}\n\`;`);
+        blocks.push(`db.execute(pendingQuery);`);
+        blocks.push(`let filters = ["status = 'COMPLETED'", "amount > 20"];\nquery = query.replace("WHERE amount > 50", "WHERE " + filters.join(" AND "));\nquery = query + " ORDER BY amount DESC";`);
+        blocks.push(`query = \`\n${finalDialectSql}\n\`;`);
+        blocks.push(`const resultTable = db.execute(query);`);
+      }
+      return blocks.join('\n\n');
+    }
+
+    // Study Question 6: Query 1, Execute Query 1, HostLang, Query 2, Delete Query 2
+    if (spec.manipulation === 'delete_second_query' || spec.qNum === 6) {
+      if (isPython) {
+        blocks.push(`query = """\n${initialDialectSql}\n"""`);
+        blocks.push(`result_table = db.execute(query)`);
+        blocks.push(`sync_checkpoints = ["checkpoint_1", "checkpoint_2"]\nsync_progress = 0\nfor cp in sync_checkpoints:\n    sync_progress += 1`);
+        blocks.push(`query = """\n${finalDialectSql}\n"""`);
+        blocks.push(`del query`);
+      } else {
+        blocks.push(`let query = \`\n${initialDialectSql}\n\`;`);
+        blocks.push(`const resultTable = db.execute(query);`);
+        blocks.push(`let syncCheckpoints = ["checkpoint_1", "checkpoint_2"];\nlet syncProgress = 0;\nfor (let cp of syncCheckpoints) {\n  syncProgress++;\n}`);
+        blocks.push(`query = \`\n${finalDialectSql}\n\`;`);
+        blocks.push(`delete query;`);
+      }
+      return blocks.join('\n\n');
+    }
+
+    // Study Question 7: Make second query the first query, inspect query in host lang, delete second execute
+    if (spec.manipulation === 'delete_second_execute' || spec.qNum === 7) {
+      if (isPython) {
+        blocks.push(`query = """\n${initialDialectSql}\n"""`);
+        blocks.push(`result_table = db.execute(query)`);
+        blocks.push(`query_clauses = ["SELECT", "WHERE", "GROUP BY"]\nactive_clauses = [c for c in query_clauses if c in query]`);
+        blocks.push(`query = """\n${finalDialectSql}\n"""`);
+      } else {
+        blocks.push(`let query = \`\n${initialDialectSql}\n\`;`);
+        blocks.push(`const resultTable = db.execute(query);`);
+        blocks.push(`let queryClauses = ["SELECT", "WHERE", "GROUP BY"];\nlet activeClauses = queryClauses.filter(c => query.includes(c));`);
+        blocks.push(`query = \`\n${finalDialectSql}\n\`;`);
+      }
+      return blocks.join('\n\n');
+    }
+
+    // Study Question 8: Query 1, HostLang, Query 2 (assigned to typo variable 'quey'), execute Query 1 ('query')
+    if (spec.manipulation === 'typo_second_query' || spec.qNum === 8) {
+      if (isPython) {
+        blocks.push(`query = """\n${initialDialectSql}\n"""`);
+        blocks.push(`clean_sql = query.strip()\nif "GROUP BY" in clean_sql:\n    active_filter = "valid query criteria"`);
+        blocks.push(`quey = """\n${finalDialectSql}\n"""`);
+        blocks.push(`result_table = db.execute(query)`);
+      } else {
+        blocks.push(`let query = \`\n${initialDialectSql}\n\`;`);
+        blocks.push(`let cleanSql = query.trim();\nlet activeFilter = "";\nif (cleanSql.includes("GROUP BY")) {\n  activeFilter = "valid query criteria";\n}`);
+        blocks.push(`let quey = \`\n${finalDialectSql}\n\`;`);
+        blocks.push(`const resultTable = db.execute(query);`);
+      }
+      return blocks.join('\n\n');
+    }
+
     switch (structureType) {
       case 1:
         // Structure 1: [Python/JavaScript], [Query], [Execute]
@@ -471,15 +555,15 @@ class QuizGenerator {
       case 2:
         // Structure 2: [Query], [Python/JavaScript], [Query], [Execute]
         if (isPython) {
-          blocks.push(`initial_query = """\n${initialDialectSql}\n"""`);
-          blocks.push(`clean_sql = initial_query.strip()\nif "WHERE" in clean_sql:\n    active_filter = "valid query criteria"`);
-          blocks.push(`final_query = """\n${finalDialectSql}\n"""`);
-          blocks.push(`result_table = db.execute(final_query)`);
+          blocks.push(`query = """\n${initialDialectSql}\n"""`);
+          blocks.push(`clean_sql = query.strip()\nif "WHERE" in clean_sql:\n    active_filter = "valid query criteria"`);
+          blocks.push(`query = """\n${finalDialectSql}\n"""`);
+          blocks.push(`result_table = db.execute(query)`);
         } else {
-          blocks.push(`const initialQuery = \`\n${initialDialectSql}\n\`;`);
-          blocks.push(`let cleanSql = initialQuery.trim();\nlet activeFilter = "";\nif (cleanSql.includes("WHERE")) {\n  activeFilter = "valid query criteria";\n}`);
-          blocks.push(`const finalQuery = \`\n${finalDialectSql}\n\`;`);
-          blocks.push(`const resultTable = db.execute(finalQuery);`);
+          blocks.push(`let query = \`\n${initialDialectSql}\n\`;`);
+          blocks.push(`let cleanSql = query.trim();\nlet activeFilter = "";\nif (cleanSql.includes("WHERE")) {\n  activeFilter = "valid query criteria";\n}`);
+          blocks.push(`query = \`\n${finalDialectSql}\n\`;`);
+          blocks.push(`const resultTable = db.execute(query);`);
         }
         break;
 
@@ -514,17 +598,17 @@ class QuizGenerator {
       case 5:
         // Structure 5: [Query], [Execute], [Python/JavaScript], [Query], [Execute]
         if (isPython) {
-          blocks.push(`setup_query = """\n${setupDialectSql}\n"""`);
-          blocks.push(`db.execute(setup_query)`);
+          blocks.push(`query = """\n${setupDialectSql}\n"""`);
+          blocks.push(`db.execute(query)`);
           blocks.push(`sync_checkpoints = ["checkpoint_1", "checkpoint_2"]\nsync_progress = 0\nfor cp in sync_checkpoints:\n    sync_progress += 1`);
-          blocks.push(`final_query = """\n${finalDialectSql}\n"""`);
-          blocks.push(`result_table = db.execute(final_query)`);
+          blocks.push(`query = """\n${finalDialectSql}\n"""`);
+          blocks.push(`result_table = db.execute(query)`);
         } else {
-          blocks.push(`const setupQuery = \`\n${setupDialectSql}\n\`;`);
-          blocks.push(`db.execute(setupQuery);`);
+          blocks.push(`let query = \`\n${setupDialectSql}\n\`;`);
+          blocks.push(`db.execute(query);`);
           blocks.push(`let syncCheckpoints = ["checkpoint_1", "checkpoint_2"];\nlet syncProgress = 0;\nfor (let cp of syncCheckpoints) {\n  syncProgress++;\n}`);
-          blocks.push(`const finalQuery = \`\n${finalDialectSql}\n\`;`);
-          blocks.push(`const resultTable = db.execute(finalQuery);`);
+          blocks.push(`query = \`\n${finalDialectSql}\n\`;`);
+          blocks.push(`const resultTable = db.execute(query);`);
         }
         break;
 
@@ -553,7 +637,7 @@ class QuizGenerator {
     const strHash = queryStr.split('').reduce((acc, char) => acc + char.charCodeAt(0), 0);
     const patternIdx = (strHash + (dialectSql ? dialectSql.length : 7)) % 4;
 
-    const outputVarNames = ['result_table', 'final_data', 'query_output', 'summary_rows'];
+    const outputVarNames = ['result_table', 'table_data', 'query_output', 'summary_rows'];
     const outputVar = outputVarNames[patternIdx % outputVarNames.length];
 
     let blocks = [];
@@ -724,53 +808,771 @@ class QuizGenerator {
     return { selectFrom, where, rest };
   }
 
-  generateTableOptions(groundTruthResult, schema, rawSql) {
+  generateTableOptions(groundTruthResult, schema, rawSql, questionSpec = null, qNum = null) {
     if (!groundTruthResult || !groundTruthResult.columns || groundTruthResult.columns.length === 0 || !groundTruthResult.rows || groundTruthResult.rows.length === 0) {
       return this.generateFallbackOptions(schema);
     }
 
-    const correctColumns = groundTruthResult.columns;
-    const correctRows = groundTruthResult.rows;
+    const correctColumns = [...groundTruthResult.columns];
+    const correctRows = groundTruthResult.rows.map(r => Array.isArray(r) ? [...r] : [r]);
+
+    const areRowsEqual = (r1, r2) => {
+      if (!r1 || !r2 || r1.length !== r2.length) return false;
+      return JSON.stringify(r1) === JSON.stringify(r2);
+    };
 
     const options = [
       {
         columns: correctColumns,
         rows: correctRows,
         isCorrect: true,
-        explanation: 'Matches exact query output transformation.'
+        explanation: 'Matches exact query output.'
       }
     ];
 
-    // Distractor 1: Unfiltered / Off-by-one subset
-    const dist1Rows = correctRows.length > 1 ? correctRows.slice(0, correctRows.length - 1) : [...correctRows, [99, 99]];
-    options.push({
-      columns: correctColumns,
-      rows: dist1Rows,
-      isCorrect: false,
-      explanation: 'Incomplete result (some rows are missing).'
-    });
+    const distractorCandidates = [];
 
-    // Distractor 2: Reversed sort order or mutated column values
-    const dist2Rows = correctRows.slice().reverse().map(r => Array.isArray(r) ? r.map(val => (typeof val === 'number' ? val + 1 : val)) : r);
-    options.push({
-      columns: correctColumns,
-      rows: dist2Rows,
-      isCorrect: false,
-      explanation: 'Wrong row values or incorrect sorting order.'
-    });
+    // Helper to run query against SQLite engine if available
+    const runSql = (queryStr) => {
+      if (!queryStr) return null;
+      try {
+        if (typeof window !== 'undefined' && window.app && window.app.sqliteEngine && typeof window.app.sqliteEngine.executeQuery === 'function') {
+          const res = window.app.sqliteEngine.executeQuery(queryStr);
+          if (res && res.success && res.rows && res.rows.length > 0) {
+            return res.rows.map(r => Array.isArray(r) ? [...r] : [r]);
+          }
+        }
+      } catch (e) {}
+      return null;
+    };
 
-    // Distractor 3: Raw base table or alternative schema table preview
-    const baseTable = schema && schema.tables ? schema.tables[0] : null;
-    const dist3Cols = baseTable ? baseTable.columns.map(c => c.name) : correctColumns;
-    const dist3Rows = baseTable ? baseTable.rows.slice(0, Math.min(5, baseTable.rows.length)).map(r => Object.values(r)) : correctRows.map(r => Array.isArray(r) ? [r[0], 0] : [0, 0]);
-    
-    options.push({
-      columns: dist3Cols,
-      rows: dist3Rows,
-      isCorrect: false,
-      explanation: 'Unfiltered table data (SQL query conditions were not applied).'
-    });
+    const runSqlWithMeta = (queryStr) => {
+      if (!queryStr) return null;
+      try {
+        if (typeof window !== 'undefined' && window.app && window.app.sqliteEngine && typeof window.app.sqliteEngine.executeQuery === 'function') {
+          const res = window.app.sqliteEngine.executeQuery(queryStr);
+          if (res && res.success && res.rows && res.rows.length > 0) {
+            return {
+              columns: res.columns,
+              rows: res.rows.map(r => Array.isArray(r) ? [...r] : [r])
+            };
+          }
+        }
+      } catch (e) {}
+      return null;
+    };
 
+    // Candidate 1: Result of initialSql (Structure 2 / manipulation distractor)
+    if (questionSpec && questionSpec.initialSql && questionSpec.initialSql !== questionSpec.finalSql) {
+      const initRows = runSql(questionSpec.initialSql);
+      if (initRows && initRows.length > 0 && !areRowsEqual(initRows, correctRows)) {
+        distractorCandidates.push({
+          columns: correctColumns,
+          rows: initRows.slice(0, 30),
+          isCorrect: false,
+          explanation: questionSpec.manipulation === 'delete_query'
+            ? 'Evaluates the first query which was deleted prior to execution.'
+            : 'Evaluates the first query before modification.'
+        });
+      }
+    }
+
+    // Question 1 specific distractors (tests sorting expectation vs natural order after removing ORDER BY)
+    const isQ1 = (qNum === 1 || (rawSql && rawSql.includes('FROM orders JOIN users ON orders.user_id = users.id')));
+    if (isQ1) {
+      const descSql = rawSql.replace(/;?\s*$/, '') + ' ORDER BY orders.id DESC;';
+      const descRows = runSql(descSql);
+      if (descRows && descRows.length > 0 && !areRowsEqual(descRows, correctRows)) {
+        distractorCandidates.push({
+          columns: correctColumns,
+          rows: descRows.slice(0, 30),
+          isCorrect: false,
+          explanation: 'Assumes rows are sorted by orders.id in descending order.'
+        });
+      }
+      const amountDescSql = rawSql.replace(/;?\s*$/, '') + ' ORDER BY orders.amount DESC;';
+      const amountDescRows = runSql(amountDescSql);
+      if (amountDescRows && amountDescRows.length > 0 && !areRowsEqual(amountDescRows, correctRows)) {
+        distractorCandidates.push({
+          columns: correctColumns,
+          rows: amountDescRows.slice(0, 30),
+          isCorrect: false,
+          explanation: 'Assumes rows are sorted by orders.amount in descending order.'
+        });
+      }
+    }
+
+    // Question 3 specific distractors (distinct, non-overlapping options)
+    if (qNum === 3 || (questionSpec && (questionSpec.manipulation === 'append_function' || questionSpec.qNum === 3))) {
+      const uTable = (schema && schema.tables) ? (schema.tables.find(t => t.name === 'users') || schema.tables[0]) : null;
+      const uTableName = uTable ? uTable.name : 'users';
+
+      // Distractor 1: Assumes append_to_query("ORDER BY id DESC") modified the query
+      const descSql = `SELECT id, name FROM ${uTableName} WHERE id <= 5 ORDER BY id DESC;`;
+      let descRows = runSql(descSql);
+      if ((!descRows || descRows.length === 0) && uTable && uTable.rows) {
+        descRows = uTable.rows.filter(r => r.id <= 5).sort((a, b) => b.id - a.id).map(r => [r.id, r.name]);
+      }
+      if (descRows && descRows.length > 0 && !areRowsEqual(descRows, correctRows)) {
+        distractorCandidates.push({
+          columns: correctColumns,
+          rows: descRows,
+          isCorrect: false,
+          explanation: 'Assumes the append function call modified the query to sort by id DESC.'
+        });
+      }
+
+      // Distractor 2: Assumes default table order (id ASC) without applying ORDER BY name ASC
+      const idAscSql = `SELECT id, name FROM ${uTableName} WHERE id <= 5 ORDER BY id ASC;`;
+      let idAscRows = runSql(idAscSql);
+      if ((!idAscRows || idAscRows.length === 0) && uTable && uTable.rows) {
+        idAscRows = uTable.rows.filter(r => r.id <= 5).sort((a, b) => a.id - b.id).map(r => [r.id, r.name]);
+      }
+      if (idAscRows && idAscRows.length > 0 && !areRowsEqual(idAscRows, correctRows)) {
+        distractorCandidates.push({
+          columns: correctColumns,
+          rows: idAscRows,
+          isCorrect: false,
+          explanation: 'Assumes rows are sorted by id ASC instead of name ASC.'
+        });
+      }
+
+      // Distractor 3: Inverted filter range (WHERE id > 5 AND id <= 10 ORDER BY name ASC)
+      const altRangeSql = `SELECT id, name FROM ${uTableName} WHERE id > 5 AND id <= 10 ORDER BY name ASC;`;
+      let altRangeRows = runSql(altRangeSql);
+      if ((!altRangeRows || altRangeRows.length === 0) && uTable && uTable.rows) {
+        altRangeRows = uTable.rows.filter(r => r.id > 5 && r.id <= 10).sort((a, b) => (a.name || '').localeCompare(b.name || '')).map(r => [r.id, r.name]);
+      }
+      if (altRangeRows && altRangeRows.length > 0 && !areRowsEqual(altRangeRows, correctRows)) {
+        distractorCandidates.push({
+          columns: correctColumns,
+          rows: altRangeRows,
+          isCorrect: false,
+          explanation: 'Evaluates an alternative filter range (ids 6 to 10).'
+        });
+      }
+    }
+
+    // Question 4 specific distractors (tests misconception that query.replace mutated the string)
+    if (qNum === 4 || (questionSpec && (questionSpec.manipulation === 'noop_replace' || questionSpec.qNum === 4))) {
+      const uTable = (schema && schema.tables) ? (schema.tables.find(t => t.name === 'users') || schema.tables[0]) : null;
+      const uTableName = uTable ? uTable.name : 'users';
+
+      // Distractor 1: Result if replace("A%", "B%") had mutated query
+      const bSql = `SELECT id, name FROM ${uTableName} WHERE name LIKE 'B%';`;
+      let bRows = runSql(bSql);
+      if ((!bRows || bRows.length === 0) && uTable && uTable.rows) {
+        bRows = uTable.rows.filter(r => (r.name || '').startsWith('B')).map(r => [r.id, r.name]);
+      }
+      if (bRows && bRows.length > 0 && !areRowsEqual(bRows, correctRows)) {
+        distractorCandidates.push({
+          columns: correctColumns,
+          rows: bRows,
+          isCorrect: false,
+          explanation: 'Assumes query.replace("A%", "B%") mutated the query in-place.'
+        });
+      }
+
+      // Distractor 2: Result if replace matched 'C%'
+      const cSql = `SELECT id, name FROM ${uTableName} WHERE name LIKE 'C%';`;
+      let cRows = runSql(cSql);
+      if ((!cRows || cRows.length === 0) && uTable && uTable.rows) {
+        cRows = uTable.rows.filter(r => (r.name || '').startsWith('C')).map(r => [r.id, r.name]);
+      }
+      if (cRows && cRows.length > 0 && !areRowsEqual(cRows, correctRows)) {
+        distractorCandidates.push({
+          columns: correctColumns,
+          rows: cRows.slice(0, 5),
+          isCorrect: false,
+          explanation: 'Evaluates an alternative LIKE pattern (names starting with C).'
+        });
+      }
+
+      // Distractor 3: Unfiltered users projection (first 4 users)
+      if (uTable && uTable.rows) {
+        const sampleRows = uTable.rows.slice(0, 4).map(r => [r.id, r.name]);
+        if (!areRowsEqual(sampleRows, correctRows)) {
+          distractorCandidates.push({
+            columns: correctColumns,
+            rows: sampleRows,
+            isCorrect: false,
+            explanation: 'Unfiltered table rows without applying the LIKE filter.'
+          });
+        }
+      }
+    }
+
+    // Question 5 specific distractors (tests tracking the modified query 1 instead of overwritten query 2)
+    if (qNum === 5 || (questionSpec && (questionSpec.manipulation === 'overwrite_query' || questionSpec.qNum === 5))) {
+      const oTable = (schema && schema.tables) ? (schema.tables.find(t => t.name === 'orders') || schema.tables[0]) : null;
+      const oTableName = oTable ? oTable.name : 'orders';
+
+      // Distractor 1: Inverted sort order of query 2 (ORDER BY order_count ASC)
+      const invSortSql = `SELECT status, COUNT(*) AS order_count FROM ${oTableName} GROUP BY status ORDER BY order_count ASC;`;
+      let invSortRows = runSql(invSortSql);
+      if (invSortRows && invSortRows.length > 0 && !areRowsEqual(invSortRows, correctRows)) {
+        distractorCandidates.push({
+          columns: correctColumns,
+          rows: invSortRows,
+          isCorrect: false,
+          explanation: 'Inverted sort order for the executed query (ASC instead of DESC).'
+        });
+      }
+
+      // Distractor 2: Evaluates the query using SUM(amount) instead of COUNT(*)
+      const sumSql = `SELECT status, ROUND(SUM(amount), 1) AS order_count FROM ${oTableName} GROUP BY status ORDER BY order_count DESC;`;
+      let sumRows = runSql(sumSql);
+      if (sumRows && sumRows.length > 0 && !areRowsEqual(sumRows, correctRows)) {
+        distractorCandidates.push({
+          columns: correctColumns,
+          rows: sumRows,
+          isCorrect: false,
+          explanation: 'Evaluates SUM(amount) instead of COUNT(*).'
+        });
+      }
+
+      // Distractor 3: Unfiltered group counts (without ORDER BY)
+      const unfiltGroupSql = `SELECT status, COUNT(*) AS order_count FROM ${oTableName} GROUP BY status;`;
+      let unfiltGroupRows = runSql(unfiltGroupSql);
+      if (unfiltGroupRows && unfiltGroupRows.length > 0 && !areRowsEqual(unfiltGroupRows, correctRows)) {
+        distractorCandidates.push({
+          columns: correctColumns,
+          rows: unfiltGroupRows,
+          isCorrect: false,
+          explanation: 'Evaluates group count without applying sort order.'
+        });
+      }
+    }
+
+    // Question 6 specific distractors (tests if participant assumed query 2 was executed instead of deleted)
+    if (qNum === 6 || (questionSpec && (questionSpec.manipulation === 'delete_second_query' || questionSpec.qNum === 6))) {
+      const pTable = (schema && schema.tables) ? (schema.tables.find(t => t.name === 'products') || schema.tables[0]) : null;
+      const pTableName = pTable ? pTable.name : 'products';
+
+      // Distractor 1: Result of query 2 (which was deleted instead of executed)
+      const q2Sql = `SELECT category_id, MIN(price) AS min_price, MAX(price) AS max_price FROM ${pTableName} WHERE price > 35 GROUP BY category_id ORDER BY category_id ASC;`;
+      let q2Rows = runSql(q2Sql);
+      if (q2Rows && q2Rows.length > 0 && !areRowsEqual(q2Rows, correctRows)) {
+        distractorCandidates.push({
+          columns: correctColumns,
+          rows: q2Rows,
+          isCorrect: false,
+          explanation: 'Evaluates query 2, assuming it was executed instead of deleted.'
+        });
+      }
+
+      // Distractor 2: Inverted sort order of query 1 (ORDER BY category_id DESC)
+      const invOrderSql = `SELECT category_id, MIN(price) AS min_price, MAX(price) AS max_price FROM ${pTableName} WHERE price > 20 GROUP BY category_id ORDER BY category_id DESC;`;
+      let invOrderRows = runSql(invOrderSql);
+      if (invOrderRows && invOrderRows.length > 0 && !areRowsEqual(invOrderRows, correctRows)) {
+        distractorCandidates.push({
+          columns: correctColumns,
+          rows: invOrderRows,
+          isCorrect: false,
+          explanation: 'Inverted sort order for query 1 (DESC instead of ASC).'
+        });
+      }
+
+      // Distractor 3: Unfiltered query 1 (omits WHERE price > 20)
+      const unfiltSql = `SELECT category_id, MIN(price) AS min_price, MAX(price) AS max_price FROM ${pTableName} GROUP BY category_id ORDER BY category_id ASC;`;
+      let unfiltRows = runSql(unfiltSql);
+      if (unfiltRows && unfiltRows.length > 0 && !areRowsEqual(unfiltRows, correctRows)) {
+        distractorCandidates.push({
+          columns: correctColumns,
+          rows: unfiltRows,
+          isCorrect: false,
+          explanation: 'Evaluates MIN/MAX without applying the WHERE price > 20 filter.'
+        });
+      }
+    }
+
+    // Question 7 specific distractors
+    if (qNum === 7 || (questionSpec && (questionSpec.manipulation === 'delete_second_execute' || questionSpec.qNum === 7))) {
+      const pTable = (schema && schema.tables) ? (schema.tables.find(t => t.name === 'products') || schema.tables[0]) : null;
+      const pTableName = pTable ? pTable.name : 'products';
+
+      // Distractor 1 (Unnecessary columns): 4 columns with item_count and avg_price
+      const unnecSql = `SELECT category_id, ROUND(SUM(price), 2) AS sum_price, COUNT(*) AS item_count, ROUND(AVG(price), 2) AS avg_price FROM ${pTableName} WHERE price > 20 GROUP BY category_id ORDER BY category_id ASC;`;
+      let unnecRes = runSqlWithMeta(unnecSql);
+      let unnecCols = (unnecRes && unnecRes.columns) ? unnecRes.columns : ['category_id', 'sum_price', 'item_count', 'avg_price'];
+      let unnecRows = unnecRes ? unnecRes.rows : null;
+
+      if (!unnecRows && pTable && pTable.rows) {
+        const groups = {};
+        pTable.rows.filter(r => (Number(r.price) || 0) > 20).forEach(r => {
+          const cid = r.category_id || 1;
+          if (!groups[cid]) groups[cid] = [];
+          groups[cid].push(Number(r.price) || 0);
+        });
+        const sortedCids = Object.keys(groups).map(Number).sort((a, b) => a - b);
+        unnecRows = sortedCids.map(cid => {
+          const prices = groups[cid];
+          const sum = Number(prices.reduce((a, b) => a + b, 0).toFixed(2));
+          const count = prices.length;
+          const avg = Number((sum / count).toFixed(2));
+          return [cid, sum, count, avg];
+        });
+      }
+
+      // Distractor 2 (Opposite order): Ordered in opposite way (category_id DESC instead of ASC)
+      const invSql = `SELECT category_id, ROUND(SUM(price), 2) AS sum_price FROM ${pTableName} WHERE price > 20 GROUP BY category_id ORDER BY category_id DESC;`;
+      let invRows = runSql(invSql);
+      if ((!invRows || invRows.length === 0) && correctRows.length > 1) {
+        invRows = [...correctRows].reverse();
+      }
+
+      // Distractor 3 (Alternative Aggregate: Item count instead of sum_price)
+      // Visibly and conceptually distinct (integers 1-4 vs sum amounts > $60, with column item_count)
+      const countSql = `SELECT category_id, COUNT(*) AS item_count FROM ${pTableName} WHERE price > 20 GROUP BY category_id ORDER BY category_id ASC;`;
+      let countRes = runSqlWithMeta(countSql);
+      let countCols = (countRes && countRes.columns) ? countRes.columns : ['category_id', 'item_count'];
+      let countRows = countRes ? countRes.rows : null;
+
+      if (!countRows && pTable && pTable.rows) {
+        const groups = {};
+        pTable.rows.filter(r => (Number(r.price) || 0) > 20).forEach(r => {
+          const cid = r.category_id || 1;
+          if (!groups[cid]) groups[cid] = 0;
+          groups[cid]++;
+        });
+        const sortedCids = Object.keys(groups).map(Number).sort((a, b) => a - b);
+        countRows = sortedCids.map(cid => [cid, groups[cid]]);
+      }
+
+      // Distractor 4 fallback (Single grand total row without GROUP BY)
+      const grandTotalSql = `SELECT ROUND(SUM(price), 2) AS sum_price FROM ${pTableName} WHERE price > 20;`;
+      let grandTotalRes = runSqlWithMeta(grandTotalSql);
+      let grandTotalCols = (grandTotalRes && grandTotalRes.columns) ? grandTotalRes.columns : ['sum_price'];
+      let grandTotalRows = grandTotalRes ? grandTotalRes.rows : null;
+      if (!grandTotalRows && correctRows && correctRows.length > 0) {
+        const total = correctRows.reduce((acc, r) => acc + (Number(r[1]) || 0), 0);
+        grandTotalRows = [[parseFloat(total.toFixed(2))]];
+      }
+
+      const q7Distractors = [];
+      if (unnecRows && unnecRows.length > 0) {
+        q7Distractors.push({
+          columns: unnecCols,
+          rows: unnecRows,
+          isCorrect: false,
+          explanation: 'Evaluates unnecessary additional columns (item_count, avg_price).'
+        });
+      }
+      if (invRows && invRows.length > 0 && !areRowsEqual(invRows, correctRows)) {
+        q7Distractors.push({
+          columns: correctColumns,
+          rows: invRows,
+          isCorrect: false,
+          explanation: 'Inverted sort order for query 1 (DESC instead of ASC).'
+        });
+      }
+      if (countRows && countRows.length > 0 && !areRowsEqual(countRows, correctRows)) {
+        q7Distractors.push({
+          columns: countCols,
+          rows: countRows,
+          isCorrect: false,
+          explanation: 'Evaluates the item count (COUNT) instead of the total price (SUM).'
+        });
+      }
+      if (q7Distractors.length < 3 && grandTotalRows && grandTotalRows.length > 0) {
+        q7Distractors.push({
+          columns: grandTotalCols,
+          rows: grandTotalRows,
+          isCorrect: false,
+          explanation: 'Evaluates the grand total sum without grouping by category.'
+        });
+      }
+
+      options.push(...q7Distractors.slice(0, 3));
+      return options;
+    }
+
+    // Question 8 specific distractors (tests typo in query variable name, with varying column counts)
+    if (qNum === 8 || (questionSpec && (questionSpec.manipulation === 'typo_second_query' || questionSpec.qNum === 8))) {
+      const pTable = (schema && schema.tables) ? (schema.tables.find(t => t.name === 'products') || schema.tables[0]) : null;
+      const pTableName = pTable ? pTable.name : 'products';
+
+      // Distractor 1 (4 columns): Result of query 2 (assigned to typo variable "quey")
+      const q2Sql = `SELECT category_id, ROUND(AVG(price), 2) AS avg_price, MIN(price) AS min_price, MAX(price) AS max_price FROM ${pTableName} GROUP BY category_id ORDER BY category_id ASC;`;
+      let q2Res = runSqlWithMeta(q2Sql);
+      let q2Cols = (q2Res && q2Res.columns) ? q2Res.columns : ['category_id', 'avg_price', 'min_price', 'max_price'];
+      let q2Rows = q2Res ? q2Res.rows : null;
+
+      if (!q2Rows && pTable && pTable.rows) {
+        const groups = {};
+        pTable.rows.forEach(r => {
+          const cid = r.category_id || 1;
+          if (!groups[cid]) groups[cid] = [];
+          groups[cid].push(Number(r.price) || 0);
+        });
+        const sortedCids = Object.keys(groups).map(Number).sort((a, b) => a - b);
+        q2Rows = sortedCids.map(cid => {
+          const prices = groups[cid];
+          const avg = Number((prices.reduce((a, b) => a + b, 0) / prices.length).toFixed(2));
+          const min = Math.min(...prices);
+          const max = Math.max(...prices);
+          return [cid, avg, min, max];
+        });
+      }
+
+      if (q2Rows && q2Rows.length > 0) {
+        distractorCandidates.push({
+          columns: q2Cols,
+          rows: q2Rows,
+          isCorrect: false,
+          explanation: 'Assumes the second query assigned to variable "quey" was executed, but the execution ran "query".'
+        });
+      }
+
+      // Distractor 2 (3 columns): Query with MIN and MAX but without AVG
+      const q3Sql = `SELECT category_id, MIN(price) AS min_price, MAX(price) AS max_price FROM ${pTableName} GROUP BY category_id ORDER BY category_id ASC;`;
+      let q3Res = runSqlWithMeta(q3Sql);
+      let q3Cols = (q3Res && q3Res.columns) ? q3Res.columns : ['category_id', 'min_price', 'max_price'];
+      let q3Rows = q3Res ? q3Res.rows : null;
+
+      if (!q3Rows && pTable && pTable.rows) {
+        const groups = {};
+        pTable.rows.forEach(r => {
+          const cid = r.category_id || 1;
+          if (!groups[cid]) groups[cid] = [];
+          groups[cid].push(Number(r.price) || 0);
+        });
+        const sortedCids = Object.keys(groups).map(Number).sort((a, b) => a - b);
+        q3Rows = sortedCids.map(cid => {
+          const prices = groups[cid];
+          const min = Math.min(...prices);
+          const max = Math.max(...prices);
+          return [cid, min, max];
+        });
+      }
+
+      if (q3Rows && q3Rows.length > 0) {
+        distractorCandidates.push({
+          columns: q3Cols,
+          rows: q3Rows,
+          isCorrect: false,
+          explanation: 'Evaluates MIN and MAX price without the average price.'
+        });
+      }
+
+      // Distractor 3 (1 column): Query with only avg_price without category_id
+      const q1ColSql = `SELECT ROUND(AVG(price), 2) AS avg_price FROM ${pTableName} GROUP BY category_id ORDER BY category_id ASC;`;
+      let q1ColRes = runSqlWithMeta(q1ColSql);
+      let q1ColCols = (q1ColRes && q1ColRes.columns) ? q1ColRes.columns : ['avg_price'];
+      let q1ColRows = q1ColRes ? q1ColRes.rows : null;
+
+      if (!q1ColRows && pTable && pTable.rows) {
+        const groups = {};
+        pTable.rows.forEach(r => {
+          const cid = r.category_id || 1;
+          if (!groups[cid]) groups[cid] = [];
+          groups[cid].push(Number(r.price) || 0);
+        });
+        const sortedCids = Object.keys(groups).map(Number).sort((a, b) => a - b);
+        q1ColRows = sortedCids.map(cid => {
+          const prices = groups[cid];
+          const avg = Number((prices.reduce((a, b) => a + b, 0) / prices.length).toFixed(2));
+          return [avg];
+        });
+      }
+
+      if (q1ColRows && q1ColRows.length > 0) {
+        distractorCandidates.push({
+          columns: q1ColCols,
+          rows: q1ColRows,
+          isCorrect: false,
+          explanation: 'Evaluates the average price without the category_id grouping column.'
+        });
+      }
+
+      // Distractor 4 (2 columns): Inverted sort order fallback
+      const invSql = `SELECT category_id, ROUND(AVG(price), 2) AS avg_price FROM ${pTableName} GROUP BY category_id ORDER BY category_id DESC;`;
+      let invRes = runSqlWithMeta(invSql);
+      let invCols = (invRes && invRes.columns) ? invRes.columns : ['category_id', 'avg_price'];
+      let invRows = invRes ? invRes.rows : null;
+      if (invRows && invRows.length > 0 && !areRowsEqual(invRows, correctRows)) {
+        distractorCandidates.push({
+          columns: invCols,
+          rows: invRows,
+          isCorrect: false,
+          explanation: 'Inverted sort order (DESC instead of ASC).'
+        });
+      }
+
+      options.push(...distractorCandidates.slice(0, 3));
+      return options;
+    }
+
+    // Candidate 2a: UNION query handlers (evaluates only first or second branch)
+    if (rawSql && /\bUNION\b/i.test(rawSql)) {
+      const parts = rawSql.split(/\bUNION\b/i);
+      if (parts.length >= 2) {
+        const p1Sql = parts[0].trim() + (parts[0].trim().endsWith(';') ? '' : ';');
+        const p1Rows = runSql(p1Sql);
+        if (p1Rows && p1Rows.length > 0 && !areRowsEqual(p1Rows, correctRows)) {
+          distractorCandidates.push({
+            columns: correctColumns,
+            rows: p1Rows.slice(0, 30),
+            isCorrect: false,
+            explanation: 'Evaluates only the first query in the compound UNION statement.'
+          });
+        }
+        const p2Sql = parts[1].trim();
+        const p2Rows = runSql(p2Sql);
+        if (p2Rows && p2Rows.length > 0 && !areRowsEqual(p2Rows, correctRows)) {
+          distractorCandidates.push({
+            columns: correctColumns,
+            rows: p2Rows.slice(0, 30),
+            isCorrect: false,
+            explanation: 'Evaluates only the second query in the compound UNION statement.'
+          });
+        }
+      }
+    }
+
+    // Candidate 2b: Inverted ORDER BY (tests sorting understanding)
+    if (rawSql && /ORDER BY/i.test(rawSql)) {
+      let invSql = rawSql;
+      if (/\bASC\b/i.test(invSql)) {
+        invSql = invSql.replace(/\bASC\b/i, 'DESC');
+      } else if (/\bDESC\b/i.test(invSql)) {
+        invSql = invSql.replace(/\bDESC\b/i, 'ASC');
+      } else {
+        invSql = invSql.replace(/ORDER BY\s+([a-zA-Z0-9_.]+)/i, 'ORDER BY $1 DESC');
+      }
+      const invRows = runSql(invSql);
+      if (invRows && invRows.length > 0 && !areRowsEqual(invRows, correctRows)) {
+        distractorCandidates.push({
+          columns: correctColumns,
+          rows: invRows.slice(0, 30),
+          isCorrect: false,
+          explanation: 'Inverted sort order.'
+        });
+      } else if (correctRows.length > 1) {
+        distractorCandidates.push({
+          columns: correctColumns,
+          rows: [...correctRows].reverse(),
+          isCorrect: false,
+          explanation: 'Inverted row order.'
+        });
+      }
+    } else if (correctRows.length > 1) {
+      distractorCandidates.push({
+        columns: correctColumns,
+        rows: [...correctRows].reverse(),
+        isCorrect: false,
+        explanation: 'Inverted row order.'
+      });
+    }
+
+    // Candidate 3: Unfiltered WHERE (omits WHERE clause)
+    if (rawSql && /\bWHERE\b/i.test(rawSql) && !/\bUNION\b/i.test(rawSql)) {
+      const unfiltSql = rawSql.replace(/\bWHERE\s+[\s\S]+?(?=\s+GROUP BY|\s+HAVING|\s+ORDER BY|\s+LIMIT|$)/i, '');
+      const unfiltRows = runSql(unfiltSql);
+      if (unfiltRows && unfiltRows.length > 0 && !areRowsEqual(unfiltRows, correctRows)) {
+        distractorCandidates.push({
+          columns: correctColumns,
+          rows: unfiltRows.slice(0, Math.min(30, unfiltRows.length)),
+          isCorrect: false,
+          explanation: 'Unfiltered data (WHERE clause conditions were not applied).'
+        });
+      }
+    }
+
+    // Candidate 4: Inverted Filter condition (> to <=, < to >=, = to !=)
+    if (rawSql && /\bWHERE\b/i.test(rawSql)) {
+      let invCondSql = rawSql;
+      if (/\s+>\s+/.test(invCondSql)) {
+        invCondSql = invCondSql.replace(/\s+>\s+/, ' <= ');
+      } else if (/\s+<\s+/.test(invCondSql)) {
+        invCondSql = invCondSql.replace(/\s+<\s+/, ' >= ');
+      } else if (/\s+>=\s+/.test(invCondSql)) {
+        invCondSql = invCondSql.replace(/\s+>=\s+/, ' < ');
+      } else if (/\s+<=\s+/.test(invCondSql)) {
+        invCondSql = invCondSql.replace(/\s+<=\s+/, ' > ');
+      } else if (/\s+=\s+/.test(invCondSql)) {
+        invCondSql = invCondSql.replace(/\s+=\s+/, ' != ');
+      } else if (/\bLIKE\s+'A%'/i.test(invCondSql)) {
+        invCondSql = invCondSql.replace(/\bLIKE\s+'A%'/i, "LIKE 'B%'");
+      } else if (/\bLIKE\s+/i.test(invCondSql)) {
+        invCondSql = invCondSql.replace(/\bLIKE\s+/i, 'NOT LIKE ');
+      }
+      if (invCondSql !== rawSql) {
+        const condRows = runSql(invCondSql);
+        if (condRows && condRows.length > 0 && !areRowsEqual(condRows, correctRows)) {
+          distractorCandidates.push({
+            columns: correctColumns,
+            rows: condRows.slice(0, Math.min(30, condRows.length)),
+            isCorrect: false,
+            explanation: 'Inverted filter boundary condition.'
+          });
+        }
+      }
+    }
+
+    // Candidate 5: Alternative Aggregate calculation (COUNT vs SUM vs AVG vs MIN vs MAX)
+    if (rawSql && /\b(COUNT|SUM|AVG|MIN|MAX)\b/i.test(rawSql)) {
+      let altAggSql = rawSql;
+      if (/\bCOUNT\b/i.test(altAggSql)) {
+        altAggSql = altAggSql.replace(/\bCOUNT\(\s*\*\s*\)/i, 'SUM(id)').replace(/\bCOUNT\(([^)]+)\)/i, 'SUM($1)');
+      } else if (/\bAVG\b/i.test(altAggSql)) {
+        altAggSql = altAggSql.replace(/\bAVG\b/i, 'SUM');
+      } else if (/\bMIN\b/i.test(altAggSql)) {
+        altAggSql = altAggSql.replace(/\bMIN\b/i, 'MAX');
+      } else if (/\bMAX\b/i.test(altAggSql)) {
+        altAggSql = altAggSql.replace(/\bMAX\b/i, 'MIN');
+      } else if (/\bSUM\b/i.test(altAggSql)) {
+        altAggSql = altAggSql.replace(/\bSUM\b/i, 'AVG');
+      }
+      const aggRows = runSql(altAggSql);
+      if (aggRows && aggRows.length > 0 && !areRowsEqual(aggRows, correctRows)) {
+        distractorCandidates.push({
+          columns: correctColumns,
+          rows: aggRows.slice(0, 30),
+          isCorrect: false,
+          explanation: 'Evaluates an alternative aggregation function.'
+        });
+      }
+    }
+
+    // Fallback A: Base Table projection using the exact same columns
+    if (distractorCandidates.length < 3 && schema && schema.tables) {
+      const targetTable = schema.tables.find(t => rawSql && rawSql.includes(t.name)) || schema.tables[0];
+      if (targetTable && targetTable.rows) {
+        const colNames = correctColumns;
+        const availableCols = colNames.filter(c => targetTable.columns.some(tc => tc.name === c));
+        if (availableCols.length === colNames.length) {
+          const projectedRows = targetTable.rows.slice(0, Math.min(20, targetTable.rows.length)).map(r => colNames.map(c => r[c]));
+          if (projectedRows.length > 0 && !areRowsEqual(projectedRows, correctRows)) {
+            distractorCandidates.push({
+              columns: correctColumns,
+              rows: projectedRows,
+              isCorrect: false,
+              explanation: 'Unfiltered base table rows with target column projection.'
+            });
+          }
+        }
+      }
+    }
+
+    // Fallback B: Row-shifted partition or boundary offset
+    if (distractorCandidates.length < 3) {
+      if (correctRows.length > 3) {
+        const mid = Math.floor(correctRows.length / 2);
+        const altRows = [...correctRows.slice(mid), ...correctRows.slice(0, mid)];
+        if (!areRowsEqual(altRows, correctRows)) {
+          distractorCandidates.push({
+            columns: correctColumns,
+            rows: altRows,
+            isCorrect: false,
+            explanation: 'Re-ordered row partition.'
+          });
+        }
+      } else if (correctRows.length === 1 && typeof correctRows[0][0] === 'number') {
+        const val = correctRows[0][0];
+        const alt1 = Math.round(val * 1.5 + 4);
+        const alt2 = Math.max(1, Math.round(val * 0.5));
+        distractorCandidates.push({
+          columns: correctColumns,
+          rows: [[alt1, ...correctRows[0].slice(1)]],
+          isCorrect: false,
+          explanation: 'Alternative aggregate estimation.'
+        });
+        distractorCandidates.push({
+          columns: correctColumns,
+          rows: [[alt2, ...correctRows[0].slice(1)]],
+          isCorrect: false,
+          explanation: 'Alternative aggregate estimation.'
+        });
+      }
+    }
+
+    // Fallback C: Mutated values with realistic domain variation
+    if (distractorCandidates.length < 3) {
+      const mutated = correctRows.map((r, rIdx) => {
+        return r.map((cell, cIdx) => {
+          if (typeof cell === 'number') {
+            return Number.isInteger(cell) ? cell + (rIdx % 2 === 0 ? 5 : -2) : parseFloat((cell * 1.25).toFixed(2));
+          }
+          if (typeof cell === 'string') {
+            return cell === 'COMPLETED' ? 'PENDING' : (cell === 'PENDING' ? 'COMPLETED' : cell);
+          }
+          return cell;
+        });
+      });
+      if (!areRowsEqual(mutated, correctRows)) {
+        distractorCandidates.push({
+          columns: correctColumns,
+          rows: mutated,
+          isCorrect: false,
+          explanation: 'Perturbed calculation outputs.'
+        });
+      }
+    }
+
+    // Deduplicate and select exactly 3 unique distractors
+    const chosenDistractors = [];
+    for (const cand of distractorCandidates) {
+      if (chosenDistractors.length >= 3) break;
+      if (!cand.rows || cand.rows.length === 0) continue;
+      const candCols = cand.columns || correctColumns;
+      if (areRowsEqual(cand.rows, correctRows) && JSON.stringify(candCols) === JSON.stringify(correctColumns)) continue;
+      const isDuplicateOfChosen = chosenDistractors.some(d =>
+        areRowsEqual(d.rows, cand.rows) &&
+        JSON.stringify(d.columns) === JSON.stringify(candCols)
+      );
+      if (!isDuplicateOfChosen) {
+        chosenDistractors.push({
+          columns: candCols,
+          rows: cand.rows,
+          isCorrect: false,
+          explanation: cand.explanation || 'Incorrect SQL execution result.'
+        });
+      }
+    }
+
+    // Safety guarantee: if still less than 3, add distinct structured variants
+    let safetyCounter = 1;
+    while (chosenDistractors.length < 3 && safetyCounter <= 10) {
+      let fallbackRows = null;
+      if (correctRows.length > 1 && safetyCounter === 1) {
+        fallbackRows = correctRows.slice(1);
+      } else if (correctRows.length > 1 && safetyCounter === 2) {
+        fallbackRows = correctRows.slice(0, -1);
+      } else if (correctRows.length > 2 && safetyCounter === 3) {
+        fallbackRows = [...correctRows].reverse();
+      } else {
+        fallbackRows = correctRows.map(r => {
+          return r.map(cell => {
+            if (typeof cell === 'number') {
+              return Number.isInteger(cell) ? cell + (safetyCounter * 10) : parseFloat((cell * 1.5 + safetyCounter * 5).toFixed(2));
+            }
+            if (typeof cell === 'string') {
+              return `${cell} (Alt ${safetyCounter})`;
+            }
+            return cell;
+          });
+        });
+      }
+
+      if (fallbackRows && fallbackRows.length > 0 && !areRowsEqual(fallbackRows, correctRows)) {
+        const isDuplicate = chosenDistractors.some(d =>
+          areRowsEqual(d.rows, fallbackRows) &&
+          JSON.stringify(d.columns) === JSON.stringify(correctColumns)
+        );
+        if (!isDuplicate) {
+          chosenDistractors.push({
+            columns: correctColumns,
+            rows: fallbackRows,
+            isCorrect: false,
+            explanation: 'Alternative output calculation.'
+          });
+        }
+      }
+      safetyCounter++;
+    }
+
+    options.push(...chosenDistractors.slice(0, 3));
     return options;
   }
 

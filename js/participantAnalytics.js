@@ -1011,6 +1011,14 @@ class ParticipantAnalytics {
     return groups;
   }
 
+  getParticipantAverageResponseTime(participantId = this.participantId) {
+    if (!participantId) return 0;
+    const userResponses = this.responses.filter(r => r.participantId === participantId);
+    if (!userResponses || userResponses.length === 0) return 0;
+    const totalTime = userResponses.reduce((sum, r) => sum + (r.responseTimeMs || 0), 0);
+    return Math.round(totalTime / userResponses.length);
+  }
+
   // --- Telemetry Import Pipeline ---
 
   importTelemetryData(data) {

@@ -1079,7 +1079,7 @@ class QueryExperimentApp {
     }
 
     if (qNum === 1) {
-      this.currentQuery = 'SELECT orders.id FROM orders JOIN users ON orders.user_id = users.id WHERE orders.id < 3;';
+      this.currentQuery = 'SELECT orders.id, orders.amount FROM orders JOIN users ON orders.user_id = users.id WHERE orders.id <= 6;';
     } else {
       this.queryGenerator = new QueryGenerator(blockSeed);
       this.currentQuery = this.queryGenerator.generateIncrementalQuery(this.currentSchema, 'medium', true, variationIndex, qNum);

@@ -53,65 +53,72 @@ class QueryGenerator {
 
     // 59 Distinct question configurations covering all 14 operators
     const questionDefs = [
-      // Q2 (Structure 1: [HostLang], [Query], [Execute])
+      // Q2 (Structure 2: Simple query 1, delete query 1, query 2, execute)
       {
-        structure: 1,
+        structure: 2,
         operators: ['SELECT', 'WHERE', 'ORDER BY'],
+        initialSql: `SELECT id, name FROM ${userTable.name} WHERE id <= 5;`,
+        manipulation: 'delete_query',
         finalSql: `SELECT id, name FROM ${userTable.name} WHERE id > 2 ORDER BY id ASC;`
       },
-      // Q3 (Structure 2: [Query], [HostLang], [Query], [Execute])
-      {
-        structure: 2,
-        operators: ['SELECT', 'WHERE', 'ORDER BY'],
-        initialSql: `SELECT id, name FROM ${userTable.name} WHERE id < 10;`,
-        manipulation: 'adjust_filter',
-        finalSql: `SELECT id, name FROM ${userTable.name} WHERE id > 3 ORDER BY name ASC;`
-      },
-      // Q4 (Structure 3: [HostLang], [Query], [HostLang], [Execute])
+      // Q3 (Structure 3: Append function dummy, query, function call saved to variable, execute)
       {
         structure: 3,
+        operators: ['SELECT', 'WHERE', 'ORDER BY'],
+        initialSql: `SELECT id, name FROM ${userTable.name} WHERE id <= 5 ORDER BY name ASC;`,
+        manipulation: 'append_function',
+        finalSql: `SELECT id, name FROM ${userTable.name} WHERE id <= 5 ORDER BY name ASC;`
+      },
+      // Q4 (Structure 4: [Query], [HostLang], [Execute])
+      {
+        structure: 4,
         operators: ['SELECT', 'WHERE', 'LIKE'],
+        manipulation: 'noop_replace',
         finalSql: `SELECT id, name FROM ${userTable.name} WHERE name LIKE 'A%';`
       },
-      // Q5 (Structure 4: [Query], [HostLang], [Execute])
+      // Q5 (Structure 5: First execution of undefined variable, complex string manipulation on query 1, query 2 overwrites query, execute query 2)
       {
-        structure: 4,
-        operators: ['SELECT', 'GROUP BY', 'COUNT', 'ORDER BY'],
+        structure: 5,
+        operators: ['SELECT', 'WHERE', 'GROUP BY', 'COUNT', 'ORDER BY'],
+        initialSql: `SELECT id, amount, status FROM ${orderTable.name} WHERE amount > 50;`,
+        manipulation: 'overwrite_query',
         finalSql: `SELECT status, COUNT(*) AS order_count FROM ${orderTable.name} GROUP BY status ORDER BY order_count DESC;`
       },
-      // Q6 (Structure 5: [Query], [Execute], [HostLang], [Query], [Execute])
+      // Q6 (Structure 5: Query 1, Execute Query 1, HostLang, Query 2, Delete Query 2)
       {
         structure: 5,
-        operators: ['UPDATE', 'WHERE', 'SELECT', 'ORDER BY'],
-        setupSql: `UPDATE ${productTable.name} SET price = price + 5 WHERE id = 1;`,
-        finalSql: `SELECT id, price FROM ${productTable.name} WHERE id <= 3 ORDER BY id ASC;`
+        operators: ['SELECT', 'WHERE', 'GROUP BY', 'MIN', 'MAX', 'ORDER BY'],
+        initialSql: `SELECT category_id, MIN(price) AS min_price, MAX(price) AS max_price FROM ${productTable.name} WHERE price > 20 GROUP BY category_id ORDER BY category_id ASC;`,
+        manipulation: 'delete_second_query',
+        finalSql: `SELECT category_id, MIN(price) AS min_price, MAX(price) AS max_price FROM ${productTable.name} WHERE price > 35 GROUP BY category_id ORDER BY category_id ASC;`
       },
-      // Q7 (Structure 2: [Query], [HostLang], [Query], [Execute])
+      // Q7 (Structure 5: Query 1, Execute Query 1, HostLang clause check, Query 2, No second execute)
+      {
+        structure: 5,
+        operators: ['SELECT', 'WHERE', 'GROUP BY', 'SUM'],
+        initialSql: `SELECT category_id, ROUND(SUM(price), 2) AS sum_price FROM ${productTable.name} WHERE price > 20 GROUP BY category_id ORDER BY category_id ASC;`,
+        manipulation: 'delete_second_execute',
+        finalSql: `UPDATE ${productTable.name} SET price = price * 2;`
+      },
+      // Q8 (Structure 2: [Query], [HostLang], [Query], [Execute])
       {
         structure: 2,
-        operators: ['SELECT', 'WHERE', 'GROUP BY', 'SUM'],
-        initialSql: `SELECT category_id, SUM(price) AS sum_price FROM ${productTable.name} GROUP BY category_id;`,
-        manipulation: 'add_where_filter',
-        finalSql: `SELECT category_id, SUM(price) AS sum_price FROM ${productTable.name} WHERE price > 20 GROUP BY category_id;`
+        operators: ['SELECT', 'GROUP BY', 'AVG', 'MIN', 'MAX', 'ORDER BY'],
+        initialSql: `SELECT category_id, ROUND(AVG(price), 2) AS avg_price FROM ${productTable.name} GROUP BY category_id ORDER BY category_id ASC;`,
+        manipulation: 'typo_second_query',
+        finalSql: `SELECT category_id, ROUND(AVG(price), 2) AS avg_price, MIN(price) AS min_price, MAX(price) AS max_price FROM ${productTable.name} GROUP BY category_id ORDER BY category_id ASC;`
       },
-      // Q8 (Structure 3: [HostLang], [Query], [HostLang], [Execute])
+      // Q9 (Structure 3: [HostLang], [Query], [HostLang], [Execute])
       {
         structure: 3,
-        operators: ['SELECT', 'GROUP BY', 'AVG', 'MIN', 'MAX'],
-        finalSql: `SELECT category_id, AVG(price) AS avg_price, MIN(price) AS min_price, MAX(price) AS max_price FROM ${productTable.name} GROUP BY category_id;`
+        operators: ['SELECT', 'WHERE', 'UNION'],
+        finalSql: `SELECT id, name FROM ${userTable.name} WHERE id <= 3 UNION SELECT id, name FROM ${userTable.name} WHERE id >= 6 AND id <= 8;`
       },
-      // Q9 (Structure 4: [Query], [HostLang], [Execute])
+      // Q10 (Structure 4: [Query], [HostLang], [Execute])
       {
         structure: 4,
-        operators: ['SELECT', 'WHERE', 'UNION'],
-        finalSql: `SELECT id, name FROM ${userTable.name} WHERE id = 1 UNION SELECT id, name FROM ${userTable.name} WHERE id = 3;`
-      },
-      // Q10 (Structure 5: [Query], [Execute], [HostLang], [Query], [Execute])
-      {
-        structure: 5,
-        operators: ['INSERT', 'SELECT', 'WHERE'],
-        setupSql: `INSERT INTO ${categoryTable.name} (id, name) VALUES (99, 'Special');`,
-        finalSql: `SELECT id, name FROM ${categoryTable.name} WHERE id >= 90;`
+        operators: ['SELECT', 'WHERE', 'ORDER BY'],
+        finalSql: `SELECT id, name FROM ${categoryTable.name} WHERE priority >= 3 ORDER BY id ASC;`
       },
       // Q11 (Structure 1: [HostLang], [Query], [Execute])
       {
@@ -119,69 +126,69 @@ class QueryGenerator {
         operators: ['SELECT', 'WHERE', 'LIKE', 'ORDER BY'],
         finalSql: `SELECT id, title, price FROM ${productTable.name} WHERE title LIKE '%e%' ORDER BY price ASC;`
       },
-      // Q12 (Structure 3: [HostLang], [Query], [HostLang], [Execute])
+      // Q12 (Structure 4: [Query], [HostLang], [Execute])
       {
-        structure: 3,
+        structure: 4,
         operators: ['SELECT', 'COUNT', 'WHERE'],
         finalSql: `SELECT COUNT(*) AS total_count FROM ${orderTable.name} WHERE amount > 15;`
       },
-      // Q13 (Structure 4: [Query], [HostLang], [Execute])
+      // Q13 (Structure 1: [HostLang], [Query], [Execute])
       {
-        structure: 4,
+        structure: 1,
         operators: ['SELECT', 'WHERE', 'SUM', 'AVG'],
         finalSql: `SELECT SUM(amount) AS sum_amt, AVG(amount) AS avg_amt FROM ${orderTable.name} WHERE amount > 25;`
       },
-      // Q14 (Structure 5: [Query], [Execute], [HostLang], [Query], [Execute])
+      // Q14 (Structure 2: [Query], [HostLang], [Query], [Execute])
       {
-        structure: 5,
-        operators: ['DELETE', 'WHERE', 'SELECT', 'COUNT'],
-        setupSql: `DELETE FROM ${orderTable.name} WHERE id = 1;`,
-        finalSql: `SELECT COUNT(*) AS remaining_count FROM ${orderTable.name} WHERE id <= 5;`
+        structure: 2,
+        operators: ['SELECT', 'WHERE', 'ORDER BY'],
+        initialSql: `SELECT id, amount, status FROM ${orderTable.name} WHERE id <= 10;`,
+        manipulation: 'add_limit_order',
+        finalSql: `SELECT id, amount, status FROM ${orderTable.name} WHERE id <= 7 ORDER BY id ASC;`
       },
-      // Q15 (Structure 1: [HostLang], [Query], [Execute])
+      // Q15 (Structure 3: [HostLang], [Query], [HostLang], [Execute])
       {
-        structure: 1,
+        structure: 3,
         operators: ['SELECT', 'WHERE', 'MIN', 'MAX'],
         finalSql: `SELECT MIN(price) AS lowest_price, MAX(price) AS highest_price FROM ${productTable.name} WHERE price > 10;`
       },
-      // Q16 (Structure 2: [Query], [HostLang], [Query], [Execute])
+      // Q16 (Structure 5: [Query], [Execute], [HostLang], [Query], [Execute])
       {
-        structure: 2,
-        operators: ['SELECT', 'WHERE', 'ORDER BY', 'UNION'],
-        initialSql: `SELECT id, title FROM ${productTable.name} WHERE price < 15;`,
-        manipulation: 'expand_union',
+        structure: 5,
+        operators: ['DELETE', 'SELECT', 'WHERE', 'UNION'],
+        setupSql: `DELETE FROM ${productTable.name} WHERE id = 30;`,
         finalSql: `SELECT id, title FROM ${productTable.name} WHERE price < 25 UNION SELECT id, title FROM ${productTable.name} WHERE price > 75;`
       },
-      // Q17 (Structure 4: [Query], [HostLang], [Execute])
+      // Q17 (Structure 3: [HostLang], [Query], [HostLang], [Execute])
       {
-        structure: 4,
+        structure: 3,
         operators: ['SELECT', 'GROUP BY', 'COUNT'],
         finalSql: `SELECT user_id, COUNT(*) AS order_count FROM ${orderTable.name} GROUP BY user_id;`
       },
-      // Q18 (Structure 5: [Query], [Execute], [HostLang], [Query], [Execute])
-      {
-        structure: 5,
-        operators: ['UPDATE', 'WHERE', 'SELECT', 'LIKE', 'ORDER BY'],
-        setupSql: `UPDATE ${userTable.name} SET name = 'Alex' WHERE id = 1;`,
-        finalSql: `SELECT id, name FROM ${userTable.name} WHERE name LIKE 'A%' ORDER BY name ASC;`
-      },
-      // Q19 (Structure 1: [HostLang], [Query], [Execute])
-      {
-        structure: 1,
-        operators: ['SELECT', 'WHERE', 'GROUP BY', 'AVG', 'ORDER BY'],
-        finalSql: `SELECT category_id, AVG(price) AS avg_price FROM ${productTable.name} WHERE price > 15 GROUP BY category_id ORDER BY avg_price ASC;`
-      },
-      // Q20 (Structure 2: [Query], [HostLang], [Query], [Execute])
+      // Q18 (Structure 2: [Query], [HostLang], [Query], [Execute])
       {
         structure: 2,
-        operators: ['SELECT', 'GROUP BY', 'SUM', 'ORDER BY'],
-        initialSql: `SELECT user_id, SUM(amount) AS total_spent FROM ${orderTable.name} GROUP BY user_id;`,
+        operators: ['SELECT', 'WHERE', 'LIKE', 'ORDER BY'],
+        initialSql: `SELECT id, name FROM ${userTable.name} WHERE name LIKE 'A%';`,
         manipulation: 'add_order_by',
+        finalSql: `SELECT id, name FROM ${userTable.name} WHERE name LIKE 'A%' ORDER BY name ASC;`
+      },
+      // Q19 (Structure 5: [Query], [Execute], [HostLang], [Query], [Execute])
+      {
+        structure: 5,
+        operators: ['UPDATE', 'SELECT', 'WHERE', 'GROUP BY', 'AVG', 'ORDER BY'],
+        setupSql: `UPDATE ${productTable.name} SET price = price + 2 WHERE category_id = 2;`,
+        finalSql: `SELECT category_id, AVG(price) AS avg_price FROM ${productTable.name} WHERE price > 15 GROUP BY category_id ORDER BY avg_price ASC;`
+      },
+      // Q20 (Structure 4: [Query], [HostLang], [Execute])
+      {
+        structure: 4,
+        operators: ['SELECT', 'GROUP BY', 'SUM', 'ORDER BY'],
         finalSql: `SELECT user_id, SUM(amount) AS total_spent FROM ${orderTable.name} GROUP BY user_id ORDER BY total_spent DESC;`
       },
-      // Q21 (Structure 3: [HostLang], [Query], [HostLang], [Execute])
+      // Q21 (Structure 1: [HostLang], [Query], [Execute])
       {
-        structure: 3,
+        structure: 1,
         operators: ['SELECT', 'WHERE', 'ORDER BY'],
         finalSql: `SELECT id, title, price FROM ${productTable.name} WHERE price <= 50 ORDER BY price DESC;`
       },
@@ -189,8 +196,8 @@ class QueryGenerator {
       {
         structure: 5,
         operators: ['INSERT', 'SELECT', 'WHERE', 'ORDER BY'],
-        setupSql: `INSERT INTO ${productTable.name} (id, title, price, category_id) VALUES (98, 'Gizmo', 49.99, 1);`,
-        finalSql: `SELECT id, title, price FROM ${productTable.name} WHERE id > 95 ORDER BY price ASC;`
+        setupSql: `INSERT INTO ${productTable.name} (id, title, price, category_id) VALUES (31, 'Gizmo', 49.99, 1);`,
+        finalSql: `SELECT id, title, price FROM ${productTable.name} WHERE id >= 25 ORDER BY price ASC;`
       },
       // Q23 (Structure 1: [HostLang], [Query], [Execute])
       {
@@ -202,15 +209,15 @@ class QueryGenerator {
       {
         structure: 2,
         operators: ['SELECT', 'WHERE', 'UNION'],
-        initialSql: `SELECT id, title FROM ${productTable.name} WHERE id = 1;`,
+        initialSql: `SELECT id, title FROM ${productTable.name} WHERE id <= 3;`,
         manipulation: 'replace_union',
-        finalSql: `SELECT id, title FROM ${productTable.name} WHERE id = 2 UNION SELECT id, title FROM ${productTable.name} WHERE id = 4;`
+        finalSql: `SELECT id, title FROM ${productTable.name} WHERE id <= 3 UNION SELECT id, title FROM ${productTable.name} WHERE id >= 5 AND id <= 8;`
       },
       // Q25 (Structure 3: [HostLang], [Query], [HostLang], [Execute])
       {
         structure: 3,
         operators: ['SELECT', 'WHERE', 'ORDER BY'],
-        finalSql: `SELECT id, name FROM ${userTable.name} WHERE id <= 5 ORDER BY id DESC;`
+        finalSql: `SELECT id, name FROM ${userTable.name} WHERE id <= 8 ORDER BY id DESC;`
       },
       // Q26 (Structure 4: [Query], [HostLang], [Execute])
       {
@@ -250,7 +257,7 @@ class QueryGenerator {
         structure: 5,
         operators: ['UPDATE', 'WHERE', 'SELECT', 'ORDER BY'],
         setupSql: `UPDATE ${orderTable.name} SET amount = amount + 10 WHERE id = 2;`,
-        finalSql: `SELECT id, amount FROM ${orderTable.name} WHERE id <= 3 ORDER BY id ASC;`
+        finalSql: `SELECT id, amount FROM ${orderTable.name} WHERE id <= 6 ORDER BY id ASC;`
       },
       // Q32 (Structure 1: [HostLang], [Query], [Execute])
       {
@@ -270,7 +277,7 @@ class QueryGenerator {
       {
         structure: 3,
         operators: ['SELECT', 'WHERE', 'UNION'],
-        finalSql: `SELECT id, name FROM ${categoryTable.name} WHERE id = 1 UNION SELECT id, name FROM ${categoryTable.name} WHERE id = 2;`
+        finalSql: `SELECT id, name FROM ${categoryTable.name} WHERE id <= 3 UNION SELECT id, name FROM ${categoryTable.name} WHERE id >= 5 AND id <= 7;`
       },
       // Q35 (Structure 4: [Query], [HostLang], [Execute])
       {
@@ -282,8 +289,8 @@ class QueryGenerator {
       {
         structure: 5,
         operators: ['INSERT', 'SELECT', 'WHERE'],
-        setupSql: `INSERT INTO ${userTable.name} (id, name, age) VALUES (99, 'Zachary', 29);`,
-        finalSql: `SELECT id, name FROM ${userTable.name} WHERE id >= 90;`
+        setupSql: `INSERT INTO ${userTable.name} (id, name, age) VALUES (31, 'Zachary', 29);`,
+        finalSql: `SELECT id, name FROM ${userTable.name} WHERE id >= 24 ORDER BY id ASC;`
       },
       // Q37 (Structure 1: [HostLang], [Query], [Execute])
       {
@@ -315,7 +322,7 @@ class QueryGenerator {
       {
         structure: 1,
         operators: ['SELECT', 'WHERE', 'UNION', 'ORDER BY'],
-        finalSql: `SELECT id, name FROM ${userTable.name} WHERE id = 2 UNION SELECT id, name FROM ${userTable.name} WHERE id = 4;`
+        finalSql: `SELECT id, name FROM ${userTable.name} WHERE id <= 3 UNION SELECT id, name FROM ${userTable.name} WHERE id >= 6 AND id <= 8;`
       },
       // Q42 (Structure 5: [Query], [Execute], [HostLang], [Query], [Execute])
       {
@@ -355,15 +362,15 @@ class QueryGenerator {
         structure: 5,
         operators: ['UPDATE', 'WHERE', 'SELECT', 'ORDER BY'],
         setupSql: `UPDATE ${productTable.name} SET stock = stock + 20 WHERE id = 2;`,
-        finalSql: `SELECT id, stock FROM ${productTable.name} WHERE id <= 4 ORDER BY id ASC;`
+        finalSql: `SELECT id, stock FROM ${productTable.name} WHERE id <= 7 ORDER BY id ASC;`
       },
       // Q48 (Structure 2: [Query], [HostLang], [Query], [Execute])
       {
         structure: 2,
         operators: ['SELECT', 'WHERE', 'UNION'],
-        initialSql: `SELECT id, name FROM ${userTable.name} WHERE id = 5;`,
+        initialSql: `SELECT id, name FROM ${userTable.name} WHERE id <= 4;`,
         manipulation: 'add_union_clause',
-        finalSql: `SELECT id, name FROM ${userTable.name} WHERE id = 5 UNION SELECT id, name FROM ${userTable.name} WHERE id = 6;`
+        finalSql: `SELECT id, name FROM ${userTable.name} WHERE id <= 4 UNION SELECT id, name FROM ${userTable.name} WHERE id >= 6 AND id <= 9;`
       },
       // Q49 (Structure 3: [HostLang], [Query], [HostLang], [Execute])
       {
@@ -387,8 +394,8 @@ class QueryGenerator {
       {
         structure: 5,
         operators: ['INSERT', 'SELECT', 'SUM', 'WHERE', 'GROUP BY'],
-        setupSql: `INSERT INTO ${orderTable.name} (id, user_id, amount, status) VALUES (99, 1, 88.5, 'COMPLETED');`,
-        finalSql: `SELECT status, SUM(amount) AS total_sum FROM ${orderTable.name} WHERE id >= 90 GROUP BY status;`
+        setupSql: `INSERT INTO ${orderTable.name} (id, user_id, amount, status) VALUES (31, 1, 88.5, 'COMPLETED');`,
+        finalSql: `SELECT status, SUM(amount) AS total_sum FROM ${orderTable.name} WHERE user_id <= 3 GROUP BY status ORDER BY total_sum DESC;`
       },
       // Q53 (Structure 2: [Query], [HostLang], [Query], [Execute])
       {
@@ -414,7 +421,7 @@ class QueryGenerator {
       {
         structure: 1,
         operators: ['SELECT', 'WHERE', 'UNION'],
-        finalSql: `SELECT id, title FROM ${productTable.name} WHERE id = 1 UNION SELECT id, title FROM ${productTable.name} WHERE id = 3;`
+        finalSql: `SELECT id, title FROM ${productTable.name} WHERE id <= 3 UNION SELECT id, title FROM ${productTable.name} WHERE id >= 5 AND id <= 7;`
       },
       // Q57 (Structure 5: [Query], [Execute], [HostLang], [Query], [Execute])
       {
@@ -435,7 +442,7 @@ class QueryGenerator {
       {
         structure: 3,
         operators: ['SELECT', 'WHERE', 'MIN', 'MAX', 'ORDER BY'],
-        finalSql: `SELECT user_id, MIN(amount) AS min_spent, MAX(amount) AS max_spent FROM ${orderTable.name} WHERE user_id <= 3 GROUP BY user_id ORDER BY min_spent ASC;`
+        finalSql: `SELECT user_id, MIN(amount) AS min_spent, MAX(amount) AS max_spent FROM ${orderTable.name} WHERE user_id <= 5 GROUP BY user_id ORDER BY min_spent ASC;`
       },
       // Q60 (Structure 4: [Query], [HostLang], [Execute])
       {
@@ -453,9 +460,11 @@ class QueryGenerator {
     const setupSql = def.setupSql || null;
     const manipulation = def.manipulation || 'adjust_filter';
 
-    const executedQuery = (structureType === 5 && setupSql)
-      ? `${setupSql}\n${finalSql}`
-      : finalSql;
+    const executedQuery = (manipulation === 'delete_second_query' || manipulation === 'delete_second_execute' || manipulation === 'typo_second_query' || def.executedFromInitial)
+      ? initialSql
+      : ((structureType === 5 && setupSql)
+        ? `${setupSql}\n${finalSql}`
+        : finalSql);
 
     return {
       qNum: questionNumber,
@@ -477,7 +486,7 @@ class QueryGenerator {
     if (qNum !== null && qNum !== undefined) {
       const parsedQ = parseInt(qNum, 10);
       if (parsedQ === 1) {
-        return 'SELECT orders.id FROM orders JOIN users ON orders.user_id = users.id WHERE orders.id < 3;';
+        return 'SELECT orders.id, orders.amount FROM orders JOIN users ON orders.user_id = users.id WHERE orders.id <= 6;';
       }
       if (parsedQ >= 2 && parsedQ <= 60) {
         const spec = this.getStudyQuestionSpec(schema, parsedQ);

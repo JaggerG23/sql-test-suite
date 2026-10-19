@@ -62,19 +62,26 @@ class SchemaGenerator {
         });
       }
 
-      // Fill remaining columns
+      // Fill columns: include all standard domain attributes from pool
       const existingNames = new Set(columns.map(c => c.name));
-      const colPool = this.getColumnPoolForTable(tableName);
 
-      for (let i = columns.length; i < colsPerTable; i++) {
-        let col = this.rng.pick(colPool);
-        let count = 1;
-        while (existingNames.has(col.name)) {
-          col = { ...col, name: `${col.name}_${count++}` };
-        }
-        existingNames.add(col.name);
-        columns.push({ ...col, pk: false, fk: null });
+      // Guarantee standard relational columns for products and orders
+      if (tableName === 'products' && !existingNames.has('category_id')) {
+        existingNames.add('category_id');
+        columns.push({ name: 'category_id', type: 'INTEGER', pk: false, fk: { table: 'categories', column: 'id' } });
       }
+      if (tableName === 'orders' && !existingNames.has('user_id')) {
+        existingNames.add('user_id');
+        columns.push({ name: 'user_id', type: 'INTEGER', pk: false, fk: { table: 'users', column: 'id' } });
+      }
+
+      const colPool = this.getColumnPoolForTable(tableName);
+      colPool.forEach(col => {
+        if (!existingNames.has(col.name)) {
+          existingNames.add(col.name);
+          columns.push({ ...col, pk: false, fk: null });
+        }
+      });
 
       // Generate Table Data
       const rows = [];
@@ -154,6 +161,9 @@ class SchemaGenerator {
 
   generateSampleValue(colName, colType) {
     if (colType === 'INTEGER') {
+      if (colName === 'category_id') return this.rng.nextInt(1, 4);
+      if (colName === 'user_id') return this.rng.nextInt(1, 10);
+      if (colName === 'priority') return this.rng.nextInt(1, 5);
       if (colName.includes('age')) return this.rng.nextInt(18, 75);
       if (colName.includes('stock') || colName.includes('quantity')) return this.rng.nextInt(1, 100);
       if (colName.includes('active')) return this.rng.nextInt(0, 1);
