@@ -65,7 +65,7 @@ class SchemaGenerator {
       // Fill columns: include all standard domain attributes from pool
       const existingNames = new Set(columns.map(c => c.name));
 
-      // Guarantee standard relational columns for products and orders
+      // Guarantee standard relational columns for products, orders, and reviews
       if (tableName === 'products' && !existingNames.has('category_id')) {
         existingNames.add('category_id');
         columns.push({ name: 'category_id', type: 'INTEGER', pk: false, fk: { table: 'categories', column: 'id' } });
@@ -73,6 +73,10 @@ class SchemaGenerator {
       if (tableName === 'orders' && !existingNames.has('user_id')) {
         existingNames.add('user_id');
         columns.push({ name: 'user_id', type: 'INTEGER', pk: false, fk: { table: 'users', column: 'id' } });
+      }
+      if (tableName === 'reviews' && !existingNames.has('order_id')) {
+        existingNames.add('order_id');
+        columns.push({ name: 'order_id', type: 'INTEGER', pk: false, fk: { table: 'orders', column: 'id' } });
       }
 
       const colPool = this.getColumnPoolForTable(tableName);
@@ -91,7 +95,7 @@ class SchemaGenerator {
           if (col.pk) {
             row[col.name] = r;
           } else if (col.fk) {
-            row[col.name] = this.rng.nextInt(1, rowsPerTable);
+            row[col.name] = col.name === 'order_id' ? this.rng.nextInt(1, 8) : this.rng.nextInt(1, rowsPerTable);
           } else {
             row[col.name] = this.generateSampleValue(col.name, col.type);
           }
@@ -149,6 +153,13 @@ class SchemaGenerator {
           { name: 'name', type: 'VARCHAR' },
           { name: 'priority', type: 'INTEGER' }
         ];
+      case 'reviews':
+        return [
+          { name: 'score', type: 'INTEGER' },
+          { name: 'rating', type: 'FLOAT' },
+          { name: 'status', type: 'VARCHAR' },
+          { name: 'title', type: 'VARCHAR' }
+        ];
       default:
         return [
           { name: 'title', type: 'VARCHAR' },
@@ -163,7 +174,9 @@ class SchemaGenerator {
     if (colType === 'INTEGER') {
       if (colName === 'category_id') return this.rng.nextInt(1, 4);
       if (colName === 'user_id') return this.rng.nextInt(1, 10);
+      if (colName === 'order_id') return this.rng.nextInt(1, 8);
       if (colName === 'priority') return this.rng.nextInt(1, 5);
+      if (colName.includes('score')) return this.rng.nextInt(1, 5);
       if (colName.includes('age')) return this.rng.nextInt(18, 75);
       if (colName.includes('stock') || colName.includes('quantity')) return this.rng.nextInt(1, 100);
       if (colName.includes('active')) return this.rng.nextInt(0, 1);

@@ -42,8 +42,8 @@ class SyntaxDialectManager {
 
   initBalancedSequence(seed = 42) {
     const list = [];
-    for (let i = 0; i < 30; i++) list.push('pipe');
-    for (let i = 0; i < 30; i++) list.push('quorum');
+    for (let i = 0; i < 15; i++) list.push('pipe');
+    for (let i = 0; i < 15; i++) list.push('quorum');
 
     // Deterministic Fisher-Yates Shuffle using pseudo-RNG
     let currentSeed = seed * 10007 + 1337;
@@ -87,10 +87,10 @@ class SyntaxDialectManager {
         return this.availableDialects[g.sqlDialect] || this.availableDialects.pipe;
       }
     }
-    if (!this.balancedSequence || this.balancedSequence.length !== 60) {
+    if (!this.balancedSequence || this.balancedSequence.length !== 30) {
       this.initBalancedSequence(seed);
     }
-    const qIdx = Math.max(0, Math.min(59, (parseInt(qNumber, 10) || 1) - 1));
+    const qIdx = Math.max(0, Math.min(29, (parseInt(qNumber, 10) || 1) - 1));
     const key = this.balancedSequence[qIdx] || 'pipe';
     return this.availableDialects[key] || this.availableDialects.pipe;
   }
@@ -170,15 +170,17 @@ class SyntaxDialectManager {
       return cleanSql + ';';
     }
 
-    // Handle UNION
+    // Handle UNION ALL / UNION DISTINCT / UNION
     if (/\bUNION\b/i.test(cleanSql)) {
-      const parts = cleanSql.split(/\bUNION\b/i);
+      const isUnionAll = /\bUNION\s+ALL\b/i.test(cleanSql);
+      const unionType = isUnionAll ? 'UNION ALL' : 'UNION DISTINCT';
+      const parts = cleanSql.split(isUnionAll ? /\bUNION\s+ALL\b/i : /\bUNION(?:\s+DISTINCT)?\b/i);
       const pipeParts = parts.map(p => this.formatToPipeSyntax(p.trim()));
       if (pipeParts.length > 1) {
         let res = pipeParts[0];
         for (let i = 1; i < pipeParts.length; i++) {
           const indented = pipeParts[i].split('\n').map(l => '  ' + l).join('\n');
-          res += `\n|> UNION DISTINCT (\n${indented}\n)`;
+          res += `\n|> ${unionType} (\n${indented}\n)`;
         }
         return res;
       }
@@ -278,9 +280,10 @@ class SyntaxDialectManager {
       return cleanSql + ';';
     }
 
-    // Handle UNION
+    // Handle UNION ALL / UNION DISTINCT / UNION
     if (/\bUNION\b/i.test(cleanSql)) {
-      const parts = cleanSql.split(/\bUNION\b/i);
+      const isUnionAll = /\bUNION\s+ALL\b/i.test(cleanSql);
+      const parts = cleanSql.split(isUnionAll ? /\bUNION\s+ALL\b/i : /\bUNION(?:\s+DISTINCT)?\b/i);
       return parts.map(p => this.formatToQuorumSyntax(p.trim())).join('\n\n');
     }
 

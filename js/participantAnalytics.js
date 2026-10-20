@@ -608,8 +608,8 @@ class ParticipantAnalytics {
 
   logResponse(entry) {
     const existingResponses = this.getParticipantResponses(this.participantId);
-    if (existingResponses.length >= 60) {
-      console.warn(`[ParticipantAnalytics] Participant ${this.participantId} has already completed the maximum of 60 questions. Dropping additional submission.`);
+    if (existingResponses.length >= 30) {
+      console.warn(`[ParticipantAnalytics] Participant ${this.participantId} has already completed the maximum of 30 questions. Dropping additional submission.`);
       return null;
     }
 
@@ -622,9 +622,9 @@ class ParticipantAnalytics {
     const activeDialectLabel = entry.activeDialectName || (activeDialectKey === 'quorum' ? 'Quorum Syntax' : 'Google SQL (Pipe Syntax)');
 
     const rawQ = parseInt(entry.questionNumber, 10);
-    const resolvedQNum = (!isNaN(rawQ) && rawQ >= 1 && rawQ <= 60)
+    const resolvedQNum = (!isNaN(rawQ) && rawQ >= 1 && rawQ <= 30)
       ? rawQ
-      : Math.min(60, existingResponses.length + 1);
+      : Math.min(30, existingResponses.length + 1);
 
     const record = {
       id: 'resp_' + Date.now() + '_' + Math.random().toString(36).substring(2, 7),

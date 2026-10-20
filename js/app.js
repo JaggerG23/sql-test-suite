@@ -185,10 +185,10 @@ class QueryExperimentApp {
       const completedCount = completedResponses.length;
 
       if (this.humanResolver && this.humanResolver.stats) {
-        this.humanResolver.stats.totalAnswered = Math.min(60, completedCount);
+        this.humanResolver.stats.totalAnswered = Math.min(30, completedCount);
       }
 
-      if (completedCount >= 60) {
+      if (completedCount >= 30) {
         const hasFinished = typeof localStorage !== 'undefined' && localStorage.getItem('sql_study_completed_finished') === 'true';
         const hasFinalThoughts = typeof localStorage !== 'undefined' && (localStorage.getItem('sql_study_final_thoughts_done_' + pid) === 'true' || (this.analytics && this.analytics.getFinalThoughts(pid)));
         if (hasFinished) {
@@ -202,7 +202,7 @@ class QueryExperimentApp {
           await this.loadIncrementalQuestion('final_thoughts');
         }
       } else {
-        await this.loadIncrementalQuestion(Math.min(60, completedCount + 1));
+        await this.loadIncrementalQuestion(Math.min(30, completedCount + 1));
       }
     }
     this.renderAnalyticsDashboard();
@@ -406,13 +406,13 @@ class QueryExperimentApp {
       }
     }
 
-    // 2. Populate 60 Official Study Questions Grid
+    // 2. Populate 30 Official Study Questions Grid
     const grid = document.getElementById('admin-question-grid');
     if (grid) {
       grid.innerHTML = '';
 
       // Render 10 block rows, each with a block label + 6 question buttons
-      for (let blockIdx = 1; blockIdx <= 10; blockIdx++) {
+      for (let blockIdx = 1; blockIdx <= 5; blockIdx++) {
         // Block label cell
         const label = document.createElement('div');
         label.style.cssText = 'font-size:9px;color:rgba(255,255,255,0.3);font-weight:700;text-align:right;padding-right:6px;padding-top:4px;white-space:nowrap;';
@@ -489,8 +489,8 @@ class QueryExperimentApp {
       }
     }
 
-    // 1. Study Questions 1-60
-    for (let q = 1; q <= 60; q++) {
+    // 1. Study Questions 1-30
+    for (let q = 1; q <= 30; q++) {
       const btn = document.getElementById(`admin-qgrid-btn-${q}`);
       if (!btn) continue;
       const isActive = (studyQNum !== null && q === studyQNum);
@@ -628,7 +628,7 @@ class QueryExperimentApp {
         const qNum = parseInt(activeQNum, 10) || 1;
         const bIdx = Math.floor((qNum - 1) / 6) + 1;
         const vIdx = ((qNum - 1) % 6) + 1;
-        stageBadge.textContent = `Previewing: Question ${qNum} / 60 (Block ${bIdx}.${vIdx})`;
+        stageBadge.textContent = `Previewing: Question ${qNum} / 30 (Block ${bIdx}.${vIdx})`;
         stageBadge.style.color = '#a78bfa';
         stageBadge.style.borderColor = 'rgba(139, 92, 246, 0.4)';
       }
@@ -703,11 +703,11 @@ class QueryExperimentApp {
         this.applyAdminGroup(btn.dataset.groupId);
       }
 
-      // Question grid clicks (Q1-Q60)
+      // Question grid clicks (Q1-Q30)
       const qBtn = e.target.closest('[id^="admin-qgrid-btn-"]');
       if (qBtn && qBtn.dataset.qnum) {
         const qNum = parseInt(qBtn.dataset.qnum, 10);
-        if (qNum >= 1 && qNum <= 60) {
+        if (qNum >= 1 && qNum <= 30) {
           this.syncAdminQuestionGrid(qNum);
           this.loadIncrementalQuestion(qNum);
         }
@@ -838,12 +838,12 @@ class QueryExperimentApp {
     optTrainDone.textContent = '🏁 Training: Completed Notice';
     select.appendChild(optTrainDone);
 
-    for (let qNum = 1; qNum <= 60; qNum++) {
+    for (let qNum = 1; qNum <= 30; qNum++) {
       const bIdx = Math.floor((qNum - 1) / 6) + 1;
       const vIdx = ((qNum - 1) % 6) + 1;
       const opt = document.createElement('option');
       opt.value = qNum;
-      opt.textContent = `Q ${qNum} / 60 (Block ${bIdx}.${vIdx})`;
+      opt.textContent = `Q ${qNum} / 30 (Block ${bIdx}.${vIdx})`;
       select.appendChild(opt);
     }
 
@@ -944,8 +944,8 @@ class QueryExperimentApp {
       return;
     }
 
-    const isOver60 = (typeof targetQNum === 'number' && targetQNum > 60) || (parseInt(targetQNum, 10) > 60);
-    if (targetQNum === 'final_thoughts' || isOver60) {
+    const isOver30 = (typeof targetQNum === 'number' && targetQNum > 30) || (parseInt(targetQNum, 10) > 30);
+    if (targetQNum === 'final_thoughts' || isOver30) {
       this.currentQuestionNumber = 'final_thoughts';
       const select = document.getElementById('question-jump-select');
       if (select) select.value = 'final_thoughts';
@@ -1049,13 +1049,13 @@ class QueryExperimentApp {
       return;
     }
 
-    const qNum = Math.max(1, Math.min(60, parseInt(targetQNum, 10) || 1));
+    const qNum = Math.max(1, Math.min(30, parseInt(targetQNum, 10) || 1));
     this.currentQuestionNumber = qNum;
 
     const select = document.getElementById('question-jump-select');
     if (select) select.value = qNum;
 
-    const qIndex = qNum - 1; // 0 to 59
+    const qIndex = qNum - 1; // 0 to 29
     const blockIndex = Math.floor(qIndex / 6);
     const blockSeed = this.seed + blockIndex * 137;
     const variationIndex = qIndex % 6;
@@ -1144,7 +1144,7 @@ class QueryExperimentApp {
       await this.loadIncrementalQuestion('thank_you');
     } else {
       const num = parseInt(cur, 10) || 1;
-      if (num >= 60) {
+      if (num >= 30) {
         await this.loadIncrementalQuestion('final_thoughts');
       } else {
         await this.loadIncrementalQuestion(num + 1);
@@ -1159,7 +1159,7 @@ class QueryExperimentApp {
     } else if (cur === 'extra_credit') {
       await this.loadIncrementalQuestion('final_thoughts');
     } else if (cur === 'final_thoughts') {
-      await this.loadIncrementalQuestion(60);
+      await this.loadIncrementalQuestion(30);
     } else if (cur === 1 || cur === '1') {
       await this.loadIncrementalQuestion('training_complete');
     } else if (cur === 'training_complete') {
@@ -1953,7 +1953,7 @@ class QueryExperimentApp {
                   <i class="fa-solid ${folderIcon} text-warning" id="folder-icon-${safeUidId}" style="font-size: 16px;"></i>
                   <strong style="color: var(--color-primary); font-size: 13px;">User ID: ${this.escapeHTML(uid)}</strong>
                   <span class="badge" style="background: rgba(99, 102, 241, 0.2); border: 1px solid rgba(99, 102, 241, 0.4); color: #a5b4fc; font-size: 10px;"><i class="fa-solid fa-layer-group"></i> ${this.escapeHTML(group.assignedGroupName || 'Unassigned')}</span>
-                  <span class="badge badge-accent" style="font-size: 10.5px;">${group.totalAnswers} / 60 Questions</span>
+                  <span class="badge badge-accent" style="font-size: 10.5px;">${group.totalAnswers} / 30 Questions</span>
                   <span class="badge ${group.accuracy >= 70 ? 'badge-success' : 'badge-warning'}" style="font-size: 10.5px;">${group.accuracy}% Accuracy</span>
                   <span class="badge badge-outline text-muted" style="font-size: 10px;">Avg: ${group.avgTimeMs}ms</span>
                   <span class="badge badge-outline text-muted" style="font-size: 10px;" title="Answer Changes: ${group.totalAnswerChanges || 0} total (avg ${group.avgAnswerChanges || '0.00'}/q)"><i class="fa-solid fa-arrows-rotate"></i> ${group.totalAnswerChanges || 0} changes</span>

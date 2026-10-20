@@ -292,7 +292,7 @@ class HumanResolver {
       if (!this.currentQuestion || (this.app && staticPages.includes(this.app.currentQuestionNumber))) {
         return;
       }
-      if (!this.isTrainingChallenge && this.stats && this.stats.totalAnswered >= 60) {
+      if (!this.isTrainingChallenge && this.stats && this.stats.totalAnswered >= 30) {
         return;
       }
 
@@ -354,11 +354,11 @@ class HumanResolver {
           </p>
 
           <p style="margin: 0;">
-            If you choose to participate in this study, you will complete 60 multiple-choice questions. For each question, you will read a database query and select its expected output. 
+            If you choose to participate in this study, you will complete 30 multiple-choice questions. For each question, you will read a database query and select its expected output. 
           </p>
 
           <p style="margin: 0;">
-            This study includes the minimal risks of eye strain and/or hand cramps. The study will take 60 minutes of your time. You will be compensated for your time via 2% extra credit for your completion of this study in the course you received this recruitment from. NOTICE: Your involvement in the study only counts if you complete all sixty questions in the study. Completing less than 60 questions will not count as participation in the study.
+            This study includes the minimal risks of eye strain and/or hand cramps. The study will take 30 minutes of your time. You will be compensated for your time via 2% extra credit for your completion of this study in the course you received this recruitment from. NOTICE: Your involvement in the study only counts if you complete all thirty questions in the study. Completing less than 30 questions will not count as participation in the study.
           </p>
 
           <p style="margin: 0;">
@@ -477,7 +477,7 @@ class HumanResolver {
               <i class="fa-solid fa-circle-info text-primary"></i> What you will be doing:
             </p>
             <p style="margin: 0 0 10px 0;">
-              In this study, you'll be given 60 unique SQL queries with multiple choice answers. Your task is to read the code and answer each question with the expected output using the <strong>1, 2, 3, or 4</strong> keys on a keyboard or by clicking using a mouse. 
+              In this study, you'll be given 30 unique SQL queries with multiple choice answers. Your task is to read the code and answer each question with the expected output using the <strong>1, 2, 3, or 4</strong> keys on a keyboard or by clicking using a mouse. 
             </p>
             <div style="background: rgba(239, 68, 68, 0.12); border: 1px solid rgba(239, 68, 68, 0.35); border-left: 4px solid #ef4444; border-radius: 6px; padding: 8px 12px; margin-bottom: 10px; font-size: 12px; color: #fca5a5; font-weight: 600;">
               <i class="fa-solid fa-triangle-exclamation" style="margin-right: 6px; color: #ef4444;"></i> 1. Do not use the back arrow or refresh button while doing this study. <br> 2. This study should be completed on a desktop or laptop computer as it is not optimized for phones or tablets.
@@ -772,7 +772,7 @@ class HumanResolver {
         <!-- Notice banner -->
         <div style="background: rgba(99, 102, 241, 0.1); border: 1px solid rgba(99, 102, 241, 0.3); border-radius: 8px; padding: 12px 16px; margin-bottom: 24px; font-size: 12.5px; color: #cbd5e1; display: flex; align-items: center; gap: 10px;">
           <i class="fa-solid fa-circle-info text-accent" style="font-size: 16px; flex-shrink: 0;"></i>
-          <span>Once you finish the training questions, you will see a screen before you begin the 60-question study.</span>
+          <span>Once you finish the training questions, you will see a screen before you begin the 30-question study.</span>
         </div>
 
         <div style="text-align: center;">
@@ -821,10 +821,10 @@ class HumanResolver {
         <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 14px; margin-bottom: 24px;">
           <div style="background: rgba(14, 18, 28, 0.85); border: 1px solid rgba(255, 255, 255, 0.08); border-radius: 10px; padding: 16px;">
             <h4 style="font-size: 13px; font-weight: 700; color: #34d399; margin: 0 0 6px; display: flex; align-items: center; gap: 8px;">
-              <i class="fa-solid fa-list-check"></i> Official Study: 60 Questions
+              <i class="fa-solid fa-list-check"></i> Official Study: 30 Questions
             </h4>
             <p style="font-size: 12.5px; color: #94a3b8; line-height: 1.5; margin: 0;">
-              The study consists of 60 questions following the exact same format as the practice questions. Your progress is displayed in the top bar as you answer each question.
+              The study consists of 30 questions following the exact same format as the practice questions. Your progress is displayed in the top bar as you answer each question.
             </p>
           </div>
           <div style="background: rgba(14, 18, 28, 0.85); border: 1px solid rgba(255, 255, 255, 0.08); border-radius: 10px; padding: 16px;">
@@ -892,7 +892,7 @@ class HumanResolver {
           </div>
           <h2 style="font-family: var(--font-title); font-size: 24px; color: #fff; margin: 0 0 4px 0;">Study Completed &mdash; Final Thoughts</h2>
           <p class="text-muted fs-sm" style="font-size: 13.5px; margin: 4px 0 0 0; color: #cbd5e1;">
-            Thank you for completing all 60 questions! Please let us know what you thought of the study by rating the statements below.
+            Thank you for completing all 30 questions! Please let us know what you thought of the study by rating the statements below.
           </p>
         </div>
 
@@ -1535,7 +1535,7 @@ class HumanResolver {
       this.trainingQuestionNumber = null;
     }
 
-    if (!isTraining && (targetQNum === 'final_thoughts' || targetQNum > 60 || (this.stats && this.stats.totalAnswered >= 60 && !this.adminPreviewGroup))) {
+    if (!isTraining && (targetQNum === 'final_thoughts' || targetQNum > 30 || (this.stats && this.stats.totalAnswered >= 30 && !this.adminPreviewGroup))) {
       if (this.studyCompletedSuccessfully || (typeof localStorage !== 'undefined' && localStorage.getItem('sql_study_completed_finished') === 'true')) {
         this.renderThankYouScreen();
         return;
@@ -1546,7 +1546,7 @@ class HumanResolver {
 
     const qNum = isTraining
       ? trainingQNum
-      : Math.min(60, Math.max(1, parseInt(targetQNum, 10) || (this.stats ? this.stats.totalAnswered + 1 : 1)));
+      : Math.min(30, Math.max(1, parseInt(targetQNum, 10) || (this.stats ? this.stats.totalAnswered + 1 : 1)));
 
     this.currentSchema = schema;
     this.currentRawQuery = query;
@@ -1709,13 +1709,13 @@ class HumanResolver {
       } else if (qNum === 'training_complete') {
         navElem.textContent = 'Training: Complete';
       } else if (qNum === 'final_thoughts') {
-        navElem.textContent = 'Final Thoughts (60 / 60)';
+        navElem.textContent = 'Final Thoughts (30 / 30)';
       } else if (qNum === 'extra_credit') {
         navElem.textContent = 'Extra Credit';
       } else if (qNum === 'thank_you') {
-        navElem.textContent = 'Completed (60 / 60)';
+        navElem.textContent = 'Completed (30 / 30)';
       } else {
-        navElem.textContent = `${qNum || 1} / 60`;
+        navElem.textContent = `${qNum || 1} / 30`;
       }
     }
   }
@@ -1774,7 +1774,7 @@ class HumanResolver {
                   </span>
                 ` : `
                   <span class="badge" style="font-size: 11px; font-weight: 800; padding: 2px 9px; border-radius: 4px; background: rgba(99, 102, 241, 0.25); border: 1px solid rgba(99, 102, 241, 0.55); color: #c7d2fe; letter-spacing: 0.3px;">
-                    <i class="fa-solid fa-cube"></i> Question ${qNum} / 60
+                    <i class="fa-solid fa-cube"></i> Question ${qNum} / 30
                   </span>
                 `}
                 <strong style="color: var(--color-accent); font-size: 11px;"><i class="fa-solid fa-table-cells text-accent"></i> Database Schema</strong>
@@ -1987,7 +1987,7 @@ class HumanResolver {
       return;
     }
     if (this.isAnswered || !this.currentQuestion) return;
-    if (this.app && (this.app.currentQuestionNumber === 'final_thoughts' || (this.stats && this.stats.totalAnswered >= 60))) {
+    if (this.app && (this.app.currentQuestionNumber === 'final_thoughts' || (this.stats && this.stats.totalAnswered >= 30))) {
       return;
     }
 
@@ -2044,7 +2044,7 @@ class HumanResolver {
 
   submitAnswer() {
     if (this.isAnswered || this.selectedOptionIndex === null || !this.currentQuestion) return;
-    if (this.app && (this.app.currentQuestionNumber === 'final_thoughts' || (!this.isTrainingChallenge && this.stats && this.stats.totalAnswered >= 60))) {
+    if (this.app && (this.app.currentQuestionNumber === 'final_thoughts' || (!this.isTrainingChallenge && this.stats && this.stats.totalAnswered >= 30))) {
       return;
     }
 
@@ -2102,9 +2102,9 @@ class HumanResolver {
       } else {
         const curQ = this.app.currentQuestionNumber;
         const parsedQ = (typeof curQ === 'number') ? curQ : parseInt(curQ, 10);
-        const currentQNum = (!isNaN(parsedQ) && parsedQ >= 1 && parsedQ <= 60)
+        const currentQNum = (!isNaN(parsedQ) && parsedQ >= 1 && parsedQ <= 30)
           ? parsedQ
-          : Math.min(60, (this.stats ? this.stats.totalAnswered + 1 : 1));
+          : Math.min(30, (this.stats ? this.stats.totalAnswered + 1 : 1));
 
         this.app.analytics.logResponse({
           questionNumber: currentQNum,
