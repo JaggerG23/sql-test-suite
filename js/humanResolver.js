@@ -30,6 +30,7 @@ class HumanResolver {
 
     this.intakeCompleted = false;
     this.consentAccepted = false;
+    this._consentPid = null;
 
     // Check if new participant session is explicitly requested via URL (e.g. from index.html Participant View link)
     if (typeof window !== 'undefined' && window.location && window.location.search) {
@@ -42,6 +43,11 @@ class HumanResolver {
           }
           this.intakeCompleted = false;
           this.consentAccepted = false;
+          this._consentPid = null;
+          try {
+            sessionStorage.removeItem('sql_study_consent_accepted');
+            localStorage.removeItem('sql_study_consent_accepted');
+          } catch (e) {}
         }
       } catch (e) {}
     }
@@ -107,43 +113,40 @@ class HumanResolver {
 
   hasAcceptedConsent(pid) {
     if (!this.isParticipantView()) return true;
-    if (this.consentAccepted) return true;
-    if (this.app && typeof this.app.hasAcceptedConsent === 'function') {
-      return this.app.hasAcceptedConsent(pid);
-    }
+    const targetPid = pid || (this.app && this.app.analytics ? this.app.analytics.participantId : '');
+    if (!targetPid) return false;
+    if (this.consentAccepted && this._consentPid === targetPid) return true;
     try {
-      const targetPid = pid || (this.app && this.app.analytics ? this.app.analytics.participantId : '');
-      if (targetPid && (sessionStorage.getItem('sql_study_consent_accepted_' + targetPid) === 'true' || localStorage.getItem('sql_study_consent_accepted_' + targetPid) === 'true')) {
+      if (sessionStorage.getItem('sql_study_consent_accepted_' + targetPid) === 'true' || 
+          localStorage.getItem('sql_study_consent_accepted_' + targetPid) === 'true') {
         this.consentAccepted = true;
-        return true;
-      }
-      if (sessionStorage.getItem('sql_study_consent_accepted') === 'true' || localStorage.getItem('sql_study_consent_accepted') === 'true') {
-        this.consentAccepted = true;
+        this._consentPid = targetPid;
         return true;
       }
     } catch (e) {}
+    this.consentAccepted = false;
+    this._consentPid = null;
     return false;
   }
 
   setConsentAccepted(accepted = true) {
+    const targetPid = (this.app && this.app.analytics ? this.app.analytics.participantId : '');
     this.consentAccepted = accepted;
+    this._consentPid = accepted ? targetPid : null;
     try {
-      const targetPid = (this.app && this.app.analytics ? this.app.analytics.participantId : '');
       if (accepted) {
         if (targetPid) {
           sessionStorage.setItem('sql_study_consent_accepted_' + targetPid, 'true');
           localStorage.setItem('sql_study_consent_accepted_' + targetPid, 'true');
         }
-        sessionStorage.setItem('sql_study_consent_accepted', 'true');
-        localStorage.setItem('sql_study_consent_accepted', 'true');
       } else {
         if (targetPid) {
           sessionStorage.removeItem('sql_study_consent_accepted_' + targetPid);
           localStorage.removeItem('sql_study_consent_accepted_' + targetPid);
         }
-        sessionStorage.removeItem('sql_study_consent_accepted');
-        localStorage.removeItem('sql_study_consent_accepted');
       }
+      sessionStorage.removeItem('sql_study_consent_accepted');
+      localStorage.removeItem('sql_study_consent_accepted');
     } catch (e) {}
   }
 
@@ -1839,7 +1842,7 @@ class HumanResolver {
                       <div class="opt-status-icon" id="opt-icon-${idx}"></div>
                     </div>
                     <!-- Data Preview Table: Capped height under title bar with 0 top gap -->
-                    <div class="opt-body" style="display: flex; justify-content: center; align-items: flex-start; overflow-x: auto; overflow-y: auto; width: 100%; flex: 1; padding: 0; margin: 0; max-height: 123px;">
+                    <div class="opt-body" style="display: block; overflow-x: auto; overflow-y: auto; width: 100%; flex: 1; padding: 0; margin: 0; max-height: 123px;">
                       ${this.renderOptionContentHTML(opt, isTraining, trainQNum)}
                     </div>
                   </div>
@@ -2274,14 +2277,14 @@ class HumanResolver {
     }
 
     let html = `
-      <div style="display: flex; justify-content: center; width: 100%; margin: 0; padding: 0;">
-        <table class="data-table opt-table" style="width: 100%; margin: 0 auto; border-collapse: separate; border-spacing: 0; border-radius: 4px; border: 1px solid rgba(255,255,255,0.12); font-size: 11px; background: rgba(10, 14, 26, 0.65);">
+      <div class="table-wrapper" style="display: block; width: max-content; min-width: 100%; margin: 0 auto; padding: 0;">
+        <table class="data-table opt-table" style="width: max-content; min-width: 100%; margin: 0 auto; border-collapse: separate; border-spacing: 0; border-radius: 4px; border: 1px solid rgba(255,255,255,0.12); font-size: 11px; background: rgba(10, 14, 26, 0.65);">
           <thead>
             <tr>
     `;
 
     columns.forEach(col => {
-      html += `<th style="position: sticky; top: 0; z-index: 10; padding: 4px 10px; background: #0e1424; text-transform: none; font-size: 10.5px; border-bottom: 1px solid rgba(255,255,255,0.18); box-shadow: 0 1px 3px rgba(0,0,0,0.5); color: var(--color-accent); font-weight: 600; text-align: center;">${this.escapeHTML(col)}</th>`;
+      html += `<th style="position: sticky; top: 0; z-index: 10; padding: 4px 8px; background: #0e1424; text-transform: none; font-size: 10.5px; border-bottom: 1px solid rgba(255,255,255,0.18); box-shadow: 0 1px 3px rgba(0,0,0,0.5); color: var(--color-accent); font-weight: 600; text-align: center; white-space: nowrap;">${this.escapeHTML(col)}</th>`;
     });
 
     html += `</tr></thead><tbody>`;
@@ -2294,7 +2297,7 @@ class HumanResolver {
         const rowVals = Array.isArray(row) ? row : columns.map(c => (row && row[c] !== undefined ? row[c] : null));
         rowVals.forEach(val => {
           const dispVal = (val === null || val === undefined) ? '<span class="text-muted">NULL</span>' : this.escapeHTML(val);
-          html += `<td style="padding: 2.5px 10px; border-bottom: 1px solid rgba(255,255,255,0.05); white-space: nowrap; font-family: var(--font-mono); text-align: center;">${dispVal}</td>`;
+          html += `<td style="padding: 2.5px 8px; border-bottom: 1px solid rgba(255,255,255,0.05); white-space: nowrap; font-family: var(--font-mono); text-align: center;">${dispVal}</td>`;
         });
         html += `</tr>`;
       });

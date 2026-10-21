@@ -972,6 +972,44 @@ kbd {
 .table-option-card .opt-body {
   padding: 0 !important;
   margin: 0 !important;
+  display: block !important;
+  overflow-x: auto !important;
+  overflow-y: auto !important;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255, 255, 255, 0.28) rgba(0, 0, 0, 0.35);
+}
+
+.table-option-card .opt-body::-webkit-scrollbar {
+  height: 6px;
+  width: 6px;
+}
+
+.table-option-card .opt-body::-webkit-scrollbar-track {
+  background: rgba(0, 0, 0, 0.35);
+  border-radius: 3px;
+}
+
+.table-option-card .opt-body::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.28);
+  border-radius: 3px;
+}
+
+.table-option-card .opt-body::-webkit-scrollbar-thumb:hover {
+  background: var(--color-primary, #6366f1);
+}
+
+.table-option-card .table-wrapper {
+  display: block;
+  width: max-content;
+  min-width: 100%;
+  margin: 0 auto;
+  padding: 0;
+}
+
+.table-option-card .opt-table {
+  width: max-content !important;
+  min-width: 100% !important;
+  margin: 0 auto !important;
 }
 
 .schema-opt-header-line {

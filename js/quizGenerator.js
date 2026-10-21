@@ -424,8 +424,8 @@ class QuizGenerator {
     const structureType = spec.structureType || 1;
     const blocks = [];
 
-    // Study Question 2: Simple query, use python/javascript to delete it, new query, execute
-    if (spec.manipulation === 'delete_query' || spec.qNum === 2) {
+    // Study Question 2 & 21 (Structure 2): Simple query, use python/javascript to delete it, new query, execute
+    if (spec.manipulation === 'delete_query' || spec.qNum === 2 || spec.qNum === 21) {
       if (isPython) {
         blocks.push(`query = """\n${initialDialectSql}\n"""`);
         blocks.push(`del query`);
@@ -440,8 +440,8 @@ class QuizGenerator {
       return blocks.join('\n\n');
     }
 
-    // Study Question 8: Function related to appending to query that doesn't affect query, query, call function saved to variable, execute
-    if (spec.manipulation === 'append_function' || spec.qNum === 8) {
+    // Study Question 8 & 25 (Structure 3): Function related to appending to query that doesn't affect query, query, call function saved to variable, execute
+    if (spec.manipulation === 'append_function' || spec.qNum === 8 || spec.qNum === 25) {
       if (isPython) {
         blocks.push(`def append_to_query(clause):\n    log_buffer = ["audit_marker"]\n    log_buffer.append(clause)\n    return len(log_buffer)`);
         blocks.push(`query = """\n${finalDialectSql}\n"""`);
@@ -470,8 +470,8 @@ class QuizGenerator {
       return blocks.join('\n\n');
     }
 
-    // Study Question 9 (Structure 4: [Query], [HostLang], [Execute]): Initial query conducts aggregate using SUM and AVG, HLL rewrites order to DESC
-    if (spec.manipulation === 'rewrite_order_desc' || spec.qNum === 9) {
+    // Study Question 9 & 22 (Structure 4: [Query], [HostLang], [Execute]): Initial query conducts aggregate, HLL rewrites order to DESC
+    if (spec.manipulation === 'rewrite_order_desc' || spec.qNum === 9 || spec.qNum === 22) {
       if (isPython) {
         blocks.push(`query = """\n${initialDialectSql}\n"""`);
         blocks.push(`query = query.replace("ASC", "DESC")`);
@@ -484,34 +484,74 @@ class QuizGenerator {
       return blocks.join('\n\n');
     }
 
-    // Study Question 10: COUNT ids in order, count ids in reviews, compare the two, output bigger of two JOINed with average
-    if (spec.manipulation === 'compare_counts_join_avg' || spec.qNum === 10) {
-      const altSql = `SELECT COUNT(reviews.id) AS total_count, ROUND(AVG(reviews.score), 2) AS avg_val FROM reviews JOIN orders ON reviews.order_id = orders.id;`;
-      const altDialectSql = dialectManager
-        ? dialectManager.formatQueryToDialect(altSql, dialectId)
-        : altSql;
+    // Study Question 10 & 24 (Structure 1: [HostLang], [Query], [Execute]):
+    // Host language counts and compares arrays, and conditionally assigns query
+    if (spec.manipulation === 'compare_counts_select_output' || spec.manipulation === 'compare_counts_join_avg' || spec.qNum === 10 || spec.qNum === 24) {
+      const pTable = (schema && schema.tables) ? (schema.tables.find(t => t.name === 'products') || schema.tables[1]) : null;
+      const pTableName = pTable ? pTable.name : 'products';
+      const altSql = spec.initialSql || `SELECT ${pTableName}.title AS product_name FROM ${pTableName} ORDER BY ${pTableName}.id ASC;`;
+      const altDialectSql = dialectManager ? dialectManager.formatQueryToDialect(altSql, dialectId) : (initialDialectSql || altSql);
 
       if (isPython) {
-        blocks.push(`order_ids = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20]\nreview_ids = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]\n\norder_count = len(order_ids)\nreview_count = len(review_ids)`);
-        blocks.push(`if order_count >= review_count:\n    query = """\n${finalDialectSql}\n"""\nelse:\n    query = """\n${altDialectSql}\n"""`);
+        blocks.push(`orders_quantity = [15, 8, 22, 5, 12, 30]\nproducts_id = [1, 2, 3]\norders_count = len(orders_quantity)\nproducts_count = len(products_id)`);
+        blocks.push(`if orders_count >= products_count:\n    query = """\n${finalDialectSql}\n"""\nelse:\n    query = """\n${altDialectSql}\n"""`);
         blocks.push(`result_table = db.execute(query)`);
       } else {
-        blocks.push(`let orderIds = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20];\nlet reviewIds = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12];\n\nlet orderCount = orderIds.length;\nlet reviewCount = reviewIds.length;`);
-        blocks.push(`let query = "";\nif (orderCount >= reviewCount) {\n  query = \`\n${finalDialectSql}\n\`;\n} else {\n  query = \`\n${altDialectSql}\n\`;\n}`);
+        blocks.push(`let ordersQuantity = [15, 8, 22, 5, 12, 30];\nlet productsId = [1, 2, 3];\nlet ordersCount = ordersQuantity.length;\nlet productsCount = productsId.length;`);
+        blocks.push(`let query = "";\nif (ordersCount >= productsCount) {\n  query = \`\n${finalDialectSql}\n\`;\n} else {\n  query = \`\n${altDialectSql}\n\`;\n}`);
         blocks.push(`const resultTable = db.execute(query);`);
       }
       return blocks.join('\n\n');
     }
 
-    // Study Question 11 (Structure 4: [Query], [HostLang], [Execute]): JOIN query, HLL defines 4 strings: 2 column names from the correct answer and 2 irrelevant strings (used for nothing)
-    if (spec.manipulation === 'unused_column_strings' || spec.qNum === 11) {
+    // Study Question 11 & 27 (Structure 4: [Query], [HostLang], [Execute]): JOIN query, HLL defines 4 strings
+    if (spec.manipulation === 'unused_column_strings' || spec.qNum === 11 || spec.qNum === 27) {
       if (isPython) {
         blocks.push(`query = """\n${finalDialectSql}\n"""`);
-        blocks.push(`col_title = "title"\ncol_category = "category_name"\ncol_status = "status"\ncol_notes = "notes"`);
+        if (spec.qNum === 27) {
+          blocks.push(`col_amount = "amount"\ncol_customer = "customer_name"\ncol_status = "status"\ncol_notes = "notes"`);
+        } else {
+          blocks.push(`col_title = "title"\ncol_category = "category_name"\ncol_status = "status"\ncol_notes = "notes"`);
+        }
         blocks.push(`result_table = db.execute(query)`);
       } else {
         blocks.push(`const query = \`\n${finalDialectSql}\n\`;`);
-        blocks.push(`let colTitle = "title";\nlet colCategory = "category_name";\nlet colStatus = "status";\nlet colNotes = "notes";`);
+        if (spec.qNum === 27) {
+          blocks.push(`let colAmount = "amount";\nlet colCustomer = "customer_name";\nlet colStatus = "status";\nlet colNotes = "notes";`);
+        } else {
+          blocks.push(`let colTitle = "title";\nlet colCategory = "category_name";\nlet colStatus = "status";\nlet colNotes = "notes";`);
+        }
+        blocks.push(`const resultTable = db.execute(query);`);
+      }
+      return blocks.join('\n\n');
+    }
+
+    // Study Question 13 & 30 (Structure 2: [Query], [HostLang], [Query], [Execute]):
+    // Initial query; HLL string manipulation modifies query;
+    // but Query 2 completely overwrites query, and is executed.
+    if (spec.manipulation === 'severe_query_override' || spec.qNum === 13 || spec.qNum === 30) {
+      const isQuorum = (dialectId === 'quorum');
+      if (isPython) {
+        blocks.push(`query = """\n${initialDialectSql}\n"""`);
+        if (spec.qNum === 30) {
+          blocks.push(`query = query.replace("reviews", "products")\nquery = query.replace("score", "rating")\nquery = query.replace("COUNT(*) AS review_count", "title, price")`);
+        } else if (isQuorum) {
+          blocks.push(`query = query.replace('"orders"', '"users"')\nquery = query.replace('"amount > 15"', '"id <= 3"')\nquery = query.replace('query:AddColumn("SUM(amount)", "sum_amt")', 'query:AddColumn("id")\\nquery:AddColumn("name")')\nquery = query.replace('query:AddColumn("AVG(amount)", "avg_amt")', 'query:AddColumn("rating")')`);
+        } else {
+          blocks.push(`query = query.replace("orders", "users")\nquery = query.replace("amount > 15", "id <= 3")\nquery = query.replace("SUM(amount) AS sum_amt, AVG(amount) AS avg_amt", "id, name, rating")`);
+        }
+        blocks.push(`query = """\n${finalDialectSql}\n"""`);
+        blocks.push(`result_table = db.execute(query)`);
+      } else {
+        blocks.push(`let query = \`\n${initialDialectSql}\n\`;`);
+        if (spec.qNum === 30) {
+          blocks.push(`query = query.replace("reviews", "products");\nquery = query.replace("score", "rating");\nquery = query.replace("COUNT(*) AS review_count", "title, price");`);
+        } else if (isQuorum) {
+          blocks.push(`query = query.replace('"orders"', '"users"');\nquery = query.replace('"amount > 15"', '"id <= 3"');\nquery = query.replace('query:AddColumn("SUM(amount)", "sum_amt")', 'query:AddColumn("id")\\nquery:AddColumn("name")');\nquery = query.replace('query:AddColumn("AVG(amount)", "avg_amt")', 'query:AddColumn("rating")');`);
+        } else {
+          blocks.push(`query = query.replace("orders", "users");\nquery = query.replace("amount > 15", "id <= 3");\nquery = query.replace("SUM(amount) AS sum_amt, AVG(amount) AS avg_amt", "id, name, rating");`);
+        }
+        blocks.push(`query = \`\n${finalDialectSql}\n\`;`);
         blocks.push(`const resultTable = db.execute(query);`);
       }
       return blocks.join('\n\n');
@@ -535,8 +575,8 @@ class QuizGenerator {
       return blocks.join('\n\n');
     }
 
-    // Study Question 6: Query 1, Execute Query 1, HostLang, Query 2, Delete Query 2
-    if (spec.manipulation === 'delete_second_query' || spec.qNum === 6) {
+    // Study Question 6 & 23 (Structure 5): Query 1, Execute Query 1, HostLang, Query 2, Delete Query 2
+    if (spec.manipulation === 'delete_second_query' || spec.qNum === 6 || spec.qNum === 23) {
       if (isPython) {
         blocks.push(`query = """\n${initialDialectSql}\n"""`);
         blocks.push(`result_table = db.execute(query)`);
@@ -553,8 +593,8 @@ class QuizGenerator {
       return blocks.join('\n\n');
     }
 
-    // Study Question 7: Make second query the first query, inspect query in host lang, delete second execute
-    if (spec.manipulation === 'delete_second_execute' || spec.qNum === 7) {
+    // Study Question 7 & 29 (Structure 5): Make second query the first query, inspect query in host lang, delete second execute
+    if (spec.manipulation === 'delete_second_execute' || spec.qNum === 7 || spec.qNum === 29) {
       if (isPython) {
         blocks.push(`query = """\n${initialDialectSql}\n"""`);
         blocks.push(`result_table = db.execute(query)`);
@@ -601,17 +641,129 @@ class QuizGenerator {
       return blocks.join('\n\n');
     }
 
-    // Structure 2 manipulation: typo_second_query
-    if (spec.manipulation === 'typo_second_query') {
+    // Study Question 18 (Structure 2: [Query], [HostLang], [Query], [Execute]):
+    // Query 1 (named query) outputs product title, price, stock (aggregate on products).
+    // HLL does something that looks like it's applying to query 1, but isn't.
+    // Query 2 (named queryy) outputs user_id, order_count, total_spent, avg_amount, max_order (complex filter & aggregate on orders).
+    // Result table executes queryy: result_table = db.execute(queryy).
+    if (spec.manipulation === 'q18_typo_queryy' || spec.qNum === 18) {
       if (isPython) {
         blocks.push(`query = """\n${initialDialectSql}\n"""`);
-        blocks.push(`clean_sql = query.strip()\nif "GROUP BY" in clean_sql:\n    active_filter = "valid query criteria"`);
-        blocks.push(`quey = """\n${finalDialectSql}\n"""`);
+        blocks.push(`if "price" in query:\n    query.replace("price", "category_id")\n    query_audit = query + " -- verified filter"`);
+        blocks.push(`queryy = """\n${finalDialectSql}\n"""`);
+        blocks.push(`result_table = db.execute(queryy)`);
+      } else {
+        blocks.push(`let query = \`\n${initialDialectSql}\n\`;`);
+        blocks.push(`if (query.includes("price")) {\n  query.replace("price", "category_id");\n  let queryAudit = query + " -- verified filter";\n}`);
+        blocks.push(`let queryy = \`\n${finalDialectSql}\n\`;`);
+        blocks.push(`const resultTable = db.execute(queryy);`);
+      }
+      return blocks.join('\n\n');
+    }
+
+    // Study Question 19 (Structure 4: [Query], [HostLang], [Execute]):
+    // Initial query on products grouped by category_id.
+    // Host language dynamically indexes an array to choose a sort key and injects extra filter stock > 20.
+    if (spec.manipulation === 'q19_filter_sort_hll' || spec.qNum === 19) {
+      if (isPython) {
+        blocks.push(`query = """\n${initialDialectSql}\n"""`);
+        blocks.push(`sort_keys = ["category_id", "avg_price", "count_items"]\nchosen_sort = sort_keys[1]\nextra_filter = "stock > 20"\n\nif "WHERE" in query:\n    query = query.replace("price > 15", f"price > 15 AND {extra_filter}")\n    query = query.replace("ORDER BY count_items DESC", f"ORDER BY {chosen_sort} DESC")`);
         blocks.push(`result_table = db.execute(query)`);
       } else {
         blocks.push(`let query = \`\n${initialDialectSql}\n\`;`);
-        blocks.push(`let cleanSql = query.trim();\nlet activeFilter = "";\nif (cleanSql.includes("GROUP BY")) {\n  activeFilter = "valid query criteria";\n}`);
-        blocks.push(`let quey = \`\n${finalDialectSql}\n\`;`);
+        blocks.push(`let sortKeys = ["category_id", "avg_price", "count_items"];\nlet chosenSort = sortKeys[1];\nlet extraFilter = "stock > 20";\n\nif (query.includes("WHERE")) {\n  query = query.replace("price > 15", \`price > 15 AND \${extraFilter}\`);\n  query = query.replace("ORDER BY count_items DESC", \`ORDER BY \${chosenSort} DESC\`);\n}`);
+        blocks.push(`const resultTable = db.execute(query);`);
+      }
+      return blocks.join('\n\n');
+    }
+
+    // Study Question 20 (Structure 1: [HostLang], [Query], [Execute]):
+    // Host language computes average of order tiers (minCutoff = 75), checks condition (minCutoff >= 70),
+    // and conditionally assigns the executed query with the computed threshold interpolated.
+    if (spec.manipulation === 'q20_compute_threshold_hll' || spec.qNum === 20) {
+      const altSql = spec.initialSql;
+      const altDialectSql = dialectManager ? dialectManager.formatQueryToDialect(altSql, dialectId) : altSql;
+      if (isPython) {
+        blocks.push(`order_tiers = [45, 60, 85, 110]\nmin_cutoff = sum(order_tiers) // len(order_tiers)\n\nif min_cutoff >= 70:\n    query = f"""\n${finalDialectSql}\n"""\nelse:\n    query = """\n${altDialectSql}\n"""`);
+        blocks.push(`result_table = db.execute(query)`);
+      } else {
+        blocks.push(`let orderTiers = [45, 60, 85, 110];\nlet minCutoff = Math.floor(orderTiers.reduce((a, b) => a + b, 0) / orderTiers.length);\n\nlet query = "";\nif (minCutoff >= 70) {\n  query = \`\n${finalDialectSql}\n\`;\n} else {\n  query = \`\n${altDialectSql}\n\`;\n}`);
+        blocks.push(`const resultTable = db.execute(query);`);
+      }
+      return blocks.join('\n\n');
+    }
+
+    // Study Question 14 & 28 (Structure 3: [HostLang], [Query], [HostLang], [Execute]):
+    // Uses keywords from the query in the surrounding HLL code
+    if (spec.manipulation === 'keywords_hll_confuse' || spec.qNum === 14 || spec.qNum === 28) {
+      if (spec.qNum === 28) {
+        if (isPython) {
+          blocks.push(`category_filter = [1, 2, 3]\nprice_floor = 25\navg_benchmark = round(sum([30.5, 45.2]) / 2, 2)`);
+          blocks.push(`query = """\n${finalDialectSql}\n"""`);
+          blocks.push(`group_key = "category_id"\nprice_sum = sum([26.0, 34.0])\navg_price = round(price_sum / 2, 2)`);
+          blocks.push(`result_table = db.execute(query)`);
+        } else {
+          blocks.push(`let categoryFilter = [1, 2, 3];\nlet priceFloor = 25;\nlet avgBenchmark = Math.round((30.5 + 45.2) / 2);`);
+          blocks.push(`const query = \`\n${finalDialectSql}\n\`;`);
+          blocks.push(`let groupKey = "category_id";\nlet priceSum = [26.0, 34.0].reduce((s, p) => s + p, 0);\nlet avgPrice = Math.round(priceSum / 2);`);
+          blocks.push(`const resultTable = db.execute(query);`);
+        }
+        return blocks.join('\n\n');
+      }
+      if (isPython) {
+        blocks.push(`status_checks = ["PENDING", "COMPLETED"]\nlike_match = "status LIKE 'COMP%'"\nsum_amount = sum([120.45, 80.55])\nround_target = round(sum_amount, 2)`);
+        blocks.push(`query = """\n${finalDialectSql}\n"""`);
+        blocks.push(`group_status = "PENDING"\namount_sum = sum([45.20, 54.80])\nrounded_total = round(amount_sum, 2)`);
+        blocks.push(`result_table = db.execute(query)`);
+      } else {
+        blocks.push(`let statusChecks = ["PENDING", "COMPLETED"];\nlet likeMatch = "status LIKE 'COMP%'";\nlet sumAmount = [120.45, 80.55].reduce((sum, amount) => sum + amount, 0);\nlet roundTarget = Math.round(sumAmount);`);
+        blocks.push(`const query = \`\n${finalDialectSql}\n\`;`);
+        blocks.push(`let groupStatus = "PENDING";\nlet amountSum = [45.20, 54.80].reduce((sum, amount) => sum + amount, 0);\nlet roundedTotal = Math.round(amountSum);`);
+        blocks.push(`const resultTable = db.execute(query);`);
+      }
+      return blocks.join('\n\n');
+    }
+
+    // Study Question 16 (Structure 3: [HostLang], [Query], [HostLang], [Execute]):
+    // Users name, age, is_active joined with SUM of orders amount and COUNT of reviews.
+    // Host language creates a function that takes the string query and appends order quantity to it, but is never called.
+    if (spec.manipulation === 'unused_append_quantity' || spec.qNum === 16) {
+      const isQuorum = (dialectId === 'quorum');
+      if (isPython) {
+        if (isQuorum) {
+          blocks.push(`def append_order_quantity(q):\n    return q + '\\nquery:AddColumn("SUM(orders:quantity)", "total_quantity")'`);
+        } else {
+          blocks.push(`def append_order_quantity(q):\n    return q.replace("review_count", "review_count, SUM(orders.quantity) AS total_quantity")`);
+        }
+        blocks.push(`query = """\n${finalDialectSql}\n"""`);
+        blocks.push(`audit_trail = ["orders_joined", "reviews_joined"]\nverified_joins = len(audit_trail)`);
+        blocks.push(`result_table = db.execute(query)`);
+      } else {
+        if (isQuorum) {
+          blocks.push(`function appendOrderQuantity(q) {\n  return q + '\\nquery:AddColumn("SUM(orders:quantity)", "total_quantity")';\n}`);
+        } else {
+          blocks.push(`function appendOrderQuantity(q) {\n  return q.replace("review_count", "review_count, SUM(orders.quantity) AS total_quantity");\n}`);
+        }
+        blocks.push(`const query = \`\n${finalDialectSql}\n\`;`);
+        blocks.push(`let auditTrail = ["orders_joined", "reviews_joined"];\nlet verifiedJoins = auditTrail.length;`);
+        blocks.push(`const resultTable = db.execute(query);`);
+      }
+      return blocks.join('\n\n');
+    }
+
+    // Study Question 17 (Structure 2: [Query], [HostLang], [Query], [Execute]):
+    // Initial query groups orders by user_id. Host language checks query properties.
+    // Query 2 defines nested query grouping by order_count to aggregate user_count, and is executed.
+    if (spec.manipulation === 'nested_group_by' || spec.qNum === 17) {
+      if (isPython) {
+        blocks.push(`query = """\n${initialDialectSql}\n"""`);
+        blocks.push(`group_passes = query.count("GROUP BY")\nrequires_nested_agg = "subquery" in query or "sub" in query`);
+        blocks.push(`query = """\n${finalDialectSql}\n"""`);
+        blocks.push(`result_table = db.execute(query)`);
+      } else {
+        blocks.push(`let query = \`\n${initialDialectSql}\n\`;`);
+        blocks.push(`let groupPasses = (query.match(/GROUP BY/g) || []).length;\nlet requiresNestedAgg = query.includes("subquery") || query.includes("sub");`);
+        blocks.push(`query = \`\n${finalDialectSql}\n\`;`);
         blocks.push(`const resultTable = db.execute(query);`);
       }
       return blocks.join('\n\n');
@@ -635,12 +787,12 @@ class QuizGenerator {
         // Structure 2: [Query], [Python/JavaScript], [Query], [Execute]
         if (isPython) {
           blocks.push(`query = """\n${initialDialectSql}\n"""`);
-          blocks.push(`clean_sql = query.strip()\nif "WHERE" in clean_sql:\n    active_filter = "valid query criteria"`);
+          blocks.push(`if "WHERE" in query:\n    active_filter = "valid query criteria"`);
           blocks.push(`query = """\n${finalDialectSql}\n"""`);
           blocks.push(`result_table = db.execute(query)`);
         } else {
           blocks.push(`let query = \`\n${initialDialectSql}\n\`;`);
-          blocks.push(`let cleanSql = query.trim();\nlet activeFilter = "";\nif (cleanSql.includes("WHERE")) {\n  activeFilter = "valid query criteria";\n}`);
+          blocks.push(`let activeFilter = "";\nif (query.includes("WHERE")) {\n  activeFilter = "valid query criteria";\n}`);
           blocks.push(`query = \`\n${finalDialectSql}\n\`;`);
           blocks.push(`const resultTable = db.execute(query);`);
         }
@@ -676,14 +828,15 @@ class QuizGenerator {
 
       case 5:
         // Structure 5: [Query], [Execute], [Python/JavaScript], [Query], [Execute]
+        const firstDialectSql = setupDialectSql || initialDialectSql;
         if (isPython) {
-          blocks.push(`query = """\n${setupDialectSql}\n"""`);
+          blocks.push(`query = """\n${firstDialectSql}\n"""`);
           blocks.push(`db.execute(query)`);
           blocks.push(`sync_checkpoints = ["checkpoint_1", "checkpoint_2"]\nsync_progress = 0\nfor cp in sync_checkpoints:\n    sync_progress += 1`);
           blocks.push(`query = """\n${finalDialectSql}\n"""`);
           blocks.push(`result_table = db.execute(query)`);
         } else {
-          blocks.push(`let query = \`\n${setupDialectSql}\n\`;`);
+          blocks.push(`let query = \`\n${firstDialectSql}\n\`;`);
           blocks.push(`db.execute(query);`);
           blocks.push(`let syncCheckpoints = ["checkpoint_1", "checkpoint_2"];\nlet syncProgress = 0;\nfor (let cp of syncCheckpoints) {\n  syncProgress++;\n}`);
           blocks.push(`query = \`\n${finalDialectSql}\n\`;`);
@@ -941,6 +1094,486 @@ class QuizGenerator {
       return null;
     };
 
+    // Questions 21-30 specific distractors (Structures: 21->2, 22->4, 23->5, 24->1, 25->3, 26->1, 27->4, 28->3, 29->5, 30->2)
+    if (qNum >= 21 && qNum <= 30) {
+      const qDistractors = [];
+
+      const uTable = (schema && schema.tables) ? (schema.tables.find(t => t.name === 'users') || schema.tables[0]) : null;
+      const pTable = (schema && schema.tables) ? (schema.tables.find(t => t.name === 'products') || schema.tables[1]) : null;
+      const oTable = (schema && schema.tables) ? (schema.tables.find(t => t.name === 'orders') || schema.tables[2]) : null;
+      const rTable = (schema && schema.tables) ? (schema.tables.find(t => t.name === 'reviews') || schema.tables[4]) : null;
+
+      const uName = uTable ? uTable.name : 'users';
+      const pName = pTable ? pTable.name : 'products';
+      const oName = oTable ? oTable.name : 'orders';
+      const rName = rTable ? rTable.name : 'reviews';
+
+      const addOption = (cols, rows, explanation) => {
+        if (!cols || !rows || rows.length === 0) return false;
+        if (areRowsEqual(rows, correctRows)) return false;
+        for (const existing of qDistractors) {
+          if (areRowsEqual(rows, existing.rows)) return false;
+        }
+        qDistractors.push({ columns: cols, rows, isCorrect: false, explanation });
+        return true;
+      };
+
+      if (qNum === 21) {
+        // Distractor 1: Evaluates deleted Query 1 (price < 40 ORDER BY price ASC)
+        const d1Sql = `SELECT id, title, price, stock FROM ${pName} WHERE price < 40 ORDER BY price ASC LIMIT 4;`;
+        const d1Res = runSqlWithMeta(d1Sql);
+        if (d1Res) addOption(d1Res.columns, d1Res.rows, 'Evaluates the first query (price < 40) before it was deleted.');
+
+        // Distractor 2: Evaluates Query 2 sorted ASC instead of DESC
+        const d2Sql = `SELECT id, title, price, stock FROM ${pName} WHERE price >= 40 AND stock > 10 ORDER BY price ASC LIMIT 4;`;
+        const d2Res = runSqlWithMeta(d2Sql);
+        if (d2Res) addOption(d2Res.columns, d2Res.rows, 'Evaluates query 2 sorted in ascending order (ORDER BY price ASC) instead of descending order.');
+
+        // Distractor 3: Evaluates stock <= 20
+        const d3Sql = `SELECT id, title, price, stock FROM ${pName} WHERE stock <= 20 ORDER BY price ASC LIMIT 4;`;
+        const d3Res = runSqlWithMeta(d3Sql);
+        if (d3Res) addOption(d3Res.columns, d3Res.rows, 'Applies an alternate filter condition (stock <= 20).');
+      } else if (qNum === 22) {
+        // Distractor 1: Initial query before string replacement (ordered ASC)
+        const d1Sql = `SELECT user_id, COUNT(*) AS order_count, ROUND(AVG(amount), 2) AS avg_spent FROM ${oName} GROUP BY user_id ORDER BY avg_spent ASC LIMIT 4;`;
+        const d1Res = runSqlWithMeta(d1Sql);
+        if (d1Res) addOption(d1Res.columns, d1Res.rows, 'Assumes the string replacement ASC to DESC was not applied.');
+
+        // Distractor 2: Evaluates with ORDER BY order_count ASC
+        const d2Sql = `SELECT user_id, COUNT(*) AS order_count, ROUND(AVG(amount), 2) AS avg_spent FROM ${oName} GROUP BY user_id ORDER BY order_count ASC LIMIT 4;`;
+        const d2Res = runSqlWithMeta(d2Sql);
+        if (d2Res) addOption(d2Res.columns, d2Res.rows, 'Orders by order count ascending (ORDER BY order_count ASC) instead of average spent.');
+
+        // Distractor 3: Total amount spent (SUM) instead of average (AVG)
+        const d3Sql = `SELECT user_id, COUNT(*) AS order_count, ROUND(SUM(amount), 2) AS avg_spent FROM ${oName} GROUP BY user_id ORDER BY avg_spent DESC LIMIT 4;`;
+        const d3Res = runSqlWithMeta(d3Sql);
+        if (d3Res) addOption(d3Res.columns, d3Res.rows, 'Computes total spent (SUM) instead of average spent (AVG).');
+      } else if (qNum === 23) {
+        // Distractor 1: Assumes Query 2 was executed instead of Query 1
+        const d1Sql = `SELECT id, name, age, rating FROM ${uName} WHERE age < 35 ORDER BY age DESC LIMIT 4;`;
+        const d1Res = runSqlWithMeta(d1Sql);
+        if (d1Res) addOption(d1Res.columns, d1Res.rows, 'Assumes the second query was executed instead of the first query.');
+
+        // Distractor 2: Inverted active flag (is_active = 0)
+        const d2Sql = `SELECT id, name, age, is_active FROM ${uName} WHERE age >= 25 AND is_active = 0 ORDER BY age ASC LIMIT 4;`;
+        const d2Res = runSqlWithMeta(d2Sql);
+        if (d2Res) addOption(d2Res.columns, d2Res.rows, 'Assumes inactive users (is_active = 0) were selected.');
+
+        // Distractor 3: Sorted age DESC instead of ASC
+        const d3Sql = `SELECT id, name, age, is_active FROM ${uName} WHERE age >= 25 AND is_active = 1 ORDER BY age DESC LIMIT 4;`;
+        const d3Res = runSqlWithMeta(d3Sql);
+        if (d3Res) addOption(d3Res.columns, d3Res.rows, 'Sorts users by age descending (ORDER BY age DESC) instead of ascending.');
+      } else if (qNum === 24) {
+        // Distractor 1: Assumes else branch was executed (score <= 2)
+        const d1Sql = `SELECT id, score, rating, title FROM ${rName} WHERE score <= 2 ORDER BY id ASC LIMIT 4;`;
+        const d1Res = runSqlWithMeta(d1Sql);
+        if (d1Res) addOption(d1Res.columns, d1Res.rows, 'Assumes the else branch query (score <= 2) was executed.');
+
+        // Distractor 2: Evaluates with score = 3
+        const d2Sql = `SELECT id, score, rating, title FROM ${rName} WHERE score = 3 ORDER BY id ASC LIMIT 4;`;
+        const d2Res = runSqlWithMeta(d2Sql);
+        if (d2Res) addOption(d2Res.columns, d2Res.rows, 'Selects moderate review scores (score = 3) instead of high scores.');
+
+        // Distractor 3: Evaluates Query with ORDER BY id DESC LIMIT 4
+        const d3Sql = `SELECT id, score, rating, title FROM ${rName} WHERE score >= 4 ORDER BY id DESC LIMIT 4;`;
+        const d3Res = runSqlWithMeta(d3Sql);
+        if (d3Res) addOption(d3Res.columns, d3Res.rows, 'Sorts reviews by id descending (ORDER BY id DESC) instead of ascending.');
+      } else if (qNum === 25) {
+        // Distractor 1: Assumes append function modified query to ORDER BY id DESC
+        const d1Sql = `SELECT id, title, price, stock FROM ${pName} WHERE stock > 15 ORDER BY id DESC LIMIT 4;`;
+        const d1Res = runSqlWithMeta(d1Sql);
+        if (d1Res) addOption(d1Res.columns, d1Res.rows, 'Assumes the append function call modified the query to sort by id DESC.');
+
+        // Distractor 2: Evaluates with ORDER BY price DESC
+        const d2Sql = `SELECT id, title, price, stock FROM ${pName} WHERE stock > 15 ORDER BY price DESC LIMIT 4;`;
+        const d2Res = runSqlWithMeta(d2Sql);
+        if (d2Res) addOption(d2Res.columns, d2Res.rows, 'Sorts products by price descending (ORDER BY price DESC) instead of ascending.');
+
+        // Distractor 3: High price filter (price >= 60)
+        const d3Sql = `SELECT id, title, price, stock FROM ${pName} WHERE price >= 60 AND stock > 15 ORDER BY price ASC LIMIT 4;`;
+        const d3Res = runSqlWithMeta(d3Sql);
+        if (d3Res) addOption(d3Res.columns, d3Res.rows, 'Applies an additional price filter (price >= 60).');
+      } else if (qNum === 26) {
+        // Distractor 1: Evaluates only the High tier branch
+        const d1Sql = `SELECT id, title, price, 'High' AS tier FROM ${pName} WHERE price >= 120;`;
+        const d1Res = runSqlWithMeta(d1Sql);
+        if (d1Res) addOption(d1Res.columns, d1Res.rows, 'Evaluates only the first SELECT branch (High tier) without the UNION.');
+
+        // Distractor 2: Evaluates only the Low tier branch
+        const d2Sql = `SELECT id, title, price, 'Low' AS tier FROM ${pName} WHERE price <= 40;`;
+        const d2Res = runSqlWithMeta(d2Sql);
+        if (d2Res) addOption(d2Res.columns, d2Res.rows, 'Evaluates only the second SELECT branch (Low tier) without the UNION.');
+
+        // Distractor 3: Evaluates Mid tier
+        const d3Sql = `SELECT id, title, price, 'Mid' AS tier FROM ${pName} WHERE price > 40 AND price < 120 LIMIT 10;`;
+        const d3Res = runSqlWithMeta(d3Sql);
+        if (d3Res) addOption(d3Res.columns, d3Res.rows, 'Filters for mid-range products (Mid tier) rather than combining High and Low tiers.');
+      } else if (qNum === 27) {
+        // Distractor 1: Sorted by amount DESC instead of id ASC
+        const d1Sql = `SELECT ${oName}.id, ${oName}.amount, ${oName}.status, ${uName}.name AS customer_name FROM ${oName} JOIN ${uName} ON ${oName}.user_id = ${uName}.id WHERE ${oName}.amount > 80 ORDER BY ${oName}.amount DESC LIMIT 4;`;
+        const d1Res = runSqlWithMeta(d1Sql);
+        if (d1Res) addOption(d1Res.columns, d1Res.rows, 'Sorts orders by amount descending (ORDER BY amount DESC) instead of id ASC.');
+
+        // Distractor 2: Inverted amount condition (amount <= 80)
+        const d2Sql = `SELECT ${oName}.id, ${oName}.amount, ${oName}.status, ${uName}.name AS customer_name FROM ${oName} JOIN ${uName} ON ${oName}.user_id = ${uName}.id WHERE ${oName}.amount <= 80 ORDER BY ${oName}.id ASC LIMIT 4;`;
+        const d2Res = runSqlWithMeta(d2Sql);
+        if (d2Res) addOption(d2Res.columns, d2Res.rows, 'Inverts the filter condition to select orders with amount <= 80.');
+
+        // Distractor 3: Filter by status = 'COMPLETED'
+        const d3Sql = `SELECT ${oName}.id, ${oName}.amount, ${oName}.status, ${uName}.name AS customer_name FROM ${oName} JOIN ${uName} ON ${oName}.user_id = ${uName}.id WHERE ${oName}.status = 'COMPLETED' ORDER BY ${oName}.id ASC LIMIT 4;`;
+        const d3Res = runSqlWithMeta(d3Sql);
+        if (d3Res) addOption(d3Res.columns, d3Res.rows, 'Filters orders by status = "COMPLETED" instead of amount threshold.');
+      } else if (qNum === 28) {
+        // Distractor 1: SUM(price) instead of AVG(price) due to HLL price_sum
+        const d1Sql = `SELECT category_id, ROUND(SUM(price), 2) AS avg_price FROM ${pName} WHERE price > 25 GROUP BY category_id ORDER BY avg_price DESC;`;
+        const d1Res = runSqlWithMeta(d1Sql);
+        if (d1Res) addOption(d1Res.columns, d1Res.rows, 'Computes total price sum (SUM) instead of average (AVG), influenced by host language variable names.');
+
+        // Distractor 2: MIN(price) instead of AVG(price)
+        const d2Sql = `SELECT category_id, ROUND(MIN(price), 2) AS avg_price FROM ${pName} WHERE price > 25 GROUP BY category_id ORDER BY avg_price DESC;`;
+        const d2Res = runSqlWithMeta(d2Sql);
+        if (d2Res) addOption(d2Res.columns, d2Res.rows, 'Computes minimum category price (MIN) instead of average (AVG).');
+
+        // Distractor 3: Sorted by avg_price ASC instead of DESC
+        const d3Sql = `SELECT category_id, ROUND(AVG(price), 2) AS avg_price FROM ${pName} WHERE price > 25 GROUP BY category_id ORDER BY avg_price ASC;`;
+        const d3Res = runSqlWithMeta(d3Sql);
+        if (d3Res) addOption(d3Res.columns, d3Res.rows, 'Sorts categories in ascending order of average price (ORDER BY avg_price ASC).');
+      } else if (qNum === 29) {
+        // Distractor 1: Assumes second query was executed (amount > 100)
+        const d1Sql = `SELECT status, COUNT(*) AS count_orders, ROUND(AVG(amount), 2) AS avg_amount FROM ${oName} WHERE amount > 100 GROUP BY status ORDER BY count_orders DESC;`;
+        const d1Res = runSqlWithMeta(d1Sql);
+        if (d1Res) addOption(d1Res.columns, d1Res.rows, 'Assumes the second query (with amount > 100) was executed.');
+
+        // Distractor 2: Total amount (SUM) instead of AVG
+        const d2Sql = `SELECT status, COUNT(*) AS count_orders, ROUND(SUM(amount), 2) AS avg_amount FROM ${oName} GROUP BY status ORDER BY count_orders DESC;`;
+        const d2Res = runSqlWithMeta(d2Sql);
+        if (d2Res) addOption(d2Res.columns, d2Res.rows, 'Computes total amount (SUM) instead of average amount (AVG).');
+
+        // Distractor 3: Sorted by avg_amount ASC
+        const d3Sql = `SELECT status, COUNT(*) AS count_orders, ROUND(AVG(amount), 2) AS avg_amount FROM ${oName} GROUP BY status ORDER BY count_orders ASC;`;
+        const d3Res = runSqlWithMeta(d3Sql);
+        if (d3Res) addOption(d3Res.columns, d3Res.rows, 'Sorts status groups by average amount ascending (ORDER BY avg_amount ASC).');
+      } else if (qNum === 30) {
+        // Distractor 1: Evaluates Query 1 on reviews
+        const d1Sql = `SELECT score, COUNT(*) AS review_count FROM ${rName} GROUP BY score ORDER BY score DESC;`;
+        const d1Res = runSqlWithMeta(d1Sql);
+        if (d1Res) addOption(d1Res.columns, d1Res.rows, 'Assumes the first query on reviews was executed before being overwritten.');
+
+        // Distractor 2: Evaluates inactive users (is_active = 0)
+        const d2Sql = `SELECT id, name, age FROM ${uName} WHERE is_active = 0 ORDER BY age ASC LIMIT 4;`;
+        const d2Res = runSqlWithMeta(d2Sql);
+        if (d2Res) addOption(d2Res.columns, d2Res.rows, 'Assumes inactive users (is_active = 0) were queried.');
+
+        // Distractor 3: Sorted by age DESC
+        const d3Sql = `SELECT id, name, age FROM ${uName} WHERE is_active = 1 ORDER BY age DESC LIMIT 4;`;
+        const d3Res = runSqlWithMeta(d3Sql);
+        if (d3Res) addOption(d3Res.columns, d3Res.rows, 'Sorts users by age descending (ORDER BY age DESC) instead of ascending.');
+      }
+
+      // Safe fallback if any distractor was somehow missed
+      while (qDistractors.length < 3) {
+        const fallbackRows = (qDistractors.length > 0 ? qDistractors[qDistractors.length - 1].rows : correctRows).slice();
+        const mutatedRows = fallbackRows.map(r => Array.isArray(r) ? [r[0], typeof r[1] === 'number' ? r[1] + 1 : `${r[1]}*`, ...r.slice(2)] : [r]);
+        qDistractors.push({
+          columns: correctColumns,
+          rows: mutatedRows,
+          isCorrect: false,
+          explanation: 'Alternative execution output.'
+        });
+      }
+
+      options.push(...qDistractors.slice(0, 3));
+      return options;
+    }
+
+    // Question 19 specific distractors (tests Structure 4 with HLL filter injection and sort key replacement)
+    if (qNum === 19 || (questionSpec && (questionSpec.qNum === 19 || questionSpec.manipulation === 'q19_filter_sort_hll'))) {
+      const q19Distractors = [];
+
+      const pTable = (schema && schema.tables) ? (schema.tables.find(t => t.name === 'products') || schema.tables[0]) : null;
+      const pName = pTable ? pTable.name : 'products';
+
+      // Distractor 1 (Initial query trap: ignored HLL): Evaluates initial query before HLL manipulation
+      const d1Sql = `SELECT category_id, COUNT(*) AS count_items, ROUND(AVG(price), 2) AS avg_price FROM ${pName} WHERE price > 15 GROUP BY category_id ORDER BY count_items DESC;`;
+      let d1Res = runSqlWithMeta(d1Sql);
+      if (d1Res && d1Res.rows && d1Res.rows.length > 0 && !areRowsEqual(d1Res.rows, correctRows)) {
+        q19Distractors.push({
+          columns: d1Res.columns,
+          rows: d1Res.rows,
+          isCorrect: false,
+          explanation: 'Evaluates the initial query (ordered by count_items DESC), assuming the host language filter injection and sort rewrite were not applied.'
+        });
+      }
+
+      // Distractor 2 (Aggregate trap: total_val SUM instead of AVG)
+      const d2Sql = `SELECT category_id, COUNT(*) AS count_items, ROUND(SUM(price), 2) AS total_val FROM ${pName} WHERE price > 15 AND stock > 20 GROUP BY category_id ORDER BY total_val DESC;`;
+      let d2Res = runSqlWithMeta(d2Sql);
+      if (d2Res && d2Res.rows && d2Res.rows.length > 0 && !areRowsEqual(d2Res.rows, correctRows)) {
+        q19Distractors.push({
+          columns: d2Res.columns,
+          rows: d2Res.rows,
+          isCorrect: false,
+          explanation: 'Computes total category value (SUM) instead of average price (AVG).'
+        });
+      }
+
+      // Distractor 3 (Sort key index trap: used sort_keys[0] = category_id ASC)
+      const d3Sql = `SELECT category_id, COUNT(*) AS count_items, ROUND(AVG(price), 2) AS avg_price FROM ${pName} WHERE price > 15 AND stock > 20 GROUP BY category_id ORDER BY avg_price ASC;`;
+      let d3Res = runSqlWithMeta(d3Sql);
+      if (d3Res && d3Res.rows && d3Res.rows.length > 0 && !areRowsEqual(d3Res.rows, correctRows)) {
+        q19Distractors.push({
+          columns: d3Res.columns,
+          rows: d3Res.rows,
+          isCorrect: false,
+          explanation: 'Orders category groups in ascending order (ORDER BY avg_price ASC) instead of descending order.'
+        });
+      }
+
+      // Safe fallback
+      while (q19Distractors.length < 3) {
+        const fallbackRows = (q19Distractors.length > 0 ? q19Distractors[q19Distractors.length - 1].rows : correctRows).slice();
+        const mutatedRows = fallbackRows.map(r => Array.isArray(r) ? [r[0], r[1] + 1, r[2]] : [r]);
+        q19Distractors.push({
+          columns: correctColumns,
+          rows: mutatedRows,
+          isCorrect: false,
+          explanation: 'Alternative execution output.'
+        });
+      }
+
+      options.push(...q19Distractors.slice(0, 3));
+      return options;
+    }
+
+    // Question 20 specific distractors (tests Structure 1 with HLL computed cutoff and conditional branch)
+    if (qNum === 20 || (questionSpec && (questionSpec.qNum === 20 || questionSpec.manipulation === 'q20_compute_threshold_hll'))) {
+      const q20Distractors = [];
+
+      const oTable = (schema && schema.tables) ? (schema.tables.find(t => t.name === 'orders') || schema.tables[0]) : null;
+      const oName = oTable ? oTable.name : 'orders';
+
+      // Distractor 1 (Else branch trap): Evaluates the query in the else branch (amount < 50, AVG, ASC)
+      const d1Sql = `SELECT user_id, COUNT(*) AS order_count, ROUND(AVG(amount), 2) AS total_spent FROM ${oName} WHERE amount < 50 GROUP BY user_id ORDER BY total_spent ASC LIMIT 4;`;
+      let d1Res = runSqlWithMeta(d1Sql);
+      if (d1Res && d1Res.rows && d1Res.rows.length > 0 && !areRowsEqual(d1Res.rows, correctRows)) {
+        q20Distractors.push({
+          columns: d1Res.columns,
+          rows: d1Res.rows,
+          isCorrect: false,
+          explanation: 'Assumes the host language condition (minCutoff >= 70) evaluated to false, executing the else branch query.'
+        });
+      }
+
+      // Distractor 2 (Omitted HLL threshold filter trap: WHERE amount >= 75 omitted)
+      const d2Sql = `SELECT user_id, COUNT(*) AS order_count, ROUND(SUM(amount), 2) AS total_spent FROM ${oName} GROUP BY user_id ORDER BY total_spent DESC LIMIT 4;`;
+      let d2Res = runSqlWithMeta(d2Sql);
+      if (d2Res && d2Res.rows && d2Res.rows.length > 0 && !areRowsEqual(d2Res.rows, correctRows)) {
+        q20Distractors.push({
+          columns: d2Res.columns,
+          rows: d2Res.rows,
+          isCorrect: false,
+          explanation: 'Evaluates total spent without applying the host language computed threshold (WHERE amount >= 75).'
+        });
+      }
+
+      // Distractor 3 (Sort direction trap: ORDER BY total_spent ASC)
+      const d3Sql = `SELECT user_id, COUNT(*) AS order_count, ROUND(SUM(amount), 2) AS total_spent FROM ${oName} WHERE amount >= 75 GROUP BY user_id ORDER BY total_spent ASC LIMIT 4;`;
+      let d3Res = runSqlWithMeta(d3Sql);
+      if (d3Res && d3Res.rows && d3Res.rows.length > 0 && !areRowsEqual(d3Res.rows, correctRows)) {
+        q20Distractors.push({
+          columns: d3Res.columns,
+          rows: d3Res.rows,
+          isCorrect: false,
+          explanation: 'Orders results by total_spent ascending (ORDER BY total_spent ASC) instead of descending.'
+        });
+      }
+
+      // Safe fallback
+      while (q20Distractors.length < 3) {
+        const fallbackRows = (q20Distractors.length > 0 ? q20Distractors[q20Distractors.length - 1].rows : correctRows).slice();
+        const mutatedRows = fallbackRows.map(r => Array.isArray(r) ? [r[0], r[1] + 1, r[2]] : [r]);
+        q20Distractors.push({
+          columns: correctColumns,
+          rows: mutatedRows,
+          isCorrect: false,
+          explanation: 'Alternative execution output.'
+        });
+      }
+
+      options.push(...q20Distractors.slice(0, 3));
+      return options;
+    }
+
+    // Question 18 specific distractors (tests Structure 2 with Query 1 aggregate vs Query 2 typo variable queryy)
+    if (qNum === 18 || (questionSpec && (questionSpec.qNum === 18 || questionSpec.manipulation === 'q18_typo_queryy' || questionSpec.manipulation === 'typo_second_query' || questionSpec.manipulation === 'execute_second_query'))) {
+      const q18Distractors = [];
+
+      const pTable = (schema && schema.tables) ? (schema.tables.find(t => t.name === 'products') || schema.tables[0]) : null;
+      const pName = pTable ? pTable.name : 'products';
+
+      // Distractor 1 (Query 1 / Aggregate Trap): Assumes query was executed instead of queryy (title, price, stock)
+      const d1Sql = `SELECT title, MAX(price) AS price, SUM(stock) AS stock FROM ${pName} GROUP BY title ORDER BY title ASC LIMIT 3;`;
+      let d1Res = runSqlWithMeta(d1Sql);
+      let d1Cols = (d1Res && d1Res.columns) ? d1Res.columns : ['title', 'price', 'stock'];
+      let d1Rows = (d1Res && d1Res.rows) ? d1Res.rows : [["Camera", 133.63, 355], ["Headphones", 163.12, 99], ["Keyboard", 193.9, 6]];
+      if (d1Rows && d1Rows.length > 0 && !areRowsEqual(d1Rows, correctRows)) {
+        q18Distractors.push({
+          columns: d1Cols,
+          rows: d1Rows,
+          isCorrect: false,
+          explanation: 'Assumes query was executed instead of queryy, producing the aggregated price and stock grouped by title.'
+        });
+      }
+
+      // Distractor 2 (HLL Mutation Trap): Assumes query.replace("price", "category_id") mutated query in-place (title, category_id, stock)
+      const d2Cols = ['title', 'category_id', 'stock'];
+      const d2Rows = [["Camera", 18, 355], ["Headphones", 5, 99], ["Keyboard", 12, 6]];
+      if (!areRowsEqual(d2Rows, correctRows)) {
+        q18Distractors.push({
+          columns: d2Cols,
+          rows: d2Rows,
+          isCorrect: false,
+          explanation: 'Assumes the string replacement query.replace("price", "category_id") mutated query in-place.'
+        });
+      }
+
+      // Distractor 3 (Sort Direction Trap): Evaluates queryy with ORDER BY total_spent ASC instead of DESC
+      const oTable = (schema && schema.tables) ? (schema.tables.find(t => t.name === 'orders') || schema.tables[0]) : null;
+      const oName = oTable ? oTable.name : 'orders';
+      const d3Sql = `SELECT user_id, COUNT(*) AS order_count, ROUND(SUM(amount), 2) AS total_spent, ROUND(AVG(amount), 2) AS avg_amount, MAX(amount) AS max_order FROM ${oName} WHERE amount >= 25 AND status != 'CANCELLED' GROUP BY user_id ORDER BY total_spent ASC LIMIT 3;`;
+      let d3Res = runSqlWithMeta(d3Sql);
+      let d3Cols = (d3Res && d3Res.columns) ? d3Res.columns : ['user_id', 'order_count', 'total_spent', 'avg_amount', 'max_order'];
+      let d3Rows = (d3Res && d3Res.rows) ? d3Res.rows : [[12, 1, 28.52, 28.52, 28.52], [15, 1, 42.83, 42.83, 42.83], [22, 1, 67.05, 67.05, 67.05]];
+      if (d3Rows && d3Rows.length > 0 && !areRowsEqual(d3Rows, correctRows)) {
+        q18Distractors.push({
+          columns: d3Cols,
+          rows: d3Rows,
+          isCorrect: false,
+          explanation: 'Assumes ascending sort order (ORDER BY total_spent ASC) instead of descending (DESC), returning the lowest spenders first.'
+        });
+      }
+
+      options.push(...q18Distractors.slice(0, 3));
+      return options;
+    }
+
+    // Question 17 specific distractors (tests Structure 2 with nested subquery containing two distinct GROUP BYs and ORDER BY)
+    if (qNum === 17 || (questionSpec && (questionSpec.qNum === 17 || questionSpec.manipulation === 'nested_group_by'))) {
+      const q17Distractors = [];
+      const oTable = (schema && schema.tables) ? (schema.tables.find(t => t.name === 'orders') || schema.tables[0]) : null;
+      const oName = oTable ? oTable.name : 'orders';
+
+      // Distractor 1 (Query 1 / Inner query trap): Evaluates the first query (orders per user) before override
+      const d1Sql = `SELECT ${oName}.user_id, COUNT(*) AS order_count FROM ${oName} GROUP BY ${oName}.user_id ORDER BY order_count DESC LIMIT 4;`;
+      let d1Res = runSqlWithMeta(d1Sql);
+      let d1Cols = (d1Res && d1Res.columns) ? d1Res.columns : ['user_id', 'order_count'];
+      let d1Rows = (d1Res && d1Res.rows) ? d1Res.rows.slice(0, 4) : [[7, 5], [20, 3], [24, 2], [22, 2]];
+      if (d1Rows && d1Rows.length > 0 && !areRowsEqual(d1Rows, correctRows)) {
+        q17Distractors.push({
+          columns: d1Cols,
+          rows: d1Rows,
+          isCorrect: false,
+          explanation: 'Evaluates the first query before it was overwritten, grouping orders by user_id instead of the nested aggregation.'
+        });
+      }
+
+      // Distractor 2 (Aggregation trap: SUM instead of COUNT): Sums the order counts instead of counting users
+      const d2Sql = `SELECT order_count, SUM(order_count) AS total_orders FROM (SELECT ${oName}.user_id, COUNT(*) AS order_count FROM ${oName} GROUP BY ${oName}.user_id) sub GROUP BY order_count ORDER BY order_count ASC;`;
+      let d2Res = runSqlWithMeta(d2Sql);
+      let d2Cols = (d2Res && d2Res.columns) ? d2Res.columns : ['order_count', 'total_orders'];
+      let d2Rows = (d2Res && d2Res.rows) ? d2Res.rows : [[1, 12], [2, 10], [3, 3], [5, 5]];
+      if (d2Rows && d2Rows.length > 0 && !areRowsEqual(d2Rows, correctRows)) {
+        q17Distractors.push({
+          columns: d2Cols,
+          rows: d2Rows,
+          isCorrect: false,
+          explanation: 'Sums the order counts (SUM(order_count)) rather than counting distinct users having each order count.'
+        });
+      }
+
+      // Distractor 3 (Column projection trap): Projects user_id with user_count instead of outer group column order_count
+      const d3Cols = ['user_id', 'user_count'];
+      const d3Rows = [[1, 12], [2, 5], [3, 1], [4, 1]];
+      q17Distractors.push({
+        columns: d3Cols,
+        rows: d3Rows,
+        isCorrect: false,
+        explanation: 'Projects user_id instead of the outer group column order_count with user_count.'
+      });
+
+      options.push(...q17Distractors.slice(0, 3));
+      return options;
+    }
+
+    // Question 16 specific distractors (tests Structure 3 with unused append_order_quantity function)
+    if (qNum === 16 || (questionSpec && (questionSpec.qNum === 16 || questionSpec.manipulation === 'unused_append_quantity'))) {
+      const q16Distractors = [];
+      const isPython = (hostLanguage === 'python');
+
+      const uTable = (schema && schema.tables) ? (schema.tables.find(t => t.name === 'users') || schema.tables[0]) : null;
+      const oTable = (schema && schema.tables) ? (schema.tables.find(t => t.name === 'orders') || schema.tables[1]) : null;
+      const rTable = (schema && schema.tables) ? (schema.tables.find(t => t.name === 'reviews') || schema.tables[2]) : null;
+      const uName = uTable ? uTable.name : 'users';
+      const oName = oTable ? oTable.name : 'orders';
+      const rName = rTable ? rTable.name : 'reviews';
+
+      // Distractor 1 (Function trap): Assumes append_order_quantity was executed, adding total_quantity
+      const d1Sql = `SELECT ${uName}.name, ${uName}.age, ${uName}.is_active, SUM(${oName}.amount) AS total_spent, COUNT(${rName}.id) AS review_count, SUM(${oName}.quantity) AS total_quantity FROM ${uName} JOIN ${oName} ON ${oName}.user_id = ${uName}.id JOIN ${rName} ON ${rName}.order_id = ${oName}.id GROUP BY ${uName}.name, ${uName}.age, ${uName}.is_active ORDER BY ${uName}.name ASC LIMIT 3;`;
+      let d1Res = runSqlWithMeta(d1Sql);
+      let d1Cols = (d1Res && d1Res.columns) ? d1Res.columns : ['name', 'age', 'is_active', 'total_spent', 'review_count', 'total_quantity'];
+      let d1Rows = d1Res ? d1Res.rows : null;
+      if (!d1Rows && correctRows) {
+        d1Rows = correctRows.map(r => [...r, 180]);
+      }
+      if (d1Rows && d1Rows.length > 0 && !areRowsEqual(d1Rows, correctRows)) {
+        q16Distractors.push({
+          columns: d1Cols,
+          rows: d1Rows,
+          isCorrect: false,
+          explanation: isPython
+            ? 'Assumes append_order_quantity(q) was executed, adding total_quantity to the output.'
+            : 'Assumes appendOrderQuantity(q) was executed, adding total_quantity to the output.'
+        });
+      }
+
+      // Distractor 2 (Missing reviews join): Omits reviews join and review_count column
+      const d2Sql = `SELECT ${uName}.name, ${uName}.age, ${uName}.is_active, SUM(${oName}.amount) AS total_spent FROM ${uName} JOIN ${oName} ON ${oName}.user_id = ${uName}.id GROUP BY ${uName}.name, ${uName}.age, ${uName}.is_active ORDER BY ${uName}.name ASC LIMIT 3;`;
+      let d2Res = runSqlWithMeta(d2Sql);
+      let d2Cols = (d2Res && d2Res.columns) ? d2Res.columns : ['name', 'age', 'is_active', 'total_spent'];
+      let d2Rows = d2Res ? d2Res.rows : null;
+      if (!d2Rows && correctRows) {
+        d2Rows = correctRows.map(r => r.slice(0, 4));
+      }
+      if (d2Rows && d2Rows.length > 0 && !areRowsEqual(d2Rows, correctRows)) {
+        q16Distractors.push({
+          columns: d2Cols,
+          rows: d2Rows,
+          isCorrect: false,
+          explanation: 'Omits the reviews table join and review_count aggregate column.'
+        });
+      }
+
+      // Distractor 3 (Average instead of Sum): Computes avg_spent instead of total_spent
+      const d3Sql = `SELECT ${uName}.name, ${uName}.age, ${uName}.is_active, ROUND(AVG(${oName}.amount), 2) AS avg_spent, COUNT(${rName}.id) AS review_count FROM ${uName} JOIN ${oName} ON ${oName}.user_id = ${uName}.id JOIN ${rName} ON ${rName}.order_id = ${oName}.id GROUP BY ${uName}.name, ${uName}.age, ${uName}.is_active ORDER BY ${uName}.name ASC LIMIT 3;`;
+      let d3Res = runSqlWithMeta(d3Sql);
+      let d3Cols = (d3Res && d3Res.columns) ? d3Res.columns : ['name', 'age', 'is_active', 'avg_spent', 'review_count'];
+      let d3Rows = d3Res ? d3Res.rows : null;
+      if (!d3Rows && correctRows) {
+        d3Rows = correctRows.map(r => [r[0], r[1], r[2], Number((r[3] / (r[4] || 1)).toFixed(2)), r[4]]);
+      }
+      if (d3Rows && d3Rows.length > 0 && !areRowsEqual(d3Rows, correctRows)) {
+        q16Distractors.push({
+          columns: d3Cols,
+          rows: d3Rows,
+          isCorrect: false,
+          explanation: 'Computes the average order amount (avg_spent) instead of the total spent (total_spent).'
+        });
+      }
+
+      options.push(...q16Distractors.slice(0, 3));
+      return options;
+    }
+
     // Candidate 1: Result of initialSql (Structure 2 / manipulation distractor)
     if (questionSpec && questionSpec.initialSql && questionSpec.initialSql !== questionSpec.finalSql && qNum !== 5 && questionSpec.qNum !== 5 && questionSpec.manipulation !== 'omit_first_execute') {
       const initRows = runSql(questionSpec.initialSql);
@@ -981,8 +1614,8 @@ class QuizGenerator {
       }
     }
 
-    // Question 8 specific distractors (distinct, non-overlapping options)
-    if (qNum === 8 || (questionSpec && (questionSpec.manipulation === 'append_function' || questionSpec.qNum === 8))) {
+    // Question 8 & 23 specific distractors (distinct, non-overlapping options)
+    if (qNum === 8 || qNum === 23 || (questionSpec && (questionSpec.manipulation === 'append_function' || questionSpec.qNum === 8 || questionSpec.qNum === 23))) {
       const uTable = (schema && schema.tables) ? (schema.tables.find(t => t.name === 'users') || schema.tables[0]) : null;
       const uTableName = uTable ? uTable.name : 'users';
 
@@ -1081,8 +1714,8 @@ class QuizGenerator {
       }
     }
 
-    // Question 9 specific distractors (tests aggregate with SUM and AVG rewritten by HLL to order by order_id DESC)
-    if (qNum === 9 || (questionSpec && (questionSpec.manipulation === 'rewrite_order_desc' || questionSpec.qNum === 9))) {
+    // Question 9 & 24 specific distractors (tests aggregate with SUM and AVG rewritten by HLL to order by order_id DESC)
+    if (qNum === 9 || qNum === 24 || (questionSpec && (questionSpec.manipulation === 'rewrite_order_desc' || questionSpec.qNum === 9 || questionSpec.qNum === 24))) {
       const rTable = (schema && schema.tables) ? (schema.tables.find(t => t.name === 'reviews') || schema.tables[0]) : null;
       const rTableName = rTable ? rTable.name : 'reviews';
       const q9Distractors = [];
@@ -1183,53 +1816,62 @@ class QuizGenerator {
       }
     }
 
-    // Question 10 specific distractors (tests comparing order count vs review count and evaluating JOIN with AVG)
-    if (qNum === 10 || (questionSpec && (questionSpec.manipulation === 'compare_counts_join_avg' || questionSpec.qNum === 10))) {
+    // Question 10 & 25 specific distractors (tests comparing orders quantity count vs products ID count)
+    if (qNum === 10 || qNum === 25 || (questionSpec && (questionSpec.manipulation === 'compare_counts_select_output' || questionSpec.manipulation === 'compare_counts_join_avg' || questionSpec.qNum === 10 || questionSpec.qNum === 25))) {
       const oTable = (schema && schema.tables) ? (schema.tables.find(t => t.name === 'orders') || schema.tables[0]) : null;
-      const rTable = (schema && schema.tables) ? (schema.tables.find(t => t.name === 'reviews') || schema.tables[1]) : null;
+      const pTable = (schema && schema.tables) ? (schema.tables.find(t => t.name === 'products') || schema.tables[1]) : null;
       const oTableName = oTable ? oTable.name : 'orders';
-      const rTableName = rTable ? rTable.name : 'reviews';
+      const pTableName = pTable ? pTable.name : 'products';
       const q10Distractors = [];
 
-      // Distractor 1: Evaluates the alternate branch (reviews joined with orders, using AVG(reviews.score))
-      const altSql = `SELECT COUNT(${rTableName}.id) AS total_count, ROUND(AVG(${rTableName}.score), 2) AS avg_val FROM ${rTableName} JOIN ${oTableName} ON ${rTableName}.order_id = ${oTableName}.id;`;
+      // Distractor 1: Evaluates the alternate branch (All product names / titles)
+      const altSql = `SELECT title AS product_name FROM ${pTableName} ORDER BY id ASC;`;
       let altRes = runSqlWithMeta(altSql);
-      let altCols = (altRes && altRes.columns) ? altRes.columns : ['total_count', 'avg_val'];
+      let altCols = (altRes && altRes.columns) ? altRes.columns : ['product_name'];
       let altRows = altRes ? altRes.rows : null;
+      if ((!altRows || altRows.length === 0) && pTable && pTable.rows) {
+        altRows = pTable.rows.map(r => [r.title || 'Product']);
+      }
       if (altRows && altRows.length > 0 && !areRowsEqual(altRows, correctRows)) {
         q10Distractors.push({
           columns: altCols,
           rows: altRows,
           isCorrect: false,
-          explanation: 'Evaluates the alternative branch assuming reviews had the higher count and computes AVG(score).'
+          explanation: 'Assumes the count of products ID was strictly greater than orders quantity, which would output all product names.'
         });
       }
 
-      // Distractor 2: Evaluates orders count and AVG(amount) without the JOIN
-      const noJoinSql = `SELECT COUNT(id) AS total_count, ROUND(AVG(amount), 2) AS avg_val FROM ${oTableName};`;
-      let noJoinRes = runSqlWithMeta(noJoinSql);
-      let noJoinCols = (noJoinRes && noJoinRes.columns) ? noJoinRes.columns : ['total_count', 'avg_val'];
-      let noJoinRows = noJoinRes ? noJoinRes.rows : null;
-      if (noJoinRows && noJoinRows.length > 0 && !areRowsEqual(noJoinRows, correctRows)) {
+      // Distractor 2: Evaluates order quantities instead of order IDs
+      const qtySql = `SELECT quantity FROM ${oTableName} ORDER BY id ASC;`;
+      let qtyRes = runSqlWithMeta(qtySql);
+      let qtyCols = (qtyRes && qtyRes.columns) ? qtyRes.columns : ['quantity'];
+      let qtyRows = qtyRes ? qtyRes.rows : null;
+      if ((!qtyRows || qtyRows.length === 0) && oTable && oTable.rows) {
+        qtyRows = oTable.rows.map(r => [r.quantity || 1]);
+      }
+      if (qtyRows && qtyRows.length > 0 && !areRowsEqual(qtyRows, correctRows)) {
         q10Distractors.push({
-          columns: noJoinCols,
-          rows: noJoinRows,
+          columns: qtyCols,
+          rows: qtyRows,
           isCorrect: false,
-          explanation: 'Evaluates COUNT and AVG on orders without joining the reviews table.'
+          explanation: 'Outputs the order quantities instead of the order IDs.'
         });
       }
 
-      // Distractor 3: Evaluates SUM(amount) instead of AVG(amount) on the joined tables
-      const sumSql = `SELECT COUNT(${oTableName}.id) AS total_count, ROUND(SUM(${oTableName}.amount), 2) AS avg_val FROM ${oTableName} JOIN ${rTableName} ON ${oTableName}.id = ${rTableName}.order_id;`;
-      let sumRes = runSqlWithMeta(sumSql);
-      let sumCols = (sumRes && sumRes.columns) ? sumRes.columns : ['total_count', 'avg_val'];
-      let sumRows = sumRes ? sumRes.rows : null;
-      if (sumRows && sumRows.length > 0 && !areRowsEqual(sumRows, correctRows)) {
+      // Distractor 3: Evaluates total count scalar instead of table rows
+      const cntSql = `SELECT COUNT(id) AS total_count FROM ${oTableName};`;
+      let cntRes = runSqlWithMeta(cntSql);
+      let cntCols = (cntRes && cntRes.columns) ? cntRes.columns : ['total_count'];
+      let cntRows = cntRes ? cntRes.rows : null;
+      if (!cntRows || cntRows.length === 0) {
+        cntRows = [[(oTable && oTable.rows) ? oTable.rows.length : 30]];
+      }
+      if (cntRows && cntRows.length > 0 && !areRowsEqual(cntRows, correctRows)) {
         q10Distractors.push({
-          columns: sumCols,
-          rows: sumRows,
+          columns: cntCols,
+          rows: cntRows,
           isCorrect: false,
-          explanation: 'Computes SUM(amount) instead of AVG(amount) across joined records.'
+          explanation: 'Outputs the numeric count value instead of selecting the table rows.'
         });
       }
 
@@ -1239,8 +1881,8 @@ class QuizGenerator {
       }
     }
 
-    // Question 11 specific distractors (tests JOIN on products & categories with wrong column projections)
-    if (qNum === 11 || (questionSpec && (questionSpec.qNum === 11 || (questionSpec.operators && questionSpec.operators.includes('JOIN') && questionSpec.structure === 4)))) {
+    // Question 11 & 26 specific distractors (tests JOIN on products & categories with wrong column projections)
+    if (qNum === 11 || qNum === 26 || (questionSpec && (questionSpec.qNum === 11 || questionSpec.qNum === 26 || questionSpec.manipulation === 'unused_column_strings' || (questionSpec.operators && questionSpec.operators.includes('JOIN') && questionSpec.structure === 4)))) {
       const pTable = (schema && schema.tables) ? (schema.tables.find(t => t.name === 'products') || schema.tables[0]) : null;
       const cTable = (schema && schema.tables) ? (schema.tables.find(t => t.name === 'categories') || schema.tables[1]) : null;
       const pTableName = pTable ? pTable.name : 'products';
@@ -1321,8 +1963,8 @@ class QuizGenerator {
       }
     }
 
-    // Question 12 specific distractors (tests JOIN + UNION across orders and users)
-    if (qNum === 12 || (questionSpec && (questionSpec.qNum === 12 || questionSpec.manipulation === 'join_union'))) {
+    // Question 12 & 27 specific distractors (tests JOIN + UNION across orders and users)
+    if (qNum === 12 || qNum === 27 || (questionSpec && (questionSpec.qNum === 12 || questionSpec.qNum === 27 || questionSpec.manipulation === 'join_union'))) {
       const oTable = (schema && schema.tables) ? (schema.tables.find(t => t.name === 'orders') || schema.tables[0]) : null;
       const uTable = (schema && schema.tables) ? (schema.tables.find(t => t.name === 'users') || schema.tables[1]) : null;
       const oTableName = oTable ? oTable.name : 'orders';
@@ -1377,8 +2019,149 @@ class QuizGenerator {
       }
     }
 
-    // Question 15 specific distractors (tests tracking the modified query 1 instead of overwritten query 2)
-    if (qNum === 15 || (questionSpec && (questionSpec.manipulation === 'overwrite_query' || questionSpec.qNum === 15))) {
+    // Question 13 & 28 specific distractors (tests Structure 2 override: Query 1 vs HLL modified query vs Query 2 products)
+    if (qNum === 13 || qNum === 28 || (questionSpec && (questionSpec.manipulation === 'severe_query_override' || questionSpec.qNum === 13 || questionSpec.qNum === 28))) {
+      const oTable = (schema && schema.tables) ? (schema.tables.find(t => t.name === 'orders') || schema.tables[0]) : null;
+      const uTable = (schema && schema.tables) ? (schema.tables.find(t => t.name === 'users') || schema.tables[1]) : null;
+      const pTable = (schema && schema.tables) ? (schema.tables.find(t => t.name === 'products') || schema.tables[2] || schema.tables[0]) : null;
+      const oTableName = oTable ? oTable.name : 'orders';
+      const uTableName = uTable ? uTable.name : 'users';
+      const pTableName = pTable ? pTable.name : 'products';
+      const q13Distractors = [];
+
+      // Distractor 1 (Query 1 result): Evaluates initial aggregate query on orders (sum_amt, avg_amt)
+      const q1Sql = `SELECT SUM(amount) AS sum_amt, AVG(amount) AS avg_amt FROM ${oTableName} WHERE amount > 15;`;
+      let q1Res = runSqlWithMeta(q1Sql);
+      let q1Cols = (q1Res && q1Res.columns) ? q1Res.columns : ['sum_amt', 'avg_amt'];
+      let q1Rows = q1Res ? q1Res.rows : null;
+      if (!q1Rows && oTable && oTable.rows) {
+        const filtered = oTable.rows.filter(r => (Number(r.amount) || 0) > 15);
+        const sum = Number(filtered.reduce((a, b) => a + (Number(b.amount) || 0), 0).toFixed(2));
+        const avg = filtered.length ? Number((sum / filtered.length).toFixed(2)) : 0;
+        q1Rows = [[sum, avg]];
+      }
+      if (q1Rows && q1Rows.length > 0 && !areRowsEqual(q1Rows, correctRows)) {
+        q13Distractors.push({
+          columns: q1Cols,
+          rows: q1Rows,
+          isCorrect: false,
+          explanation: 'Assumes the initial aggregation query on orders was executed before it was modified and overridden.'
+        });
+      }
+
+      // Distractor 2 (HLL result): Evaluates the user records query created by HLL string manipulation (id, name, rating)
+      const uSql = `SELECT id, name, rating FROM ${uTableName} WHERE id <= 3 ORDER BY id ASC;`;
+      let uRes = runSqlWithMeta(uSql);
+      let uCols = (uRes && uRes.columns) ? uRes.columns : ['id', 'name', 'rating'];
+      let uRows = uRes ? uRes.rows : null;
+      if (!uRows && uTable && uTable.rows) {
+        uRows = uTable.rows.slice(0, 3).map(r => [r.id, r.name, r.rating || 4.5]);
+      }
+      if (uRows && uRows.length > 0 && !areRowsEqual(uRows, correctRows)) {
+        q13Distractors.push({
+          columns: uCols,
+          rows: uRows,
+          isCorrect: false,
+          explanation: 'Assumes the host language string manipulation on query was executed instead of the second query.'
+        });
+      }
+
+      // Distractor 3: Evaluates an alternative product ID range (IDs 4 to 6 instead of 1 to 3)
+      const altPSql = `SELECT id, title, price FROM ${pTableName} WHERE id > 3 AND id <= 6 ORDER BY id ASC;`;
+      let altPRes = runSqlWithMeta(altPSql);
+      let altPCols = (altPRes && altPRes.columns) ? altPRes.columns : ['id', 'title', 'price'];
+      let altPRows = altPRes ? altPRes.rows : null;
+      if (!altPRows && pTable && pTable.rows) {
+        altPRows = pTable.rows.slice(3, 6).map(r => [r.id, r.title, r.price]);
+      }
+      if (altPRows && altPRows.length > 0 && !areRowsEqual(altPRows, correctRows)) {
+        q13Distractors.push({
+          columns: altPCols,
+          rows: altPRows,
+          isCorrect: false,
+          explanation: 'Evaluates an alternative product ID range (IDs 4 to 6 instead of 1 to 3).'
+        });
+      }
+
+      if (q13Distractors.length >= 3) {
+        options.push(...q13Distractors.slice(0, 3));
+        return options;
+      }
+    }
+
+    // Question 14 & 29 specific distractors (tests LIKE, ROUND, and SUM on orders)
+    if (qNum === 14 || qNum === 29 || (questionSpec && (questionSpec.qNum === 14 || questionSpec.qNum === 29 || questionSpec.manipulation === 'keywords_hll_confuse' || (questionSpec.operators && questionSpec.operators.includes('ROUND'))))) {
+      const q14Distractors = [];
+
+      // Distractor 1 (Incorrect LIKE match): Assumes LIKE 'COMP%' matched non-matching status 'PENDING'
+      const pendingSql = `SELECT 'PENDING' AS status, ROUND(SUM(amount), 2) AS rounded_total FROM orders WHERE status = 'PENDING';`;
+      let pRes = runSqlWithMeta(pendingSql);
+      let pCols = (pRes && pRes.columns) ? pRes.columns : ['status', 'rounded_total'];
+      let pRows = pRes ? pRes.rows : null;
+      if (!pRows && schema && schema.tables) {
+        const oT = schema.tables.find(t => t.name === 'orders');
+        if (oT) {
+          const sumP = oT.rows.filter(r => r.status === 'PENDING').reduce((a, b) => a + (Number(b.amount) || 0), 0);
+          pRows = [['PENDING', Number(sumP.toFixed(2))]];
+        }
+      }
+      if (pRows && pRows.length > 0 && !areRowsEqual(pRows, correctRows)) {
+        q14Distractors.push({
+          columns: pCols,
+          rows: pRows,
+          isCorrect: false,
+          explanation: (hostLanguage === 'python')
+            ? "Assumes the host language variable group_status = 'PENDING' or status LIKE 'COMP%' matched 'PENDING'."
+            : "Assumes the host language variable groupStatus = 'PENDING' or status LIKE 'COMP%' matched 'PENDING'."
+        });
+      }
+
+      // Distractor 2 (Incorrect Aggregate: AVG instead of SUM): Computes AVG(amount)
+      const avgSql = `SELECT status, ROUND(AVG(amount), 2) AS avg_amount FROM orders WHERE status LIKE 'COMP%' GROUP BY status;`;
+      let avgRes = runSqlWithMeta(avgSql);
+      let avgCols = (avgRes && avgRes.columns) ? avgRes.columns : ['status', 'avg_amount'];
+      let avgRows = avgRes ? avgRes.rows : null;
+      if (!avgRows && schema && schema.tables) {
+        const oT = schema.tables.find(t => t.name === 'orders');
+        if (oT) {
+          const compRows = oT.rows.filter(r => r.status && r.status.startsWith('COMP'));
+          const sumA = compRows.reduce((a, b) => a + (Number(b.amount) || 0), 0);
+          const avgA = compRows.length ? Number((sumA / compRows.length).toFixed(2)) : 0;
+          avgRows = [['COMPLETED', avgA]];
+        }
+      }
+      if (avgRows && avgRows.length > 0 && !areRowsEqual(avgRows, correctRows)) {
+        q14Distractors.push({
+          columns: avgCols,
+          rows: avgRows,
+          isCorrect: false,
+          explanation: 'Computes the average (AVG) per order instead of the total rounded sum (SUM).'
+        });
+      }
+
+      // Distractor 3 (Incorrect projection column: user_id instead of status)
+      const uidSql = `SELECT user_id, ROUND(SUM(amount), 2) AS rounded_total FROM orders WHERE status LIKE 'COMP%' GROUP BY user_id LIMIT 1;`;
+      let uidRes = runSqlWithMeta(uidSql);
+      let uidCols = (uidRes && uidRes.columns) ? uidRes.columns : ['user_id', 'rounded_total'];
+      let uidRows = uidRes ? uidRes.rows : null;
+      if (!uidRows && correctRows && correctRows[0]) {
+        uidRows = [[1, correctRows[0][1]]];
+      }
+      if (uidRows && uidRows.length > 0 && !areRowsEqual(uidRows, correctRows)) {
+        q14Distractors.push({
+          columns: uidCols,
+          rows: uidRows,
+          isCorrect: false,
+          explanation: 'Projects user_id instead of the grouped status column.'
+        });
+      }
+
+      options.push(...q14Distractors.slice(0, 3));
+      return options;
+    }
+
+    // Question 15 & 30 specific distractors (tests tracking the modified query 1 instead of overwritten query 2)
+    if (qNum === 15 || qNum === 30 || (questionSpec && (questionSpec.manipulation === 'overwrite_query' || questionSpec.qNum === 15 || questionSpec.qNum === 30))) {
       const oTable = (schema && schema.tables) ? (schema.tables.find(t => t.name === 'orders') || schema.tables[0]) : null;
       const oTableName = oTable ? oTable.name : 'orders';
 
@@ -1419,9 +2202,9 @@ class QuizGenerator {
       }
     }
 
-    // Question 6 specific distractors (tests if participant assumed query 2 was executed instead of deleted)
+    // Question 6 & 21 specific distractors (tests if participant assumed query 2 was executed instead of deleted)
     // Wrong solutions include extra columns (4-5 columns) and shuffled sort orders to easily distinguish them from correct answer
-    if (qNum === 6 || (questionSpec && (questionSpec.manipulation === 'delete_second_query' || questionSpec.qNum === 6))) {
+    if (qNum === 6 || qNum === 21 || (questionSpec && (questionSpec.manipulation === 'delete_second_query' || questionSpec.qNum === 6 || questionSpec.qNum === 21))) {
       const pTable = (schema && schema.tables) ? (schema.tables.find(t => t.name === 'products') || schema.tables[0]) : null;
       const pTableName = pTable ? pTable.name : 'products';
 
@@ -1539,8 +2322,8 @@ class QuizGenerator {
       return options;
     }
 
-    // Question 7 specific distractors
-    if (qNum === 7 || (questionSpec && (questionSpec.manipulation === 'delete_second_execute' || questionSpec.qNum === 7))) {
+    // Question 7 & 22 specific distractors
+    if (qNum === 7 || qNum === 22 || (questionSpec && (questionSpec.manipulation === 'delete_second_execute' || questionSpec.qNum === 7 || questionSpec.qNum === 22))) {
       const pTable = (schema && schema.tables) ? (schema.tables.find(t => t.name === 'products') || schema.tables[0]) : null;
       const pTableName = pTable ? pTable.name : 'products';
 

@@ -161,6 +161,47 @@ class SyntaxDialectManager {
     return formatted;
   }
 
+  parseFromSubquery(sqlQuery) {
+    if (!sqlQuery) return null;
+    const clean = sqlQuery.trim().replace(/;$/, '');
+    const fromMatch = clean.match(/\bFROM\s*\(/i);
+    if (!fromMatch) return null;
+
+    const openParenIndex = fromMatch.index + fromMatch[0].length - 1;
+    let depth = 1;
+    let closeParenIndex = -1;
+
+    for (let i = openParenIndex + 1; i < clean.length; i++) {
+      const char = clean[i];
+      if (char === '(') {
+        depth++;
+      } else if (char === ')') {
+        depth--;
+        if (depth === 0) {
+          closeParenIndex = i;
+          break;
+        }
+      }
+    }
+
+    if (closeParenIndex === -1) return null;
+
+    const outerBeforeFrom = clean.substring(0, fromMatch.index).trim();
+    const innerSql = clean.substring(openParenIndex + 1, closeParenIndex).trim();
+    const afterClose = clean.substring(closeParenIndex + 1).trim();
+
+    const aliasMatch = afterClose.match(/^(?:AS\s+)?([a-zA-Z0-9_]+)\b([\s\S]*)$/i);
+    const alias = aliasMatch ? aliasMatch[1] : 'sub';
+    const outerRemainder = aliasMatch ? aliasMatch[2].trim() : afterClose;
+
+    return {
+      outerBeforeFrom,
+      innerSql,
+      alias,
+      outerRemainder
+    };
+  }
+
   formatToPipeSyntax(sql) {
     if (!sql) return '';
     const cleanSql = sql.trim().replace(/;$/, '');
@@ -184,6 +225,16 @@ class SyntaxDialectManager {
         }
         return res;
       }
+    }
+
+    // Handle nested subquery in FROM (e.g., SELECT ... FROM (SELECT ... FROM table GROUP BY ...) sub GROUP BY ...)
+    const subquery = this.parseFromSubquery(cleanSql);
+    if (subquery) {
+      const innerPipe = this.formatToPipeSyntax(subquery.innerSql);
+      const outerSqlSimulated = `${subquery.outerBeforeFrom} FROM ${subquery.alias} ${subquery.outerRemainder}`;
+      const outerPipe = this.formatToPipeSyntax(outerSqlSimulated);
+      const outerStages = outerPipe.split('\n').filter(l => !l.startsWith(`FROM ${subquery.alias}`));
+      return innerPipe + '\n' + outerStages.join('\n');
     }
 
     const selectMatch = cleanSql.match(/SELECT\s+([\s\S]+?)(?=\s+FROM\b)/i);
@@ -285,6 +336,18 @@ class SyntaxDialectManager {
       const isUnionAll = /\bUNION\s+ALL\b/i.test(cleanSql);
       const parts = cleanSql.split(isUnionAll ? /\bUNION\s+ALL\b/i : /\bUNION(?:\s+DISTINCT)?\b/i);
       return parts.map(p => this.formatToQuorumSyntax(p.trim())).join('\n\n');
+    }
+
+    // Handle nested subquery in FROM (e.g., SELECT ... FROM (SELECT ... FROM table GROUP BY ...) sub GROUP BY ...)
+    const subquery = this.parseFromSubquery(cleanSql);
+    if (subquery) {
+      const innerQuorum = this.formatToQuorumSyntax(subquery.innerSql);
+      const outerSqlSimulated = `${subquery.outerBeforeFrom} FROM ${subquery.alias} ${subquery.outerRemainder}`;
+      const outerQuorum = this.formatToQuorumSyntax(outerSqlSimulated);
+
+      const subLines = innerQuorum.split('\n').map(l => l.replace(/^query:/, 'subquery:'));
+      const outerLines = outerQuorum.split('\n').map(l => l.replace(`query:SetTable("${subquery.alias}")`, 'query:SetTable(subquery)'));
+      return subLines.join('\n') + '\n\n' + outerLines.join('\n');
     }
 
     const selectMatch = cleanSql.match(/SELECT\s+([\s\S]+?)(?=\s+FROM\b)/i);

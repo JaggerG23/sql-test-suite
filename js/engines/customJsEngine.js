@@ -10,6 +10,46 @@ class CustomJsEngine {
     this.schema = schema;
   }
 
+  parseFromSubquery(sqlQuery) {
+    if (!sqlQuery) return null;
+    const fromMatch = sqlQuery.match(/\bFROM\s*\(/i);
+    if (!fromMatch) return null;
+
+    const openParenIndex = fromMatch.index + fromMatch[0].length - 1;
+    let depth = 1;
+    let closeParenIndex = -1;
+
+    for (let i = openParenIndex + 1; i < sqlQuery.length; i++) {
+      const char = sqlQuery[i];
+      if (char === '(') {
+        depth++;
+      } else if (char === ')') {
+        depth--;
+        if (depth === 0) {
+          closeParenIndex = i;
+          break;
+        }
+      }
+    }
+
+    if (closeParenIndex === -1) return null;
+
+    const outerBeforeFrom = sqlQuery.substring(0, fromMatch.index).trim();
+    const innerSql = sqlQuery.substring(openParenIndex + 1, closeParenIndex).trim();
+    const afterClose = sqlQuery.substring(closeParenIndex + 1).trim();
+
+    const aliasMatch = afterClose.match(/^(?:AS\s+)?([a-zA-Z0-9_]+)\b([\s\S]*)$/i);
+    const alias = aliasMatch ? aliasMatch[1] : 'sub';
+    const outerRemainder = aliasMatch ? aliasMatch[2].trim() : afterClose;
+
+    return {
+      outerBeforeFrom,
+      innerSql,
+      alias,
+      outerRemainder
+    };
+  }
+
   executeQuery(sqlQuery) {
     const startTime = performance.now();
     const traceLogs = [];
@@ -50,6 +90,39 @@ class CustomJsEngine {
         }
       }
 
+      // Check for Subquery in FROM: FROM (SELECT ...) sub
+      const subquery = this.parseFromSubquery(sqlQuery);
+      if (subquery) {
+        const innerRes = this.executeQuery(subquery.innerSql);
+        if (!innerRes.success) {
+          throw new Error(`Subquery evaluation failed: ${innerRes.error}`);
+        }
+
+        const virtualTable = {
+          name: subquery.alias,
+          columns: innerRes.columns.map(c => ({ name: c, type: 'TEXT' })),
+          rows: innerRes.rows.map(r => {
+            const rowObj = {};
+            innerRes.columns.forEach((col, idx) => {
+              rowObj[col] = r[idx];
+            });
+            return rowObj;
+          })
+        };
+
+        const originalTables = this.schema.tables;
+        this.schema.tables = [...originalTables.filter(t => t.name !== subquery.alias), virtualTable];
+        try {
+          const outerSql = `${subquery.outerBeforeFrom} FROM ${subquery.alias} ${subquery.outerRemainder}`;
+          const outerRes = this.executeQuery(outerSql);
+          this.schema.tables = originalTables;
+          return outerRes;
+        } catch (err) {
+          this.schema.tables = originalTables;
+          throw err;
+        }
+      }
+
       traceLogs.push(`[AST PARSER] Parsing query token sequence...`);
       const ast = this.parseQuery(sqlQuery);
       traceLogs.push(`[AST TREE] Main Table: '${ast.mainTable}' | Joins: ${ast.joins.length} | Aggregations: ${ast.aggregates.length}`);
@@ -60,7 +133,10 @@ class CustomJsEngine {
 
       let dataset = mainTableObj.rows.map(row => {
         const tuple = {};
-        Object.keys(row).forEach(k => { tuple[`${ast.mainTable}.${k}`] = row[k]; });
+        Object.keys(row).forEach(k => {
+          tuple[`${ast.mainTable}.${k}`] = row[k];
+          tuple[k] = row[k];
+        });
         return tuple;
       });
       traceLogs.push(`[STEP 1: SCAN] Scanned table '${ast.mainTable}' -> ${dataset.length} initial tuples`);
@@ -107,7 +183,12 @@ class CustomJsEngine {
         const groups = new Map();
 
         dataset.forEach(tuple => {
-          const groupKey = ast.groupBy.map(g => tuple[g] !== undefined ? tuple[g] : '').join('||');
+          const groupKey = ast.groupBy.map(g => {
+            if (tuple[g] !== undefined) return tuple[g];
+            if (tuple[`${ast.mainTable}.${g}`] !== undefined) return tuple[`${ast.mainTable}.${g}`];
+            if (g.includes('.') && tuple[g.split('.')[1]] !== undefined) return tuple[g.split('.')[1]];
+            return '';
+          }).join('||');
           if (!groups.has(groupKey)) groups.set(groupKey, []);
           groups.get(groupKey).push(tuple);
         });
@@ -118,20 +199,27 @@ class CustomJsEngine {
           const resTuple = {};
           // Group keys
           ast.groupBy.forEach(gCol => {
-            resTuple[gCol] = groupTuples[0][gCol];
+            const cleanCol = gCol.includes('.') ? gCol.split('.')[1] : gCol;
+            resTuple[cleanCol] = groupTuples[0][gCol] !== undefined ? groupTuples[0][gCol] : (groupTuples[0][cleanCol] !== undefined ? groupTuples[0][cleanCol] : groupTuples[0][`${ast.mainTable}.${cleanCol}`]);
           });
 
           // Aggregate evaluations
           ast.aggregates.forEach(agg => {
-            const vals = groupTuples.map(t => t[agg.column]).filter(v => v !== null && v !== undefined);
+            const vals = groupTuples.map(t => {
+              if (t[agg.column] !== undefined) return t[agg.column];
+              const matchedKey = Object.keys(t).find(k => k.endsWith(`.${agg.column}`));
+              return matchedKey !== undefined ? t[matchedKey] : undefined;
+            }).filter(v => v !== null && v !== undefined);
             let aggResult = 0;
-            if (agg.func === 'COUNT') aggResult = vals.length;
+            if (agg.func === 'COUNT') aggResult = (agg.column === '*' || agg.column === '') ? groupTuples.length : vals.length;
             else if (agg.func === 'SUM') aggResult = vals.reduce((a, b) => a + Number(b), 0);
             else if (agg.func === 'AVG') aggResult = vals.length > 0 ? (vals.reduce((a, b) => a + Number(b), 0) / vals.length) : 0;
             else if (agg.func === 'MAX') aggResult = vals.length > 0 ? Math.max(...vals.map(Number)) : 0;
             else if (agg.func === 'MIN') aggResult = vals.length > 0 ? Math.min(...vals.map(Number)) : 0;
 
-            if (agg.func === 'AVG' || typeof aggResult === 'number') {
+            if (agg.roundDecimals !== undefined) {
+              aggResult = parseFloat(aggResult.toFixed(agg.roundDecimals));
+            } else if (agg.func === 'AVG' || typeof aggResult === 'number') {
               if (!Number.isInteger(aggResult)) aggResult = parseFloat(aggResult.toFixed(2));
             }
             resTuple[agg.alias || `${agg.func.toLowerCase()}_val`] = aggResult;
@@ -166,9 +254,11 @@ class CustomJsEngine {
 
       // Step 5: Sorting (ORDER BY)
       if (ast.orderBy) {
+        const orderCol = ast.orderBy.column;
+        const cleanOrderCol = orderCol.includes('.') ? orderCol.split('.')[1] : orderCol;
         resultRows.sort((a, b) => {
-          const valA = a[ast.orderBy.column] !== undefined ? a[ast.orderBy.column] : 0;
-          const valB = b[ast.orderBy.column] !== undefined ? b[ast.orderBy.column] : 0;
+          const valA = a[orderCol] !== undefined ? a[orderCol] : (a[cleanOrderCol] !== undefined ? a[cleanOrderCol] : 0);
+          const valB = b[orderCol] !== undefined ? b[orderCol] : (b[cleanOrderCol] !== undefined ? b[cleanOrderCol] : 0);
           if (valA < valB) return ast.orderBy.dir === 'ASC' ? -1 : 1;
           if (valA > valB) return ast.orderBy.dir === 'ASC' ? 1 : -1;
           return 0;
@@ -272,17 +362,27 @@ class CustomJsEngine {
       if (colMatch) {
         const rawExpr = fromQuorumCols(colMatch[1]);
         const alias = colMatch[2];
-        const aggMatch = rawExpr.match(/(COUNT|SUM|AVG|MAX|MIN)\((.*?)\)/i);
-        if (aggMatch) {
+        const roundMatch = rawExpr.match(/ROUND\s*\(\s*(COUNT|SUM|AVG|MAX|MIN)\((.*?)\)\s*(?:,\s*(\d+))?\s*\)/i);
+        if (roundMatch) {
           ast.aggregates.push({
-            func: aggMatch[1].toUpperCase(),
-            column: aggMatch[2].trim(),
-            alias: alias || `${aggMatch[1].toLowerCase()}_val`
+            func: roundMatch[1].toUpperCase(),
+            column: roundMatch[2].trim(),
+            roundDecimals: roundMatch[3] ? parseInt(roundMatch[3], 10) : 0,
+            alias: alias || `${roundMatch[1].toLowerCase()}_val`
           });
-        } else if (rawExpr !== '*') {
-          ast.selectCols.push(rawExpr);
         } else {
-          ast.selectCols.push('*');
+          const aggMatch = rawExpr.match(/(COUNT|SUM|AVG|MAX|MIN)\((.*?)\)/i);
+          if (aggMatch) {
+            ast.aggregates.push({
+              func: aggMatch[1].toUpperCase(),
+              column: aggMatch[2].trim(),
+              alias: alias || `${aggMatch[1].toLowerCase()}_val`
+            });
+          } else if (rawExpr !== '*') {
+            ast.selectCols.push(rawExpr);
+          } else {
+            ast.selectCols.push('*');
+          }
         }
       }
 
@@ -349,21 +449,53 @@ class CustomJsEngine {
         }
 
         if (aggPart) {
-          const items = aggPart.split(',').map(s => s.trim());
+          const items = this.splitCsvClause(aggPart);
           items.forEach(item => {
-            const aggMatch = item.match(/(COUNT|SUM|AVG|MAX|MIN)\((.*?)\)\s*(?:AS\s+([a-zA-Z0-9_]+))?/i);
+            const roundMatch = item.match(/ROUND\s*\(\s*(COUNT|SUM|AVG|MAX|MIN)\((.*?)\)\s*(?:,\s*(\d+))?\s*\)\s*(?:AS\s+([a-zA-Z0-9_]+))?/i);
+            if (roundMatch) {
+              ast.aggregates.push({
+                func: roundMatch[1].toUpperCase(),
+                column: roundMatch[2].trim().replace(/[`"\[\]]/g, ''),
+                roundDecimals: roundMatch[3] ? parseInt(roundMatch[3], 10) : 0,
+                alias: roundMatch[4] || `${roundMatch[1].toLowerCase()}_val`
+              });
+            } else {
+              const aggMatch = item.match(/(COUNT|SUM|AVG|MAX|MIN)\((.*?)\)\s*(?:AS\s+([a-zA-Z0-9_]+))?/i);
+              if (aggMatch) {
+                ast.aggregates.push({
+                  func: aggMatch[1].toUpperCase(),
+                  column: aggMatch[2].trim().replace(/[`"\[\]]/g, ''),
+                  alias: aggMatch[3] || `${aggMatch[1].toLowerCase()}_val`
+                });
+              }
+            }
+          });
+        }
+      } else if (line.startsWith('|> SELECT')) {
+        const selectText = line.replace(/^\|>\s*SELECT\s+/i, '').trim();
+        const items = this.splitCsvClause(selectText);
+        items.forEach(item => {
+          const roundMatch = item.match(/ROUND\s*\(\s*(COUNT|SUM|AVG|MAX|MIN)\((.*?)\)\s*(?:,\s*(\d+))?\s*\)\s*(?:AS\s+([a-zA-Z0-9_]+))?/i);
+          if (roundMatch) {
+            ast.aggregates.push({
+              func: roundMatch[1].toUpperCase(),
+              column: roundMatch[2].trim().replace(/[`"\[\]]/g, ''),
+              roundDecimals: roundMatch[3] ? parseInt(roundMatch[3], 10) : 0,
+              alias: roundMatch[4] || `${roundMatch[1].toLowerCase()}_val`
+            });
+          } else {
+            const aggMatch = item.match(/(COUNT|SUM|AVG|MAX|MIN)\((.*?)\)(?:\s+AS\s+([a-zA-Z0-9_]+))?/i);
             if (aggMatch) {
               ast.aggregates.push({
                 func: aggMatch[1].toUpperCase(),
                 column: aggMatch[2].trim().replace(/[`"\[\]]/g, ''),
                 alias: aggMatch[3] || `${aggMatch[1].toLowerCase()}_val`
               });
+            } else {
+              ast.selectCols.push(item.replace(/[`"\[\]]/g, ''));
             }
-          });
-        }
-      } else if (line.startsWith('|> SELECT')) {
-        const selectText = line.replace(/^\|>\s*SELECT\s+/i, '').trim();
-        ast.selectCols = selectText.split(',').map(s => s.trim().replace(/[`"\[\]]/g, ''));
+          }
+        });
       } else if (line.startsWith('|> ORDER BY')) {
         const orderText = line.replace(/^\|>\s*ORDER BY\s+/i, '').trim();
         const parts = orderText.split(/\s+/);
@@ -397,7 +529,7 @@ class CustomJsEngine {
     if (fromMatch) ast.mainTable = fromMatch[1];
 
     // Extract JOINs
-    const joinRegex = /(INNER|LEFT|RIGHT)?\s*JOIN\s+([a-zA-Z0-9_]+)\s+ON\s+([^\nWHEREGROUPORDERLIMIT]+)/gi;
+    const joinRegex = /(?:(INNER|LEFT|RIGHT|FULL|CROSS)\s+)?JOIN\s+([a-zA-Z0-9_]+)\s+ON\s+([\s\S]+?)(?=(?:\s+(?:INNER|LEFT|RIGHT|FULL|CROSS)?\s*JOIN\b)|\s+WHERE\b|\s+GROUP\b|\s+ORDER\b|\s+LIMIT\b|;|$)/gi;
     let match;
     while ((match = joinRegex.exec(sql)) !== null) {
       ast.joins.push({
@@ -410,17 +542,27 @@ class CustomJsEngine {
     // Extract SELECT columns & aggregates
     const selectMatch = sql.match(/SELECT\s+([\s\S]+?)\s+FROM/i);
     if (selectMatch) {
-      const selectParts = selectMatch[1].split(',').map(s => s.trim());
+      const selectParts = this.splitCsvClause(selectMatch[1]);
       selectParts.forEach(part => {
-        const aggMatch = part.match(/(COUNT|SUM|AVG|MAX|MIN)\((.*?)\)(?:\s+AS\s+([a-zA-Z0-9_]+))?/i);
-        if (aggMatch) {
+        const roundMatch = part.match(/ROUND\s*\(\s*(COUNT|SUM|AVG|MAX|MIN)\((.*?)\)\s*(?:,\s*(\d+))?\s*\)(?:\s+AS\s+([a-zA-Z0-9_]+))?/i);
+        if (roundMatch) {
           ast.aggregates.push({
-            func: aggMatch[1].toUpperCase(),
-            column: aggMatch[2].trim(),
-            alias: aggMatch[3] ? aggMatch[3].trim() : `${aggMatch[1].toLowerCase()}_val`
+            func: roundMatch[1].toUpperCase(),
+            column: roundMatch[2].trim().replace(/[`"\[\]]/g, ''),
+            roundDecimals: roundMatch[3] ? parseInt(roundMatch[3], 10) : 0,
+            alias: roundMatch[4] ? roundMatch[4].trim() : `${roundMatch[1].toLowerCase()}_val`
           });
         } else {
-          ast.selectCols.push(part.replace(/\s+AS\s+[a-zA-Z0-9_]+/i, ''));
+          const aggMatch = part.match(/(COUNT|SUM|AVG|MAX|MIN)\((.*?)\)(?:\s+AS\s+([a-zA-Z0-9_]+))?/i);
+          if (aggMatch) {
+            ast.aggregates.push({
+              func: aggMatch[1].toUpperCase(),
+              column: aggMatch[2].trim().replace(/[`"\[\]]/g, ''),
+              alias: aggMatch[3] ? aggMatch[3].trim() : `${aggMatch[1].toLowerCase()}_val`
+            });
+          } else {
+            ast.selectCols.push(part.replace(/\s+AS\s+[a-zA-Z0-9_]+/i, '').trim());
+          }
         }
       });
     }
@@ -458,6 +600,11 @@ class CustomJsEngine {
   evalPredicate(condStr, tuple) {
     if (!condStr) return true;
 
+    // Handle AND combinations
+    if (condStr.includes(' AND ')) {
+      return condStr.split(/\s+AND\s+/i).every(c => this.evalPredicate(c.trim(), tuple));
+    }
+
     // Handle '=' comparison
     const eqMatch = condStr.match(/([a-zA-Z0-9._]+)\s*=\s*(.+)/);
     if (eqMatch) {
@@ -467,8 +614,9 @@ class CustomJsEngine {
       const leftVal = tuple[leftCol] !== undefined ? tuple[leftCol] : tuple[Object.keys(tuple).find(k => k.endsWith(`.${leftCol}`))];
       
       // If right side is a column reference in tuple
-      if (tuple[rightValRaw] !== undefined) {
-        return leftVal == tuple[rightValRaw];
+      const rightValCol = tuple[rightValRaw] !== undefined ? tuple[rightValRaw] : tuple[Object.keys(tuple).find(k => k.endsWith(`.${rightValRaw}`))];
+      if (rightValCol !== undefined) {
+        return leftVal == rightValCol;
       }
 
       // If right side is a literal
@@ -502,6 +650,26 @@ class CustomJsEngine {
     }
 
     return true;
+  }
+
+  splitCsvClause(str) {
+    if (!str) return [];
+    const items = [];
+    let current = '';
+    let parenDepth = 0;
+    for (let i = 0; i < str.length; i++) {
+      const char = str[i];
+      if (char === '(') parenDepth++;
+      else if (char === ')') parenDepth--;
+      if (char === ',' && parenDepth === 0) {
+        items.push(current.trim());
+        current = '';
+      } else {
+        current += char;
+      }
+    }
+    if (current.trim()) items.push(current.trim());
+    return items;
   }
 }
 

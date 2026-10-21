@@ -48,40 +48,48 @@ class QueryExperimentApp {
 
   hasAcceptedConsent(pid) {
     if (!this.isParticipantView()) return true;
-    if (this.humanResolver && this.humanResolver.consentAccepted) return true;
+    const targetPid = pid || (this.analytics ? this.analytics.participantId : '');
+    if (!targetPid) return false;
+    if (this.humanResolver && this.humanResolver.consentAccepted && this.humanResolver._consentPid === targetPid) {
+      return true;
+    }
     try {
-      const targetPid = pid || (this.analytics ? this.analytics.participantId : '');
-      if (targetPid && (sessionStorage.getItem('sql_study_consent_accepted_' + targetPid) === 'true' || localStorage.getItem('sql_study_consent_accepted_' + targetPid) === 'true')) {
-        return true;
-      }
-      if (sessionStorage.getItem('sql_study_consent_accepted') === 'true' || localStorage.getItem('sql_study_consent_accepted') === 'true') {
+      if (sessionStorage.getItem('sql_study_consent_accepted_' + targetPid) === 'true' || 
+          localStorage.getItem('sql_study_consent_accepted_' + targetPid) === 'true') {
+        if (this.humanResolver) {
+          this.humanResolver.consentAccepted = true;
+          this.humanResolver._consentPid = targetPid;
+        }
         return true;
       }
     } catch (e) {}
+    if (this.humanResolver) {
+      this.humanResolver.consentAccepted = false;
+      this.humanResolver._consentPid = null;
+    }
     return false;
   }
 
   setConsentAccepted(accepted = true) {
+    const targetPid = (this.analytics ? this.analytics.participantId : '');
     if (this.humanResolver) {
       this.humanResolver.consentAccepted = accepted;
+      this.humanResolver._consentPid = accepted ? targetPid : null;
     }
     try {
-      const targetPid = (this.analytics ? this.analytics.participantId : '');
       if (accepted) {
         if (targetPid) {
           sessionStorage.setItem('sql_study_consent_accepted_' + targetPid, 'true');
           localStorage.setItem('sql_study_consent_accepted_' + targetPid, 'true');
         }
-        sessionStorage.setItem('sql_study_consent_accepted', 'true');
-        localStorage.setItem('sql_study_consent_accepted', 'true');
       } else {
         if (targetPid) {
           sessionStorage.removeItem('sql_study_consent_accepted_' + targetPid);
           localStorage.removeItem('sql_study_consent_accepted_' + targetPid);
         }
-        sessionStorage.removeItem('sql_study_consent_accepted');
-        localStorage.removeItem('sql_study_consent_accepted');
       }
+      sessionStorage.removeItem('sql_study_consent_accepted');
+      localStorage.removeItem('sql_study_consent_accepted');
     } catch (e) {}
   }
 
@@ -152,6 +160,16 @@ class QueryExperimentApp {
           this.analytics.channel.postMessage({ type: 'INDEX_HTML_VISITED', timestamp: visitTime });
         } catch (e) {}
       }
+    }
+
+    // If new participant session requested, ensure consent state starts fresh
+    if (typeof window !== 'undefined' && window.location && window.location.search) {
+      try {
+        const params = new URLSearchParams(window.location.search);
+        if (params.get('new_participant') === '1' || params.get('new_session') === 'true') {
+          this.setConsentAccepted(false);
+        }
+      } catch (e) {}
     }
 
     if (this.isParticipantView() && !this.hasAcceptedConsent()) {

@@ -60,11 +60,24 @@ class AdminAuthManager {
         border-radius: 16px;
         padding: 32px 28px;
         width: 100%;
-        max-width: 440px;
+        max-width: 480px;
         color: #f8fafc;
         box-sizing: border-box;
         text-align: center;
         margin: 0 auto;
+        position: relative;
+      }
+
+      #btn-portal-go-study:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 0 35px rgba(99, 102, 241, 0.75), 0 8px 20px rgba(0, 0, 0, 0.5) !important;
+        color: #fff !important;
+      }
+
+      #btn-portal-admin-dashboard:hover {
+        background: rgba(255, 255, 255, 0.12) !important;
+        border-color: rgba(255, 255, 255, 0.3) !important;
+        color: #f8fafc !important;
       }
 
       .admin-modal-header {
@@ -279,6 +292,36 @@ class AdminAuthManager {
     if (!modal || modal.dataset.bound === 'true') return;
     modal.dataset.bound = 'true';
 
+    const openingView = modal.querySelector('#admin-opening-view');
+    const loginView = modal.querySelector('#admin-login-view');
+    const btnPortalAdmin = modal.querySelector('#btn-portal-admin-dashboard');
+    const btnLoginBack = modal.querySelector('#btn-login-back');
+    const passInput = modal.querySelector('#admin-pass-input');
+    const errBadge = modal.querySelector('#admin-login-error');
+
+    if (btnPortalAdmin && openingView && loginView) {
+      btnPortalAdmin.addEventListener('click', () => {
+        openingView.style.display = 'none';
+        loginView.style.display = 'block';
+        if (passInput) {
+          passInput.value = '';
+          passInput.focus();
+        }
+        if (errBadge) {
+          errBadge.style.display = 'none';
+        }
+      });
+    }
+
+    if (btnLoginBack && openingView && loginView) {
+      btnLoginBack.addEventListener('click', () => {
+        loginView.style.display = 'none';
+        openingView.style.display = 'block';
+        if (passInput) passInput.value = '';
+        if (errBadge) errBadge.style.display = 'none';
+      });
+    }
+
     const form = modal.querySelector('#admin-login-form');
     if (form) {
       form.addEventListener('submit', (e) => {
@@ -288,7 +331,6 @@ class AdminAuthManager {
     }
 
     const toggleBtn = modal.querySelector('#btn-toggle-pass');
-    const passInput = modal.querySelector('#admin-pass-input');
     if (toggleBtn && passInput) {
       toggleBtn.addEventListener('click', () => {
         const isPass = passInput.type === 'password';
@@ -306,31 +348,53 @@ class AdminAuthManager {
       modal.className = 'admin-modal-overlay';
       modal.innerHTML = `
         <div class="admin-modal-card">
-          <div class="admin-modal-header">
-            <div class="admin-modal-icon"><i class="fa-solid fa-user-shield"></i></div>
-            <h2>Admin Dashboard Restricted</h2>
-            <p>Authentication required to access administrative SQL matrix controls.</p>
+          <div id="admin-opening-view">
+            <div class="admin-modal-header">
+              <div class="admin-modal-icon" style="background: rgba(99, 102, 241, 0.15); border-color: rgba(99, 102, 241, 0.45); color: #818cf8; box-shadow: 0 0 25px rgba(99, 102, 241, 0.3);">
+                <i class="fa-solid fa-graduation-cap"></i>
+              </div>
+              <h2>SQL Research Study Platform</h2>
+              <p>Welcome to the research evaluation suite. Choose an option to proceed:</p>
+            </div>
+            <div style="padding: 24px 0 28px 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px;">
+              <a href="participant.html?new_participant=1" id="btn-portal-go-study" class="btn btn-primary" style="font-size: 16px; font-weight: 700; padding: 14px 44px; border-radius: 12px; display: inline-flex; align-items: center; gap: 10px; text-decoration: none; box-shadow: 0 0 25px rgba(99, 102, 241, 0.55), 0 4px 15px rgba(0,0,0,0.4); letter-spacing: 0.3px; transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1); cursor: pointer;">
+                <i class="fa-solid fa-play"></i> Go to Study
+              </a>
+              <span style="font-size: 11.5px; color: #64748b; margin-top: 4px;">Public participant session</span>
+            </div>
+            <div style="display: flex; justify-content: flex-end; align-items: center; margin-top: 12px; padding-top: 16px; border-top: 1px solid rgba(255, 255, 255, 0.08);">
+              <button type="button" id="btn-portal-admin-dashboard" class="btn" style="font-size: 11.5px; font-weight: 600; padding: 7px 14px; border-radius: 7px; background: rgba(255, 255, 255, 0.05); border: 1px solid rgba(255, 255, 255, 0.16); color: #94a3b8; display: inline-flex; align-items: center; gap: 6px; cursor: pointer; transition: all 0.18s ease;">
+                <i class="fa-solid fa-shield-halved"></i> Admin Dashboard
+              </button>
+            </div>
           </div>
-          <form id="admin-login-form" class="admin-modal-form" onsubmit="return false;">
-            <div class="form-group">
-              <label for="admin-pass-input"><i class="fa-solid fa-key"></i> Admin Password:</label>
-              <div class="input-wrapper">
-                <input type="password" id="admin-pass-input" placeholder="Enter admin password..." required autofocus autocomplete="current-password">
-                <button type="button" id="btn-toggle-pass" class="btn-toggle-eye" title="Toggle Visibility" tabindex="-1">
-                  <i class="fa-solid fa-eye"></i>
+          <div id="admin-login-view" style="display: none;">
+            <div class="admin-modal-header">
+              <div class="admin-modal-icon"><i class="fa-solid fa-user-shield"></i></div>
+              <h2>Admin Dashboard Restricted</h2>
+              <p>Authentication required to access administrative SQL matrix controls.</p>
+            </div>
+            <form id="admin-login-form" class="admin-modal-form" onsubmit="return false;">
+              <div class="form-group">
+                <label for="admin-pass-input"><i class="fa-solid fa-key"></i> Admin Password:</label>
+                <div class="input-wrapper">
+                  <input type="password" id="admin-pass-input" placeholder="Enter admin password..." required autocomplete="current-password">
+                  <button type="button" id="btn-toggle-pass" class="btn-toggle-eye" title="Toggle Visibility" tabindex="-1">
+                    <i class="fa-solid fa-eye"></i>
+                  </button>
+                </div>
+              </div>
+              <div id="admin-login-error" class="admin-error-badge" style="display: none;"></div>
+              <div class="admin-modal-actions">
+                <button type="submit" id="btn-admin-login-submit" class="btn btn-primary btn-block">
+                  <i class="fa-solid fa-lock-open"></i> Unlock Dashboard
+                </button>
+                <button type="button" id="btn-login-back" class="btn btn-secondary btn-block text-center" style="margin-top: 8px;">
+                  <i class="fa-solid fa-arrow-left"></i> Back
                 </button>
               </div>
-            </div>
-            <div id="admin-login-error" class="admin-error-badge" style="display: none;"></div>
-            <div class="admin-modal-actions">
-              <button type="submit" id="btn-admin-login-submit" class="btn btn-primary btn-block">
-                <i class="fa-solid fa-lock-open"></i> Unlock Dashboard
-              </button>
-              <a href="participant.html?new_participant=1" class="btn btn-secondary btn-block text-center" style="margin-top: 8px; text-decoration: none; text-align: center; display: block;">
-                <i class="fa-solid fa-arrow-left"></i> Go to Public Participant View
-              </a>
-            </div>
-          </form>
+            </form>
+          </div>
         </div>
       `;
       if (document.body) {
@@ -339,12 +403,20 @@ class AdminAuthManager {
     }
 
     this.bindLoginForm(modal);
+
+    const openingView = modal.querySelector('#admin-opening-view');
+    const loginView = modal.querySelector('#admin-login-view');
+    const passInput = modal.querySelector('#admin-pass-input');
+    const errBadge = modal.querySelector('#admin-login-error');
+    if (openingView && loginView) {
+      openingView.style.display = 'block';
+      loginView.style.display = 'none';
+      if (passInput) passInput.value = '';
+      if (errBadge) errBadge.style.display = 'none';
+    }
+
     modal.classList.remove('hidden');
     modal.style.display = 'flex';
-    setTimeout(() => {
-      const passInput = document.getElementById('admin-pass-input');
-      if (passInput) passInput.focus();
-    }, 50);
   }
 
   hideLoginModal() {
@@ -352,6 +424,7 @@ class AdminAuthManager {
     if (modal) {
       modal.classList.add('hidden');
       modal.style.display = 'none';
+      modal.remove();
     }
   }
 

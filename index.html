@@ -44,7 +44,7 @@
   <!-- FontAwesome Icons -->
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
   <!-- CSS -->
-  <link rel="stylesheet" href="styles.css?v=30">
+  <link rel="stylesheet" href="styles.css?v=31">
   <!-- sql.js (SQLite WASM) library -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/sql.js/1.8.0/sql-wasm.js"></script>
 </head>
@@ -59,31 +59,62 @@
   <!-- Admin Authentication Modal (Statically embedded for immediate 0ms display with zero content flash) -->
   <div id="admin-login-overlay" class="admin-modal-overlay">
     <div class="admin-modal-card">
-      <div class="admin-modal-header">
-        <div class="admin-modal-icon"><i class="fa-solid fa-user-shield"></i></div>
-        <h2>Admin Dashboard Restricted</h2>
-        <p>Authentication required to access administrative SQL matrix controls.</p>
+      
+      <!-- View 1: Opening Menu with Go to Study front & center, Admin Dashboard bottom-right -->
+      <div id="admin-opening-view">
+        <div class="admin-modal-header">
+          <div class="admin-modal-icon" style="background: rgba(99, 102, 241, 0.15); border-color: rgba(99, 102, 241, 0.45); color: #818cf8; box-shadow: 0 0 25px rgba(99, 102, 241, 0.3);">
+            <i class="fa-solid fa-graduation-cap"></i>
+          </div>
+          <h2>SQL Research Study Platform</h2>
+          <p>Welcome to the research evaluation suite. Choose an option to proceed:</p>
+        </div>
+
+        <!-- Front and Center: Go to Study -->
+        <div style="padding: 24px 0 28px 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px;">
+          <a href="participant.html?new_participant=1" id="btn-portal-go-study" class="btn btn-primary" style="font-size: 16px; font-weight: 700; padding: 14px 44px; border-radius: 12px; display: inline-flex; align-items: center; gap: 10px; text-decoration: none; box-shadow: 0 0 25px rgba(99, 102, 241, 0.55), 0 4px 15px rgba(0,0,0,0.4); letter-spacing: 0.3px; transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1); cursor: pointer;">
+            <i class="fa-solid fa-play"></i> Go to Study
+          </a>
+          <span style="font-size: 11.5px; color: #64748b; margin-top: 4px;">Public participant session</span>
+        </div>
+
+        <!-- Bottom Right: Admin Dashboard -->
+        <div style="display: flex; justify-content: flex-end; align-items: center; margin-top: 12px; padding-top: 16px; border-top: 1px solid rgba(255, 255, 255, 0.08);">
+          <button type="button" id="btn-portal-admin-dashboard" class="btn" style="font-size: 11.5px; font-weight: 600; padding: 7px 14px; border-radius: 7px; background: rgba(255, 255, 255, 0.05); border: 1px solid rgba(255, 255, 255, 0.16); color: #94a3b8; display: inline-flex; align-items: center; gap: 6px; cursor: pointer; transition: all 0.18s ease;">
+            <i class="fa-solid fa-shield-halved"></i> Admin Dashboard
+          </button>
+        </div>
       </div>
-      <form id="admin-login-form" class="admin-modal-form" onsubmit="return false;">
-        <div class="form-group">
-          <label for="admin-pass-input"><i class="fa-solid fa-key"></i> Admin Password:</label>
-          <div class="input-wrapper">
-            <input type="password" id="admin-pass-input" placeholder="Enter admin password..." required autofocus autocomplete="current-password">
-            <button type="button" id="btn-toggle-pass" class="btn-toggle-eye" title="Toggle Visibility" tabindex="-1">
-              <i class="fa-solid fa-eye"></i>
+
+      <!-- View 2: Admin Login Form (Shown after clicking Admin Dashboard) -->
+      <div id="admin-login-view" style="display: none;">
+        <div class="admin-modal-header">
+          <div class="admin-modal-icon"><i class="fa-solid fa-user-shield"></i></div>
+          <h2>Admin Dashboard Restricted</h2>
+          <p>Authentication required to access administrative SQL matrix controls.</p>
+        </div>
+        <form id="admin-login-form" class="admin-modal-form" onsubmit="return false;">
+          <div class="form-group">
+            <label for="admin-pass-input"><i class="fa-solid fa-key"></i> Admin Password:</label>
+            <div class="input-wrapper">
+              <input type="password" id="admin-pass-input" placeholder="Enter admin password..." required autocomplete="current-password">
+              <button type="button" id="btn-toggle-pass" class="btn-toggle-eye" title="Toggle Visibility" tabindex="-1">
+                <i class="fa-solid fa-eye"></i>
+              </button>
+            </div>
+          </div>
+          <div id="admin-login-error" class="admin-error-badge" style="display: none;"></div>
+          <div class="admin-modal-actions">
+            <button type="submit" id="btn-admin-login-submit" class="btn btn-primary btn-block">
+              <i class="fa-solid fa-lock-open"></i> Unlock Dashboard
+            </button>
+            <button type="button" id="btn-login-back" class="btn btn-secondary btn-block text-center" style="margin-top: 8px;">
+              <i class="fa-solid fa-arrow-left"></i> Back
             </button>
           </div>
-        </div>
-        <div id="admin-login-error" class="admin-error-badge" style="display: none;"></div>
-        <div class="admin-modal-actions">
-          <button type="submit" id="btn-admin-login-submit" class="btn btn-primary btn-block">
-            <i class="fa-solid fa-lock-open"></i> Unlock Dashboard
-          </button>
-          <a href="participant.html?new_participant=1" class="btn btn-secondary btn-block text-center" style="margin-top: 8px; text-decoration: none; text-align: center; display: block;">
-            <i class="fa-solid fa-arrow-left"></i> Go to Public Participant View
-          </a>
-        </div>
-      </form>
+        </form>
+      </div>
+
     </div>
   </div>
 
@@ -500,16 +531,16 @@
 
   <!-- JS Module Scripts -->
   <script src="js/config.js?v=22"></script>
-  <script src="js/adminAuth.js?v=23"></script>
+  <script src="js/adminAuth.js?v=24"></script>
   <script src="js/schemaGenerator.js?v=22"></script>
-  <script src="js/queryGenerator.js?v=27"></script>
-  <script src="js/syntaxDialects.js?v=23"></script>
-  <script src="js/quizGenerator.js?v=39"></script>
-  <script src="js/participantAnalytics.js?v=25"></script>
+  <script src="js/queryGenerator.js?v=39"></script>
+  <script src="js/syntaxDialects.js?v=25"></script>
+  <script src="js/quizGenerator.js?v=53"></script>
+  <script src="js/participantAnalytics.js?v=26"></script>
   <script src="js/engines/sqliteEngine.js?v=21"></script>
-  <script src="js/engines/customJsEngine.js?v=21"></script>
-  <script src="js/engines/optimizerEngine.js?v=21"></script>
-  <script src="js/humanResolver.js?v=56"></script>
-  <script src="js/app.js?v=36"></script>
+  <script src="js/engines/customJsEngine.js?v=26"></script>
+  <script src="js/engines/optimizerEngine.js?v=23"></script>
+  <script src="js/humanResolver.js?v=58"></script>
+  <script src="js/app.js?v=37"></script>
 </body>
 </html>

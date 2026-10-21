@@ -69,10 +69,30 @@ class ParticipantAnalytics {
   }
 
   initParticipantId() {
-    let pid = localStorage.getItem(this.participantIdKey) || localStorage.getItem('sql_test_suite_participant_id');
-    if (!pid) {
+    let isExplicitNew = false;
+    if (typeof window !== 'undefined' && window.location && window.location.search) {
+      try {
+        const params = new URLSearchParams(window.location.search);
+        if (params.get('new_participant') === '1' || params.get('new_session') === 'true') {
+          isExplicitNew = true;
+        }
+      } catch (e) {}
+    }
+
+    let pid = null;
+    if (!isExplicitNew) {
+      pid = localStorage.getItem(this.participantIdKey) || localStorage.getItem('sql_test_suite_participant_id');
+    }
+
+    if (!pid || isExplicitNew) {
       pid = 'user_' + Math.random().toString(36).substring(2, 9) + Math.random().toString(36).substring(2, 5);
       localStorage.setItem(this.participantIdKey, pid);
+      try {
+        sessionStorage.removeItem('sql_study_consent_accepted');
+        localStorage.removeItem('sql_study_consent_accepted');
+        sessionStorage.removeItem('sql_study_consent_accepted_' + pid);
+        localStorage.removeItem('sql_study_consent_accepted_' + pid);
+      } catch (e) {}
     }
     return pid;
   }
