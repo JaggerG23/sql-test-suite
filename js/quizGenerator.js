@@ -68,7 +68,7 @@ class QuizGenerator {
 
     return {
       type: questionType,
-      title: isStudy2to30 ? `Embedded Query (Study Question ${qNum} / 30)` : 'Embedded Query Execution Question',
+      title: isStudy2to30 ? `Embedded Query (Study Question ${qNum} / ${(typeof window !== 'undefined' && window.studyConfig && typeof window.studyConfig.getMaxQuestions === 'function') ? window.studyConfig.getMaxQuestions() : 20})` : 'Embedded Query Execution Question',
       prompt: 'Select the correct final table output:',
       codeSnippet: codeSnippet,
       jsCode: codeSnippet, // For backward compatibility with existing views
@@ -663,31 +663,46 @@ class QuizGenerator {
 
     // Study Question 19 (Structure 4: [Query], [HostLang], [Execute]):
     // Initial query on products grouped by category_id.
-    // Host language dynamically indexes an array to choose a sort key and injects extra filter stock > 20.
+    // Host language checks if WHERE exists and injects extra filter stock > 20 (single rewrite in IF, single in ELSE).
     if (spec.manipulation === 'q19_filter_sort_hll' || spec.qNum === 19) {
+      const isQuorum = (dialectId === 'quorum');
       if (isPython) {
         blocks.push(`query = """\n${initialDialectSql}\n"""`);
-        blocks.push(`sort_keys = ["category_id", "avg_price", "count_items"]\nchosen_sort = sort_keys[1]\nextra_filter = "stock > 20"\n\nif "WHERE" in query:\n    query = query.replace("price > 15", f"price > 15 AND {extra_filter}")\n    query = query.replace("ORDER BY count_items DESC", f"ORDER BY {chosen_sort} DESC")`);
+        if (isQuorum) {
+          blocks.push(`extra_filter = "stock > 20"\n\nif "Filter" in query:\n    query = query.replace('"price > 15"', f'"price > 15 and {extra_filter}"')\nelse:\n    query = query + f'\\nquery:Filter("{extra_filter}")'`);
+        } else {
+          blocks.push(`extra_filter = "stock > 20"\n\nif "WHERE" in query:\n    query = query.replace("price > 15", f"price > 15 AND {extra_filter}")\nelse:\n    query = query.replace("GROUP BY", f"WHERE {extra_filter} GROUP BY")`);
+        }
         blocks.push(`result_table = db.execute(query)`);
       } else {
         blocks.push(`let query = \`\n${initialDialectSql}\n\`;`);
-        blocks.push(`let sortKeys = ["category_id", "avg_price", "count_items"];\nlet chosenSort = sortKeys[1];\nlet extraFilter = "stock > 20";\n\nif (query.includes("WHERE")) {\n  query = query.replace("price > 15", \`price > 15 AND \${extraFilter}\`);\n  query = query.replace("ORDER BY count_items DESC", \`ORDER BY \${chosenSort} DESC\`);\n}`);
+        if (isQuorum) {
+          blocks.push(`let extraFilter = "stock > 20";\n\nif (query.includes("Filter")) {\n  query = query.replace('"price > 15"', \`"price > 15 and \${extraFilter}"\`);\n} else {\n  query = query + \`\\nquery:Filter("\${extraFilter}")\`;\n}`);
+        } else {
+          blocks.push(`let extraFilter = "stock > 20";\n\nif (query.includes("WHERE")) {\n  query = query.replace("price > 15", \`price > 15 AND \${extraFilter}\`);\n} else {\n  query = query.replace("GROUP BY", \`WHERE \${extraFilter} GROUP BY\`);\n}`);
+        }
         blocks.push(`const resultTable = db.execute(query);`);
       }
       return blocks.join('\n\n');
     }
 
     // Study Question 20 (Structure 1: [HostLang], [Query], [Execute]):
-    // Host language computes average of order tiers (minCutoff = 75), checks condition (minCutoff >= 70),
-    // and conditionally assigns the executed query with the computed threshold interpolated.
+    // Host language defines threshold min_amount = 180 interpolated into single query.
     if (spec.manipulation === 'q20_compute_threshold_hll' || spec.qNum === 20) {
-      const altSql = spec.initialSql;
-      const altDialectSql = dialectManager ? dialectManager.formatQueryToDialect(altSql, dialectId) : altSql;
+      const isQuorum = (dialectId === 'quorum');
       if (isPython) {
-        blocks.push(`order_tiers = [45, 60, 85, 110]\nmin_cutoff = sum(order_tiers) // len(order_tiers)\n\nif min_cutoff >= 70:\n    query = f"""\n${finalDialectSql}\n"""\nelse:\n    query = """\n${altDialectSql}\n"""`);
+        const queryWithVar = isQuorum
+          ? finalDialectSql.replace('"amount >= 180"', 'f"amount >= {min_amount}"')
+          : finalDialectSql.replace('amount >= 180', 'amount >= {min_amount}');
+        blocks.push(`min_amount = 180`);
+        blocks.push(`query = f"""\n${queryWithVar}\n"""`);
         blocks.push(`result_table = db.execute(query)`);
       } else {
-        blocks.push(`let orderTiers = [45, 60, 85, 110];\nlet minCutoff = Math.floor(orderTiers.reduce((a, b) => a + b, 0) / orderTiers.length);\n\nlet query = "";\nif (minCutoff >= 70) {\n  query = \`\n${finalDialectSql}\n\`;\n} else {\n  query = \`\n${altDialectSql}\n\`;\n}`);
+        const queryWithVar = isQuorum
+          ? finalDialectSql.replace('"amount >= 180"', '`amount >= ${minAmount}`')
+          : finalDialectSql.replace('amount >= 180', 'amount >= ${minAmount}');
+        blocks.push(`let minAmount = 180;`);
+        blocks.push(`let query = \`\n${queryWithVar}\n\`;`);
         blocks.push(`const resultTable = db.execute(query);`);
       }
       return blocks.join('\n\n');
@@ -1286,39 +1301,39 @@ class QuizGenerator {
       return options;
     }
 
-    // Question 19 specific distractors (tests Structure 4 with HLL filter injection and sort key replacement)
+    // Question 19 specific distractors (tests Structure 4 with HLL filter injection)
     if (qNum === 19 || (questionSpec && (questionSpec.qNum === 19 || questionSpec.manipulation === 'q19_filter_sort_hll'))) {
       const q19Distractors = [];
 
       const pTable = (schema && schema.tables) ? (schema.tables.find(t => t.name === 'products') || schema.tables[0]) : null;
       const pName = pTable ? pTable.name : 'products';
 
-      // Distractor 1 (Initial query trap: ignored HLL): Evaluates initial query before HLL manipulation
-      const d1Sql = `SELECT category_id, COUNT(*) AS count_items, ROUND(AVG(price), 2) AS avg_price FROM ${pName} WHERE price > 15 GROUP BY category_id ORDER BY count_items DESC;`;
+      // Distractor 1 (Initial query trap: ignored HLL & omitted stock column): Evaluates initial query before HLL manipulation
+      const d1Sql = `SELECT category_id, COUNT(*) AS count_items, ROUND(AVG(price), 2) AS avg_price FROM ${pName} WHERE price > 15 GROUP BY category_id ORDER BY avg_price DESC;`;
       let d1Res = runSqlWithMeta(d1Sql);
       if (d1Res && d1Res.rows && d1Res.rows.length > 0 && !areRowsEqual(d1Res.rows, correctRows)) {
         q19Distractors.push({
           columns: d1Res.columns,
           rows: d1Res.rows,
           isCorrect: false,
-          explanation: 'Evaluates the initial query (ordered by count_items DESC), assuming the host language filter injection and sort rewrite were not applied.'
+          explanation: 'Evaluates the initial query grouped by category_id (ordered by avg_price DESC), omitting the stock column and assuming the host language filter injection was not applied.'
         });
       }
 
-      // Distractor 2 (Aggregate trap: total_val SUM instead of AVG)
-      const d2Sql = `SELECT category_id, COUNT(*) AS count_items, ROUND(SUM(price), 2) AS total_val FROM ${pName} WHERE price > 15 AND stock > 20 GROUP BY category_id ORDER BY total_val DESC;`;
+      // Distractor 2 (Sort column trap: sorted by stock DESC instead of avg_price DESC)
+      const d2Sql = `SELECT category_id, stock, COUNT(*) AS count_items, ROUND(AVG(price), 2) AS avg_price FROM ${pName} WHERE price > 15 AND stock > 20 GROUP BY category_id, stock ORDER BY stock DESC;`;
       let d2Res = runSqlWithMeta(d2Sql);
       if (d2Res && d2Res.rows && d2Res.rows.length > 0 && !areRowsEqual(d2Res.rows, correctRows)) {
         q19Distractors.push({
           columns: d2Res.columns,
           rows: d2Res.rows,
           isCorrect: false,
-          explanation: 'Computes total category value (SUM) instead of average price (AVG).'
+          explanation: 'Orders rows by stock descending (ORDER BY stock DESC) instead of average price descending.'
         });
       }
 
-      // Distractor 3 (Sort key index trap: used sort_keys[0] = category_id ASC)
-      const d3Sql = `SELECT category_id, COUNT(*) AS count_items, ROUND(AVG(price), 2) AS avg_price FROM ${pName} WHERE price > 15 AND stock > 20 GROUP BY category_id ORDER BY avg_price ASC;`;
+      // Distractor 3 (Sort direction trap: ASC instead of DESC)
+      const d3Sql = `SELECT category_id, stock, COUNT(*) AS count_items, ROUND(AVG(price), 2) AS avg_price FROM ${pName} WHERE price > 15 AND stock > 20 GROUP BY category_id, stock ORDER BY avg_price ASC;`;
       let d3Res = runSqlWithMeta(d3Sql);
       if (d3Res && d3Res.rows && d3Res.rows.length > 0 && !areRowsEqual(d3Res.rows, correctRows)) {
         q19Distractors.push({
@@ -1332,7 +1347,7 @@ class QuizGenerator {
       // Safe fallback
       while (q19Distractors.length < 3) {
         const fallbackRows = (q19Distractors.length > 0 ? q19Distractors[q19Distractors.length - 1].rows : correctRows).slice();
-        const mutatedRows = fallbackRows.map(r => Array.isArray(r) ? [r[0], r[1] + 1, r[2]] : [r]);
+        const mutatedRows = fallbackRows.map(r => Array.isArray(r) ? [r[0], r[1] !== undefined ? r[1] : 0, r[2] !== undefined ? r[2] + 1 : 1, ...r.slice(3)] : [r]);
         q19Distractors.push({
           columns: correctColumns,
           rows: mutatedRows,
@@ -1345,41 +1360,41 @@ class QuizGenerator {
       return options;
     }
 
-    // Question 20 specific distractors (tests Structure 1 with HLL computed cutoff and conditional branch)
+    // Question 20 specific distractors (tests Structure 1 with HLL threshold filter)
     if (qNum === 20 || (questionSpec && (questionSpec.qNum === 20 || questionSpec.manipulation === 'q20_compute_threshold_hll'))) {
       const q20Distractors = [];
 
       const oTable = (schema && schema.tables) ? (schema.tables.find(t => t.name === 'orders') || schema.tables[0]) : null;
       const oName = oTable ? oTable.name : 'orders';
 
-      // Distractor 1 (Else branch trap): Evaluates the query in the else branch (amount < 50, AVG, ASC)
-      const d1Sql = `SELECT user_id, COUNT(*) AS order_count, ROUND(AVG(amount), 2) AS total_spent FROM ${oName} WHERE amount < 50 GROUP BY user_id ORDER BY total_spent ASC LIMIT 4;`;
+      // Distractor 1 (Grouping column trap: GROUP BY status across all orders instead of user_id)
+      const d1Sql = `SELECT status, COUNT(*) AS order_count, ROUND(SUM(amount), 2) AS total_spent FROM ${oName} GROUP BY status ORDER BY total_spent DESC LIMIT 4;`;
       let d1Res = runSqlWithMeta(d1Sql);
       if (d1Res && d1Res.rows && d1Res.rows.length > 0 && !areRowsEqual(d1Res.rows, correctRows)) {
         q20Distractors.push({
           columns: d1Res.columns,
           rows: d1Res.rows,
           isCorrect: false,
-          explanation: 'Assumes the host language condition (minCutoff >= 70) evaluated to false, executing the else branch query.'
+          explanation: 'Groups results by order status (GROUP BY status) instead of user_id.'
         });
       }
 
-      // Distractor 2 (Omitted HLL threshold filter trap: WHERE amount >= 75 omitted)
-      const d2Sql = `SELECT user_id, COUNT(*) AS order_count, ROUND(SUM(amount), 2) AS total_spent FROM ${oName} GROUP BY user_id ORDER BY total_spent DESC LIMIT 4;`;
+      // Distractor 2 (Omitted order_count column & threshold filter trap: calculates totals without order_count and without WHERE amount >= 180)
+      const d2Sql = `SELECT user_id, ROUND(SUM(amount), 2) AS total_spent FROM ${oName} GROUP BY user_id ORDER BY total_spent DESC LIMIT 4;`;
       let d2Res = runSqlWithMeta(d2Sql);
-      if (d2Res && d2Res.rows && d2Res.rows.length > 0 && !areRowsEqual(d2Res.rows, correctRows)) {
+      if (d2Res && d2Res.rows && d2Res.rows.length > 0 && !areRowsEqual(d2Res.rows, correctRows) && !q20Distractors.some(d => areRowsEqual(d.rows, d2Res.rows))) {
         q20Distractors.push({
           columns: d2Res.columns,
           rows: d2Res.rows,
           isCorrect: false,
-          explanation: 'Evaluates total spent without applying the host language computed threshold (WHERE amount >= 75).'
+          explanation: 'Calculates total spent across all orders without applying the threshold filter (WHERE amount >= 180), and omits the order_count column.'
         });
       }
 
-      // Distractor 3 (Sort direction trap: ORDER BY total_spent ASC)
-      const d3Sql = `SELECT user_id, COUNT(*) AS order_count, ROUND(SUM(amount), 2) AS total_spent FROM ${oName} WHERE amount >= 75 GROUP BY user_id ORDER BY total_spent ASC LIMIT 4;`;
+      // Distractor 3 (Sort direction trap: ORDER BY total_spent ASC across all orders instead of DESC)
+      const d3Sql = `SELECT user_id, COUNT(*) AS order_count, ROUND(SUM(amount), 2) AS total_spent FROM ${oName} GROUP BY user_id ORDER BY total_spent ASC LIMIT 4;`;
       let d3Res = runSqlWithMeta(d3Sql);
-      if (d3Res && d3Res.rows && d3Res.rows.length > 0 && !areRowsEqual(d3Res.rows, correctRows)) {
+      if (d3Res && d3Res.rows && d3Res.rows.length > 0 && !areRowsEqual(d3Res.rows, correctRows) && !q20Distractors.some(d => areRowsEqual(d.rows, d3Res.rows))) {
         q20Distractors.push({
           columns: d3Res.columns,
           rows: d3Res.rows,
@@ -1388,16 +1403,31 @@ class QuizGenerator {
         });
       }
 
-      // Safe fallback
+      // Safe fallback with distinct IDs, columns, and values if needed
       while (q20Distractors.length < 3) {
-        const fallbackRows = (q20Distractors.length > 0 ? q20Distractors[q20Distractors.length - 1].rows : correctRows).slice();
-        const mutatedRows = fallbackRows.map(r => Array.isArray(r) ? [r[0], r[1] + 1, r[2]] : [r]);
-        q20Distractors.push({
-          columns: correctColumns,
-          rows: mutatedRows,
-          isCorrect: false,
-          explanation: 'Alternative execution output.'
-        });
+        const fallbackIndex = q20Distractors.length;
+        if (fallbackIndex === 0) {
+          q20Distractors.push({
+            columns: ['status', 'order_count', 'total_spent'],
+            rows: [['REFUNDED', 11, 1542.12], ['CANCELLED', 6, 536.55], ['COMPLETED', 5, 526.26], ['PENDING', 5, 525.63]],
+            isCorrect: false,
+            explanation: 'Groups results by order status (GROUP BY status) instead of user_id.'
+          });
+        } else if (fallbackIndex === 1) {
+          q20Distractors.push({
+            columns: ['user_id', 'total_spent'],
+            rows: [[16, 406.9], [12, 295.45], [18, 273.99], [28, 273.09]],
+            isCorrect: false,
+            explanation: 'Calculates total spent across all orders without applying the threshold filter (WHERE amount >= 180), and omits the order_count column.'
+          });
+        } else {
+          q20Distractors.push({
+            columns: ['user_id', 'order_count', 'total_spent'],
+            rows: [[9, 1, 19.35], [14, 1, 54.03], [10, 1, 78.59], [20, 1, 93.11]],
+            isCorrect: false,
+            explanation: 'Orders results by total_spent ascending (ORDER BY total_spent ASC) instead of descending.'
+          });
+        }
       }
 
       options.push(...q20Distractors.slice(0, 3));

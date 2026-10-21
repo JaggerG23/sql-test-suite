@@ -196,16 +196,15 @@ WHERE ${orderTable.name}.status = 'COMPLETED';`
         structure: 4,
         operators: ['SELECT', 'WHERE', 'GROUP BY', 'AVG', 'ROUND', 'ORDER BY'],
         manipulation: 'q19_filter_sort_hll',
-        initialSql: `SELECT category_id, COUNT(*) AS count_items, ROUND(AVG(price), 2) AS avg_price FROM ${productTable.name} WHERE price > 15 GROUP BY category_id ORDER BY count_items DESC;`,
-        finalSql: `SELECT category_id, COUNT(*) AS count_items, ROUND(AVG(price), 2) AS avg_price FROM ${productTable.name} WHERE price > 15 AND stock > 20 GROUP BY category_id ORDER BY avg_price DESC;`
+        initialSql: `SELECT category_id, stock, COUNT(*) AS count_items, ROUND(AVG(price), 2) AS avg_price FROM ${productTable.name} WHERE price > 15 GROUP BY category_id, stock ORDER BY avg_price DESC;`,
+        finalSql: `SELECT category_id, stock, COUNT(*) AS count_items, ROUND(AVG(price), 2) AS avg_price FROM ${productTable.name} WHERE price > 15 AND stock > 20 GROUP BY category_id, stock ORDER BY avg_price DESC;`
       },
       // Q20 (Structure 1: [HostLang], [Query], [Execute])
       {
         structure: 1,
         operators: ['SELECT', 'WHERE', 'GROUP BY', 'SUM', 'ROUND', 'ORDER BY', 'LIMIT'],
         manipulation: 'q20_compute_threshold_hll',
-        initialSql: `SELECT user_id, COUNT(*) AS order_count, ROUND(AVG(amount), 2) AS total_spent FROM ${orderTable.name} WHERE amount < 50 GROUP BY user_id ORDER BY total_spent ASC LIMIT 4;`,
-        finalSql: `SELECT user_id, COUNT(*) AS order_count, ROUND(SUM(amount), 2) AS total_spent FROM ${orderTable.name} WHERE amount >= 75 GROUP BY user_id ORDER BY total_spent DESC LIMIT 4;`
+        finalSql: `SELECT user_id, COUNT(*) AS order_count, ROUND(SUM(amount), 2) AS total_spent FROM ${orderTable.name} WHERE amount >= 180 GROUP BY user_id ORDER BY total_spent DESC LIMIT 4;`
       },
       // Q21 (Structure 2: [Query], [HostLang], [Query], [Execute] - inspired by Q2)
       {

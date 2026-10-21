@@ -336,36 +336,32 @@ class ParticipantAnalytics {
       }
     } catch (e) {}
 
-    // 3. Balanced assignment among the 4 groups based on completed demographics count
+    // 3. Round-robin assignment across the 4 groups.
+    //    The server keeps a shared counter: the first participant gets a random
+    //    group (1-4), each following participant gets the next group, wrapping 4 -> 1.
     const groups = ParticipantAnalytics.STUDY_GROUPS;
-    const counts = {};
-    groups.forEach(g => { counts[g.id] = 0; });
+    let assignedIdx = this.requestRotatingGroupIndex(targetPid);
 
-    try {
-      const demos = this.demographics || this.loadDemographics();
-      Object.keys(demos || {}).forEach(p => {
-        if (p === targetPid) return;
-        const d = demos[p];
-        const gid = d.assignedGroupId || (this.getGroupById(d.assignedGroup) ? this.getGroupById(d.assignedGroup).id : null);
-        if (gid && counts[gid] !== undefined) {
-          counts[gid]++;
+    if (assignedIdx === null) {
+      // Fallback (backend unreachable / static hosting): per-browser rotation
+      // using the same random-start + cycle rule.
+      const rotationKey = 'sql_study_group_rotation_next_index';
+      let nextIdx = NaN;
+      try { nextIdx = parseInt(localStorage.getItem(rotationKey), 10); } catch (e) {}
+      if (isNaN(nextIdx) || nextIdx < 0 || nextIdx >= groups.length) {
+        if (typeof window !== 'undefined' && window.crypto && window.crypto.getRandomValues) {
+          const array = new Uint32Array(1);
+          window.crypto.getRandomValues(array);
+          nextIdx = array[0] % groups.length;
+        } else {
+          nextIdx = Math.floor(Math.random() * groups.length);
         }
-      });
-    } catch (e) {}
-
-    const minCount = Math.min(...groups.map(g => counts[g.id]));
-    const candidateGroups = groups.filter(g => counts[g.id] === minCount);
-
-    let randIdx = 0;
-    if (typeof window !== 'undefined' && window.crypto && window.crypto.getRandomValues) {
-      const array = new Uint32Array(1);
-      window.crypto.getRandomValues(array);
-      randIdx = array[0] % candidateGroups.length;
-    } else {
-      randIdx = Math.floor(Math.random() * candidateGroups.length);
+      }
+      assignedIdx = nextIdx;
+      try { localStorage.setItem(rotationKey, String((nextIdx + 1) % groups.length)); } catch (e) {}
     }
 
-    const assigned = candidateGroups[randIdx];
+    const assigned = groups[assignedIdx];
     try {
       localStorage.setItem(groupStorageKey, JSON.stringify(assigned));
     } catch (e) {}
@@ -375,6 +371,32 @@ class ParticipantAnalytics {
     }
     this.notify({ type: 'GROUP_CHANGE', participantId: targetPid, assignedGroup: assigned });
     return assigned;
+  }
+
+  /**
+   * Asks the backend for this participant's round-robin group index (0-3).
+   * Synchronous on purpose: callers of decideAssignedGroupAfterDemographics
+   * expect the group immediately. Runs once per participant (result is cached
+   * in localStorage/demographics). Returns null if the backend is unavailable.
+   */
+  requestRotatingGroupIndex(pid) {
+    if (typeof XMLHttpRequest === 'undefined' || !pid) return null;
+    try {
+      const xhr = new XMLHttpRequest();
+      xhr.open('POST', this.getApiUrl('/api/assign-group'), false);
+      xhr.setRequestHeader('Content-Type', 'application/json');
+      xhr.send(JSON.stringify({ participantId: pid }));
+      if (xhr.status === 200) {
+        const data = JSON.parse(xhr.responseText);
+        const idx = parseInt(data && data.groupIndex, 10);
+        if (!isNaN(idx) && idx >= 0 && idx < ParticipantAnalytics.STUDY_GROUPS.length) {
+          return idx;
+        }
+      }
+    } catch (e) {
+      // Backend offline or static hosting
+    }
+    return null;
   }
 
   setAssignedGroup(groupOrId, pid = this.participantId) {
@@ -628,8 +650,11 @@ class ParticipantAnalytics {
 
   logResponse(entry) {
     const existingResponses = this.getParticipantResponses(this.participantId);
-    if (existingResponses.length >= 30) {
-      console.warn(`[ParticipantAnalytics] Participant ${this.participantId} has already completed the maximum of 30 questions. Dropping additional submission.`);
+    const maxQ = (typeof window !== 'undefined' && window.studyConfig && typeof window.studyConfig.getMaxQuestions === 'function')
+      ? window.studyConfig.getMaxQuestions()
+      : 20;
+    if (existingResponses.length >= maxQ) {
+      console.warn(`[ParticipantAnalytics] Participant ${this.participantId} has already completed the maximum of ${maxQ} questions. Dropping additional submission.`);
       return null;
     }
 
@@ -642,9 +667,9 @@ class ParticipantAnalytics {
     const activeDialectLabel = entry.activeDialectName || (activeDialectKey === 'quorum' ? 'Quorum Syntax' : 'Google SQL (Pipe Syntax)');
 
     const rawQ = parseInt(entry.questionNumber, 10);
-    const resolvedQNum = (!isNaN(rawQ) && rawQ >= 1 && rawQ <= 30)
+    const resolvedQNum = (!isNaN(rawQ) && rawQ >= 1 && rawQ <= maxQ)
       ? rawQ
-      : Math.min(30, existingResponses.length + 1);
+      : Math.min(maxQ, existingResponses.length + 1);
 
     const record = {
       id: 'resp_' + Date.now() + '_' + Math.random().toString(36).substring(2, 7),
@@ -735,9 +760,11 @@ class ParticipantAnalytics {
 
     let thoughtsText = '';
     let likertRatings = null;
+    let durationExpectation = '';
     if (typeof thoughtsData === 'object' && thoughtsData !== null) {
       thoughtsText = thoughtsData.thoughts || '';
       likertRatings = thoughtsData.ratings || thoughtsData.likertRatings || null;
+      durationExpectation = thoughtsData.durationExpectation || thoughtsData.durationExpected || thoughtsData.tookLongerThanExpected || '';
     } else {
       thoughtsText = String(thoughtsData || '');
     }
@@ -749,6 +776,7 @@ class ParticipantAnalytics {
       assignedGroupName: assignedGroup ? assignedGroup.name : '',
       thoughts: thoughtsText,
       likertRatings: likertRatings,
+      durationExpectation: durationExpectation,
       timestamp: new Date().toISOString(),
       timestampPST: pst.dateTimePST,
       datePST: pst.datePST,

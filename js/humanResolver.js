@@ -295,7 +295,8 @@ class HumanResolver {
       if (!this.currentQuestion || (this.app && staticPages.includes(this.app.currentQuestionNumber))) {
         return;
       }
-      if (!this.isTrainingChallenge && this.stats && this.stats.totalAnswered >= 30) {
+      const maxQ = (window.studyConfig && typeof window.studyConfig.getMaxQuestions === 'function') ? window.studyConfig.getMaxQuestions() : 20;
+      if (!this.isTrainingChallenge && this.stats && this.stats.totalAnswered >= maxQ) {
         return;
       }
 
@@ -357,11 +358,11 @@ class HumanResolver {
           </p>
 
           <p style="margin: 0;">
-            If you choose to participate in this study, you will complete 30 multiple-choice questions. For each question, you will read a database query and select its expected output. 
+            If you choose to participate in this study, you will complete 20 multiple-choice questions. For each question, you will read a database query and select its expected output. 
           </p>
 
           <p style="margin: 0;">
-            This study includes the minimal risks of eye strain and/or hand cramps. The study will take 30 minutes of your time. You will be compensated for your time via 2% extra credit for your completion of this study in the course you received this recruitment from. NOTICE: Your involvement in the study only counts if you complete all thirty questions in the study. Completing less than 30 questions will not count as participation in the study.
+            This study includes the minimal risks of eye strain and/or hand cramps. The study will take 20 minutes of your time. You will be compensated for your time via 2% extra credit for your completion of this study in the course you received this recruitment from. NOTICE: Your involvement in the study only counts if you complete all twenty questions in the study. Completing less than 20 questions will not count as participation in the study.
           </p>
 
           <p style="margin: 0;">
@@ -480,7 +481,7 @@ class HumanResolver {
               <i class="fa-solid fa-circle-info text-primary"></i> What you will be doing:
             </p>
             <p style="margin: 0 0 10px 0;">
-              In this study, you'll be given 30 unique SQL queries with multiple choice answers. Your task is to read the code and answer each question with the expected output using the <strong>1, 2, 3, or 4</strong> keys on a keyboard or by clicking using a mouse. 
+              In this study, you'll be given 20 unique SQL queries with multiple choice answers. Your task is to read the code and answer each question with the expected output using the <strong>1, 2, 3, or 4</strong> keys on a keyboard or by clicking using a mouse. 
             </p>
             <div style="background: rgba(239, 68, 68, 0.12); border: 1px solid rgba(239, 68, 68, 0.35); border-left: 4px solid #ef4444; border-radius: 6px; padding: 8px 12px; margin-bottom: 10px; font-size: 12px; color: #fca5a5; font-weight: 600;">
               <i class="fa-solid fa-triangle-exclamation" style="margin-right: 6px; color: #ef4444;"></i> 1. Do not use the back arrow or refresh button while doing this study. <br> 2. This study should be completed on a desktop or laptop computer as it is not optimized for phones or tablets.
@@ -775,7 +776,7 @@ class HumanResolver {
         <!-- Notice banner -->
         <div style="background: rgba(99, 102, 241, 0.1); border: 1px solid rgba(99, 102, 241, 0.3); border-radius: 8px; padding: 12px 16px; margin-bottom: 24px; font-size: 12.5px; color: #cbd5e1; display: flex; align-items: center; gap: 10px;">
           <i class="fa-solid fa-circle-info text-accent" style="font-size: 16px; flex-shrink: 0;"></i>
-          <span>Once you finish the training questions, you will see a screen before you begin the 30-question study.</span>
+          <span>Once you finish the training questions, you will see a screen before you begin the 20-question study.</span>
         </div>
 
         <div style="text-align: center;">
@@ -824,10 +825,10 @@ class HumanResolver {
         <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 14px; margin-bottom: 24px;">
           <div style="background: rgba(14, 18, 28, 0.85); border: 1px solid rgba(255, 255, 255, 0.08); border-radius: 10px; padding: 16px;">
             <h4 style="font-size: 13px; font-weight: 700; color: #34d399; margin: 0 0 6px; display: flex; align-items: center; gap: 8px;">
-              <i class="fa-solid fa-list-check"></i> Official Study: 30 Questions
+              <i class="fa-solid fa-list-check"></i> Official Study: ${(window.studyConfig && typeof window.studyConfig.getMaxQuestions === 'function') ? window.studyConfig.getMaxQuestions() : 20} Questions
             </h4>
             <p style="font-size: 12.5px; color: #94a3b8; line-height: 1.5; margin: 0;">
-              The study consists of 30 questions following the exact same format as the practice questions. Your progress is displayed in the top bar as you answer each question.
+              The study consists of ${(window.studyConfig && typeof window.studyConfig.getMaxQuestions === 'function') ? window.studyConfig.getMaxQuestions() : 20} questions following the exact same format as the practice questions. Your progress is displayed in the top bar as you answer each question.
             </p>
           </div>
           <div style="background: rgba(14, 18, 28, 0.85); border: 1px solid rgba(255, 255, 255, 0.08); border-radius: 10px; padding: 16px;">
@@ -868,6 +869,7 @@ class HumanResolver {
 
     const existingThoughtsObj = this.app.analytics ? this.app.analytics.getFinalThoughts() || {} : {};
     const existingRatings = existingThoughtsObj.likertRatings || {};
+    const existingDuration = existingThoughtsObj.durationExpectation || existingThoughtsObj.durationExpected || existingThoughtsObj.tookLongerThanExpected || '';
     const pid = this.app.analytics ? this.app.analytics.participantId : 'user';
 
     const likertQuestions = [
@@ -885,6 +887,13 @@ class HumanResolver {
       { val: 5, label: 'Strongly Agree' }
     ];
 
+    const durationOptions = [
+      { value: 'Much longer than expected', label: 'Much longer than expected', icon: 'fa-solid fa-hourglass-end', color: '#f87171' },
+      { value: 'Somewhat longer than expected', label: 'Somewhat longer than expected', icon: 'fa-solid fa-hourglass-half', color: '#fbbf24' },
+      { value: 'About as expected', label: 'About as expected', icon: 'fa-solid fa-clock-rotate-left', color: '#34d399' },
+      { value: 'Shorter than expected', label: 'Shorter than expected', icon: 'fa-solid fa-bolt-lightning', color: '#38bdf8' }
+    ];
+
     container.innerHTML = `
       <div class="card quiz-card glow-card" style="max-width: 860px; margin: 15px auto; padding: 26px 28px; background: rgba(18, 22, 34, 0.95); border: 1px solid rgba(16, 185, 129, 0.4); border-radius: 14px; box-shadow: 0 12px 40px rgba(0,0,0,0.5);">
         
@@ -895,7 +904,7 @@ class HumanResolver {
           </div>
           <h2 style="font-family: var(--font-title); font-size: 24px; color: #fff; margin: 0 0 4px 0;">Study Completed &mdash; Final Thoughts</h2>
           <p class="text-muted fs-sm" style="font-size: 13.5px; margin: 4px 0 0 0; color: #cbd5e1;">
-            Thank you for completing all 30 questions! Please let us know what you thought of the study by rating the statements below.
+            Thank you for completing all ${(window.studyConfig && typeof window.studyConfig.getMaxQuestions === 'function') ? window.studyConfig.getMaxQuestions() : 20} questions! Please let us know what you thought of the study by completing the questions below.
           </p>
         </div>
 
@@ -922,6 +931,25 @@ class HumanResolver {
           `).join('')}
         </div>
 
+        <!-- Study Duration Question -->
+        <div class="likert-card mb-4" id="card-study-duration" style="margin-bottom: 22px;">
+          <div class="likert-statement" style="margin-bottom: 12px;">
+            <span class="likert-statement-num" style="background: rgba(16, 185, 129, 0.2); border-color: rgba(16, 185, 129, 0.5); color: #6ee7b7;"><i class="fa-regular fa-clock" style="font-size: 11px;"></i></span>
+            <span>Did this study take longer than you expected? <span style="color: #f87171;">*</span></span>
+          </div>
+          <div class="duration-options-grid">
+            ${durationOptions.map(opt => `
+              <label class="likert-option-wrapper" style="position: relative; display: block; margin: 0; cursor: pointer;">
+                <input type="radio" name="study_duration_expected" value="${opt.value}" class="likert-option-input" ${existingDuration === opt.value ? 'checked' : ''}>
+                <div class="likert-option-label" style="padding: 12px 10px; min-height: 56px; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; gap: 4px;">
+                  <i class="${opt.icon}" style="font-size: 14px; margin-bottom: 2px; color: ${opt.color};"></i>
+                  <span class="likert-option-text" style="font-size: 12px; font-weight: 600;">${opt.label}</span>
+                </div>
+              </label>
+            `).join('')}
+          </div>
+        </div>
+
         <!-- Additional Thoughts & Comments Textarea -->
         <div class="form-group mb-4" style="margin-bottom: 22px;">
           <label for="final-thoughts-input" style="font-size: 13px; font-weight: 700; margin-bottom: 8px; display: block; color: var(--text-main);">
@@ -936,7 +964,7 @@ class HumanResolver {
         <!-- Actions -->
         <div class="d-flex justify-between align-center pt-3 border-top" style="border-top: 1px solid rgba(255,255,255,0.1); display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px;">
           <span style="font-size: 12px; color: #94a3b8;">
-            <i class="fa-solid fa-circle-info text-accent"></i> All Likert items above are required to proceed to extra credit.
+            <i class="fa-solid fa-circle-info text-accent"></i> All Likert statements and required questions above are needed to proceed.
           </span>
           <button type="button" id="btn-submit-final-thoughts" class="btn btn-primary" style="padding: 11px 28px; font-weight: 700; font-size: 14px; border-radius: 8px; box-shadow: 0 4px 18px rgba(99, 102, 241, 0.45); cursor: pointer; display: inline-flex; align-items: center; gap: 8px;">
             <span>Continue to Extra Credit</span>
@@ -959,6 +987,17 @@ class HumanResolver {
       });
     });
 
+    // Clear error border on duration selection
+    const durationInputs = document.querySelectorAll('input[name="study_duration_expected"]');
+    durationInputs.forEach(inp => {
+      inp.addEventListener('change', () => {
+        const card = document.getElementById('card-study-duration');
+        if (card) card.classList.remove('has-error');
+        const valMsg = document.getElementById('likert-val-msg');
+        if (valMsg) valMsg.style.display = 'none';
+      });
+    });
+
     const btnSubmit = document.getElementById('btn-submit-final-thoughts');
     if (btnSubmit) {
       btnSubmit.addEventListener('click', () => {
@@ -978,10 +1017,19 @@ class HumanResolver {
           }
         });
 
+        const selectedDuration = document.querySelector('input[name="study_duration_expected"]:checked');
+        const durationCard = document.getElementById('card-study-duration');
+        if (!selectedDuration) {
+          hasMissing = true;
+          if (durationCard) durationCard.classList.add('has-error');
+        } else {
+          if (durationCard) durationCard.classList.remove('has-error');
+        }
+
         if (hasMissing) {
           if (valMsg) {
             valMsg.style.display = 'block';
-            valMsg.innerHTML = '<i class="fa-solid fa-circle-exclamation"></i> Please answer all Likert scale statements above to continue.';
+            valMsg.innerHTML = '<i class="fa-solid fa-circle-exclamation"></i> Please answer all required feedback items above to continue.';
           }
           const firstErr = document.querySelector('.likert-card.has-error');
           if (firstErr) firstErr.scrollIntoView({ behavior: 'smooth', block: 'center' });
@@ -992,9 +1040,14 @@ class HumanResolver {
 
         const thoughtsInput = document.getElementById('final-thoughts-input');
         const thoughtsVal = thoughtsInput ? thoughtsInput.value.trim() : '';
+        const durationVal = selectedDuration ? selectedDuration.value : '';
 
         if (this.app && this.app.analytics) {
-          this.app.analytics.saveFinalThoughts({ ratings, thoughts: thoughtsVal });
+          this.app.analytics.saveFinalThoughts({
+            ratings,
+            thoughts: thoughtsVal,
+            durationExpectation: durationVal
+          });
           if (typeof this.app.renderAnalyticsDashboard === 'function') {
             this.app.renderAnalyticsDashboard();
           }
@@ -1538,7 +1591,8 @@ class HumanResolver {
       this.trainingQuestionNumber = null;
     }
 
-    if (!isTraining && (targetQNum === 'final_thoughts' || targetQNum > 30 || (this.stats && this.stats.totalAnswered >= 30 && !this.adminPreviewGroup))) {
+    const maxQ = (window.studyConfig && typeof window.studyConfig.getMaxQuestions === 'function') ? window.studyConfig.getMaxQuestions() : 20;
+    if (!isTraining && (targetQNum === 'final_thoughts' || targetQNum > maxQ || (this.stats && this.stats.totalAnswered >= maxQ && !this.adminPreviewGroup))) {
       if (this.studyCompletedSuccessfully || (typeof localStorage !== 'undefined' && localStorage.getItem('sql_study_completed_finished') === 'true')) {
         this.renderThankYouScreen();
         return;
@@ -1549,7 +1603,7 @@ class HumanResolver {
 
     const qNum = isTraining
       ? trainingQNum
-      : Math.min(30, Math.max(1, parseInt(targetQNum, 10) || (this.stats ? this.stats.totalAnswered + 1 : 1)));
+      : Math.min(maxQ, Math.max(1, parseInt(targetQNum, 10) || (this.stats ? this.stats.totalAnswered + 1 : 1)));
 
     this.currentSchema = schema;
     this.currentRawQuery = query;
@@ -1700,6 +1754,7 @@ class HumanResolver {
     const navElem = document.getElementById('nav-questions-counter');
     if (navElem) {
       const qNum = this.app.currentQuestionNumber;
+      const maxQ = (window.studyConfig && typeof window.studyConfig.getMaxQuestions === 'function') ? window.studyConfig.getMaxQuestions() : 20;
       if (qNum === 'consent') {
         navElem.textContent = 'Information Sheet';
       } else if (qNum === 'intake') {
@@ -1712,13 +1767,13 @@ class HumanResolver {
       } else if (qNum === 'training_complete') {
         navElem.textContent = 'Training: Complete';
       } else if (qNum === 'final_thoughts') {
-        navElem.textContent = 'Final Thoughts (30 / 30)';
+        navElem.textContent = `Final Thoughts (${maxQ} / ${maxQ})`;
       } else if (qNum === 'extra_credit') {
         navElem.textContent = 'Extra Credit';
       } else if (qNum === 'thank_you') {
-        navElem.textContent = 'Completed (30 / 30)';
+        navElem.textContent = `Completed (${maxQ} / ${maxQ})`;
       } else {
-        navElem.textContent = `${qNum || 1} / 30`;
+        navElem.textContent = `${qNum || 1} / ${maxQ}`;
       }
     }
   }
@@ -1777,7 +1832,7 @@ class HumanResolver {
                   </span>
                 ` : `
                   <span class="badge" style="font-size: 11px; font-weight: 800; padding: 2px 9px; border-radius: 4px; background: rgba(99, 102, 241, 0.25); border: 1px solid rgba(99, 102, 241, 0.55); color: #c7d2fe; letter-spacing: 0.3px;">
-                    <i class="fa-solid fa-cube"></i> Question ${qNum} / 30
+                    <i class="fa-solid fa-cube"></i> Question ${qNum} / ${(window.studyConfig && typeof window.studyConfig.getMaxQuestions === 'function') ? window.studyConfig.getMaxQuestions() : 20}
                   </span>
                 `}
                 <strong style="color: var(--color-accent); font-size: 11px;"><i class="fa-solid fa-table-cells text-accent"></i> Database Schema</strong>
@@ -1990,7 +2045,8 @@ class HumanResolver {
       return;
     }
     if (this.isAnswered || !this.currentQuestion) return;
-    if (this.app && (this.app.currentQuestionNumber === 'final_thoughts' || (this.stats && this.stats.totalAnswered >= 30))) {
+    const maxQ = (window.studyConfig && typeof window.studyConfig.getMaxQuestions === 'function') ? window.studyConfig.getMaxQuestions() : 20;
+    if (this.app && (this.app.currentQuestionNumber === 'final_thoughts' || (this.stats && this.stats.totalAnswered >= maxQ))) {
       return;
     }
 
@@ -2047,7 +2103,8 @@ class HumanResolver {
 
   submitAnswer() {
     if (this.isAnswered || this.selectedOptionIndex === null || !this.currentQuestion) return;
-    if (this.app && (this.app.currentQuestionNumber === 'final_thoughts' || (!this.isTrainingChallenge && this.stats && this.stats.totalAnswered >= 30))) {
+    const maxQ = (window.studyConfig && typeof window.studyConfig.getMaxQuestions === 'function') ? window.studyConfig.getMaxQuestions() : 20;
+    if (this.app && (this.app.currentQuestionNumber === 'final_thoughts' || (!this.isTrainingChallenge && this.stats && this.stats.totalAnswered >= maxQ))) {
       return;
     }
 
@@ -2105,9 +2162,10 @@ class HumanResolver {
       } else {
         const curQ = this.app.currentQuestionNumber;
         const parsedQ = (typeof curQ === 'number') ? curQ : parseInt(curQ, 10);
-        const currentQNum = (!isNaN(parsedQ) && parsedQ >= 1 && parsedQ <= 30)
+        const maxQ = (window.studyConfig && typeof window.studyConfig.getMaxQuestions === 'function') ? window.studyConfig.getMaxQuestions() : 20;
+        const currentQNum = (!isNaN(parsedQ) && parsedQ >= 1 && parsedQ <= maxQ)
           ? parsedQ
-          : Math.min(30, (this.stats ? this.stats.totalAnswered + 1 : 1));
+          : Math.min(maxQ, (this.stats ? this.stats.totalAnswered + 1 : 1));
 
         this.app.analytics.logResponse({
           questionNumber: currentQNum,

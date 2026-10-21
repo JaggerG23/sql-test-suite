@@ -9,6 +9,7 @@
   const LOCAL_STORAGE_KEY_CLOUD = 'sql_study_cloud_webhook_url';
   const LOCAL_STORAGE_KEY_BACKEND = 'sql_study_backend_api_url';
   const LOCAL_STORAGE_KEY_RESET_BTN = 'sql_study_participant_reset_btn_enabled';
+  const LOCAL_STORAGE_KEY_Q21_30 = 'sql_study_questions_21_30_enabled';
 
   // Default configuration (can be customized here or via the Admin Dashboard UI)
   const defaultConfig = {
@@ -23,20 +24,54 @@
     CLOUD_WEBHOOK_URL: '',
 
     // Toggle participant view "Reset Test" button visibility
-    PARTICIPANT_RESET_BTN_ENABLED: true
+    PARTICIPANT_RESET_BTN_ENABLED: true,
+
+    // Toggle Questions 21-30 enabled (30 total) or disabled (20 total)
+    QUESTIONS_21_30_ENABLED: false
   };
 
   class StudyConfigManager {
     constructor() {
       this.config = { ...defaultConfig };
       this.loadPersistedConfig();
+      this.fetchRemoteConfig();
 
       if (typeof window !== 'undefined') {
         window.addEventListener('storage', (e) => {
-          if (e.key === LOCAL_STORAGE_KEY_RESET_BTN || e.key === LOCAL_STORAGE_KEY_CLOUD || e.key === LOCAL_STORAGE_KEY_BACKEND) {
+          if (e.key === LOCAL_STORAGE_KEY_RESET_BTN || e.key === LOCAL_STORAGE_KEY_CLOUD || e.key === LOCAL_STORAGE_KEY_BACKEND || e.key === LOCAL_STORAGE_KEY_Q21_30) {
             this.loadPersistedConfig();
+            window.dispatchEvent(new CustomEvent('study-config-updated', {
+              detail: { key: e.key, config: this.config }
+            }));
           }
         });
+
+        if ('BroadcastChannel' in window) {
+          try {
+            const bc = new BroadcastChannel('sql_study_telemetry_channel');
+            bc.addEventListener('message', (ev) => {
+              if (ev.data && ev.data.type === 'CONFIG_UPDATED') {
+                if (ev.data.key === 'QUESTIONS_21_30_ENABLED') {
+                  this.config.QUESTIONS_21_30_ENABLED = Boolean(ev.data.value);
+                  try {
+                    localStorage.setItem(LOCAL_STORAGE_KEY_Q21_30, String(this.config.QUESTIONS_21_30_ENABLED));
+                  } catch (err) {}
+                  window.dispatchEvent(new CustomEvent('study-config-updated', {
+                    detail: { key: 'QUESTIONS_21_30_ENABLED', value: this.config.QUESTIONS_21_30_ENABLED }
+                  }));
+                } else if (ev.data.key === 'PARTICIPANT_RESET_BTN_ENABLED') {
+                  this.config.PARTICIPANT_RESET_BTN_ENABLED = Boolean(ev.data.value);
+                  try {
+                    localStorage.setItem(LOCAL_STORAGE_KEY_RESET_BTN, String(this.config.PARTICIPANT_RESET_BTN_ENABLED));
+                  } catch (err) {}
+                  window.dispatchEvent(new CustomEvent('study-config-updated', {
+                    detail: { key: 'PARTICIPANT_RESET_BTN_ENABLED', value: this.config.PARTICIPANT_RESET_BTN_ENABLED }
+                  }));
+                }
+              }
+            });
+          } catch (err) {}
+        }
       }
     }
 
@@ -52,11 +87,83 @@
         if (savedResetBtn !== null) {
           this.config.PARTICIPANT_RESET_BTN_ENABLED = savedResetBtn === 'true';
         }
+
+        const savedQ21_30 = localStorage.getItem(LOCAL_STORAGE_KEY_Q21_30);
+        if (savedQ21_30 !== null) {
+          this.config.QUESTIONS_21_30_ENABLED = savedQ21_30 === 'true';
+        }
+      } catch (e) {}
+    }
+
+    async fetchRemoteConfig() {
+      try {
+        const endpoint = this.getEndpoint('/api/study-config');
+        const resp = await fetch(endpoint);
+        if (resp.ok) {
+          const data = await resp.json();
+          if (data && typeof data.questions_21_30_enabled !== 'undefined') {
+            const val = Boolean(data.questions_21_30_enabled);
+            if (this.config.QUESTIONS_21_30_ENABLED !== val) {
+              this.config.QUESTIONS_21_30_ENABLED = val;
+              try {
+                localStorage.setItem(LOCAL_STORAGE_KEY_Q21_30, String(val));
+              } catch (e) {}
+              if (typeof window !== 'undefined') {
+                window.dispatchEvent(new CustomEvent('study-config-updated', {
+                  detail: { key: 'QUESTIONS_21_30_ENABLED', value: val }
+                }));
+              }
+            }
+          }
+        }
       } catch (e) {}
     }
 
     getVersion() {
       return this.config.VERSION || 'v1.0.15';
+    }
+
+    isQuestions21to30Enabled() {
+      return this.config.QUESTIONS_21_30_ENABLED === true;
+    }
+
+    getMaxQuestions() {
+      return this.isQuestions21to30Enabled() ? 30 : 20;
+    }
+
+    async setQuestions21to30Enabled(enabled) {
+      this.config.QUESTIONS_21_30_ENABLED = Boolean(enabled);
+      try {
+        localStorage.setItem(LOCAL_STORAGE_KEY_Q21_30, String(this.config.QUESTIONS_21_30_ENABLED));
+      } catch (e) {}
+
+      if (typeof window !== 'undefined') {
+        if ('BroadcastChannel' in window) {
+          try {
+            const ch = new BroadcastChannel('sql_study_telemetry_channel');
+            ch.postMessage({
+              type: 'CONFIG_UPDATED',
+              key: 'QUESTIONS_21_30_ENABLED',
+              value: this.config.QUESTIONS_21_30_ENABLED
+            });
+          } catch (err) {}
+        }
+        window.dispatchEvent(new CustomEvent('study-config-updated', {
+          detail: { key: 'QUESTIONS_21_30_ENABLED', value: this.config.QUESTIONS_21_30_ENABLED }
+        }));
+      }
+
+      // Sync to backend server
+      try {
+        const endpoint = this.getEndpoint('/api/admin/study-config');
+        await fetch(endpoint, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ questions_21_30_enabled: this.config.QUESTIONS_21_30_ENABLED })
+        });
+      } catch (e) {}
+
+      return this.config.QUESTIONS_21_30_ENABLED;
     }
 
     isParticipantResetButtonEnabled() {
@@ -76,6 +183,11 @@
               value: this.config.PARTICIPANT_RESET_BTN_ENABLED
             });
           } catch (err) {}
+        }
+        if (typeof window !== 'undefined') {
+          window.dispatchEvent(new CustomEvent('study-config-updated', {
+            detail: { key: 'PARTICIPANT_RESET_BTN_ENABLED', value: this.config.PARTICIPANT_RESET_BTN_ENABLED }
+          }));
         }
       } catch (e) {}
     }

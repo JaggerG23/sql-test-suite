@@ -202,11 +202,12 @@ class QueryExperimentApp {
         : [];
       const completedCount = completedResponses.length;
 
+      const maxQ = this.getMaxStudyQuestions();
       if (this.humanResolver && this.humanResolver.stats) {
-        this.humanResolver.stats.totalAnswered = Math.min(30, completedCount);
+        this.humanResolver.stats.totalAnswered = Math.min(maxQ, completedCount);
       }
 
-      if (completedCount >= 30) {
+      if (completedCount >= maxQ) {
         const hasFinished = typeof localStorage !== 'undefined' && localStorage.getItem('sql_study_completed_finished') === 'true';
         const hasFinalThoughts = typeof localStorage !== 'undefined' && (localStorage.getItem('sql_study_final_thoughts_done_' + pid) === 'true' || (this.analytics && this.analytics.getFinalThoughts(pid)));
         if (hasFinished) {
@@ -220,15 +221,30 @@ class QueryExperimentApp {
           await this.loadIncrementalQuestion('final_thoughts');
         }
       } else {
-        await this.loadIncrementalQuestion(Math.min(30, completedCount + 1));
+        await this.loadIncrementalQuestion(Math.min(maxQ, completedCount + 1));
       }
     }
     this.renderAnalyticsDashboard();
     if (!this.isParticipantView()) {
       this.bindAdminGroupControls();
       this.populateAdminQuestionGrid();
+      this.updateQ21to30ToggleUI();
       this.applyAdminGroup(this._adminPreviewGroupId || 'google_sql_python');
     }
+
+    // Live sync for configuration changes across tabs
+    window.addEventListener('study-config-updated', () => {
+      if (this.isParticipantView()) {
+        const maxQ = this.getMaxStudyQuestions();
+        if (typeof this.currentQuestionNumber === 'number' && this.currentQuestionNumber > maxQ) {
+          this.loadIncrementalQuestion('final_thoughts');
+        } else if (this.humanResolver && typeof this.humanResolver.updateNavCounter === 'function') {
+          this.humanResolver.updateNavCounter();
+        }
+      } else {
+        this.updateQ21to30ToggleUI();
+      }
+    });
   }
 
   bindEvents() {
@@ -394,9 +410,92 @@ class QueryExperimentApp {
     });
   }
 
-  // -----------------------------------------------------------------------
-  //  Admin: Group & Question Preview Controls
-  // -----------------------------------------------------------------------
+  getMaxStudyQuestions() {
+    return (window.studyConfig && typeof window.studyConfig.getMaxQuestions === 'function')
+      ? window.studyConfig.getMaxQuestions()
+      : 20;
+  }
+
+  updateQuestionJumpDropdown() {
+    const group = document.getElementById('jump-select-study-group');
+    if (!group) return;
+    const isEnabled = window.studyConfig ? window.studyConfig.isQuestions21to30Enabled() : false;
+    group.label = isEnabled ? '3. Official Study (30 Questions)' : '3. Official Study (20 Questions - Q21–30 Disabled)';
+
+    for (let q = 21; q <= 30; q++) {
+      const opt = group.querySelector(`option[value="${q}"]`);
+      if (opt) {
+        const b = Math.floor((q - 1) / 6) + 1;
+        const v = ((q - 1) % 6) + 1;
+        if (isEnabled) {
+          opt.textContent = `Question ${q} (Block ${b}.${v})`;
+          opt.style.color = '';
+        } else {
+          opt.textContent = `Question ${q} (Block ${b}.${v} - Disabled)`;
+          opt.style.color = 'rgba(255,255,255,0.35)';
+        }
+      }
+    }
+  }
+
+  updateQ21to30ToggleUI() {
+    const isEnabled = window.studyConfig ? window.studyConfig.isQuestions21to30Enabled() : false;
+    const maxQ = isEnabled ? 30 : 20;
+
+    // 1. Sidebar Button (#btn-toggle-q21-30)
+    const btnToggle = document.getElementById('btn-toggle-q21-30');
+    const iconToggle = document.getElementById('btn-toggle-q21-30-icon');
+    const badgeToggle = document.getElementById('btn-toggle-q21-30-badge');
+    if (btnToggle && iconToggle && badgeToggle) {
+      if (isEnabled) {
+        btnToggle.style.background = 'rgba(139, 92, 246, 0.16)';
+        btnToggle.style.borderColor = 'rgba(139, 92, 246, 0.45)';
+        btnToggle.style.color = '#ddd6fe';
+        iconToggle.className = 'fa-solid fa-toggle-on';
+        iconToggle.style.color = '#a78bfa';
+        badgeToggle.style.background = '#8b5cf6';
+        badgeToggle.textContent = 'Enabled (30 Total)';
+      } else {
+        btnToggle.style.background = 'rgba(239, 68, 68, 0.14)';
+        btnToggle.style.borderColor = 'rgba(239, 68, 68, 0.45)';
+        btnToggle.style.color = '#fca5a5';
+        iconToggle.className = 'fa-solid fa-toggle-off';
+        iconToggle.style.color = '#ef4444';
+        badgeToggle.style.background = '#ef4444';
+        badgeToggle.textContent = 'Disabled (20 Total)';
+      }
+    }
+
+    // 2. Analytics Toolbar Checkbox (#toggle-q21-30-analytics)
+    const checkAnalytics = document.getElementById('toggle-q21-30-analytics');
+    const labelAnalytics = document.getElementById('label-q21-30-status-analytics');
+    if (checkAnalytics) {
+      checkAnalytics.checked = isEnabled;
+    }
+    if (labelAnalytics) {
+      labelAnalytics.textContent = isEnabled ? 'Enabled (30 Qs)' : 'Disabled (20 Qs)';
+      labelAnalytics.style.color = isEnabled ? '#a78bfa' : '#ef4444';
+    }
+
+    // 3. Section 3 Header & Footnote
+    const headerCount = document.getElementById('admin-study-header-count');
+    const headerBlocks = document.getElementById('admin-study-header-blocks');
+    const footerNote = document.getElementById('admin-study-footer-note');
+    if (headerCount) {
+      headerCount.textContent = `${maxQ} Questions`;
+    }
+    if (headerBlocks) {
+      headerBlocks.textContent = isEnabled ? '5 Blocks \u00d7 6' : '3.3 Blocks \u00d7 6 (20 Total)';
+    }
+    if (footerNote) {
+      footerNote.textContent = isEnabled
+        ? '5 blocks \u00d7 6 questions = 30 total'
+        : '20 questions active (Questions 21–30 disabled)';
+    }
+
+    // 4. Update Dropdown and Grid
+    this.updateQuestionJumpDropdown();
+  }
 
   /**
    * Populates the 6×10 question grid in the admin sidebar.
@@ -424,17 +523,23 @@ class QueryExperimentApp {
       }
     }
 
-    // 2. Populate 30 Official Study Questions Grid
+    // 2. Populate Official Study Questions Grid
     const grid = document.getElementById('admin-question-grid');
     if (grid) {
       grid.innerHTML = '';
+      const isQ21_30Enabled = window.studyConfig ? window.studyConfig.isQuestions21to30Enabled() : false;
 
-      // Render 10 block rows, each with a block label + 6 question buttons
+      // Render 5 block rows, each with a block label + 6 question buttons
       for (let blockIdx = 1; blockIdx <= 5; blockIdx++) {
         // Block label cell
+        const isBlock5 = blockIdx === 5;
+        const isBlockDisabled = !isQ21_30Enabled && isBlock5;
         const label = document.createElement('div');
-        label.style.cssText = 'font-size:9px;color:rgba(255,255,255,0.3);font-weight:700;text-align:right;padding-right:6px;padding-top:4px;white-space:nowrap;';
+        label.style.cssText = `font-size:9px;font-weight:700;text-align:right;padding-right:6px;padding-top:4px;white-space:nowrap;color:${isBlockDisabled ? 'rgba(255,255,255,0.15)' : 'rgba(255,255,255,0.3)'};`;
         label.textContent = `Blk ${blockIdx}`;
+        if (isBlockDisabled) {
+          label.title = `Block ${blockIdx} (Questions 25–30 Disabled in Study)`;
+        }
         grid.appendChild(label);
 
         // 6-cell inner grid
@@ -443,10 +548,13 @@ class QueryExperimentApp {
 
         for (let v = 1; v <= 6; v++) {
           const qNum = (blockIdx - 1) * 6 + v;
+          const isQDisabled = !isQ21_30Enabled && qNum >= 21;
           const btn = document.createElement('button');
           btn.id = `admin-qgrid-btn-${qNum}`;
-          btn.className = 'admin-qgrid-btn';
-          btn.title = `Q${qNum} — Block ${blockIdx}, variation ${v}`;
+          btn.className = isQDisabled ? 'admin-qgrid-btn q-disabled' : 'admin-qgrid-btn';
+          btn.title = isQDisabled
+            ? `Q${qNum} — Block ${blockIdx}, variation ${v} (Disabled in Study)`
+            : `Q${qNum} — Block ${blockIdx}, variation ${v}`;
           btn.textContent = qNum;
           btn.dataset.qnum = qNum;
 
@@ -508,11 +616,14 @@ class QueryExperimentApp {
     }
 
     // 1. Study Questions 1-30
+    const isQ21_30Enabled = window.studyConfig ? window.studyConfig.isQuestions21to30Enabled() : false;
     for (let q = 1; q <= 30; q++) {
       const btn = document.getElementById(`admin-qgrid-btn-${q}`);
       if (!btn) continue;
       const isActive = (studyQNum !== null && q === studyQNum);
+      const isQDisabled = !isQ21_30Enabled && q >= 21;
       btn.classList.toggle('active', isActive);
+      btn.classList.toggle('q-disabled', isQDisabled);
 
       btn.style.border = '';
       btn.style.background = '';
@@ -646,7 +757,7 @@ class QueryExperimentApp {
         const qNum = parseInt(activeQNum, 10) || 1;
         const bIdx = Math.floor((qNum - 1) / 6) + 1;
         const vIdx = ((qNum - 1) % 6) + 1;
-        stageBadge.textContent = `Previewing: Question ${qNum} / 30 (Block ${bIdx}.${vIdx})`;
+        stageBadge.textContent = `Previewing: Question ${qNum} / ${this.getMaxStudyQuestions()} (Block ${bIdx}.${vIdx})`;
         stageBadge.style.color = '#a78bfa';
         stageBadge.style.borderColor = 'rgba(139, 92, 246, 0.4)';
       }
@@ -861,7 +972,7 @@ class QueryExperimentApp {
       const vIdx = ((qNum - 1) % 6) + 1;
       const opt = document.createElement('option');
       opt.value = qNum;
-      opt.textContent = `Q ${qNum} / 30 (Block ${bIdx}.${vIdx})`;
+      opt.textContent = `Q ${qNum} / ${this.getMaxStudyQuestions()} (Block ${bIdx}.${vIdx})`;
       select.appendChild(opt);
     }
 
@@ -962,8 +1073,9 @@ class QueryExperimentApp {
       return;
     }
 
-    const isOver30 = (typeof targetQNum === 'number' && targetQNum > 30) || (parseInt(targetQNum, 10) > 30);
-    if (targetQNum === 'final_thoughts' || isOver30) {
+    const maxQ = this.getMaxStudyQuestions();
+    const isOverMax = (typeof targetQNum === 'number' && targetQNum > maxQ) || (parseInt(targetQNum, 10) > maxQ);
+    if (targetQNum === 'final_thoughts' || (isOverMax && this.isParticipantView())) {
       this.currentQuestionNumber = 'final_thoughts';
       const select = document.getElementById('question-jump-select');
       if (select) select.value = 'final_thoughts';
@@ -1161,8 +1273,9 @@ class QueryExperimentApp {
     } else if (cur === 'thank_you') {
       await this.loadIncrementalQuestion('thank_you');
     } else {
+      const maxQ = this.getMaxStudyQuestions();
       const num = parseInt(cur, 10) || 1;
-      if (num >= 30) {
+      if (num >= maxQ) {
         await this.loadIncrementalQuestion('final_thoughts');
       } else {
         await this.loadIncrementalQuestion(num + 1);
@@ -1177,7 +1290,8 @@ class QueryExperimentApp {
     } else if (cur === 'extra_credit') {
       await this.loadIncrementalQuestion('final_thoughts');
     } else if (cur === 'final_thoughts') {
-      await this.loadIncrementalQuestion(30);
+      const maxQ = this.getMaxStudyQuestions();
+      await this.loadIncrementalQuestion(maxQ);
     } else if (cur === 1 || cur === '1') {
       await this.loadIncrementalQuestion('training_complete');
     } else if (cur === 'training_complete') {
@@ -1664,6 +1778,33 @@ class QueryExperimentApp {
       });
     }
 
+    // Admin Dashboard Toggle for Questions 21-30 (Sidebar button & Analytics header toggle)
+    const btnToggleQ21_30 = document.getElementById('btn-toggle-q21-30');
+    if (btnToggleQ21_30) {
+      btnToggleQ21_30.addEventListener('click', async () => {
+        const current = window.studyConfig ? window.studyConfig.isQuestions21to30Enabled() : false;
+        const next = !current;
+        if (window.studyConfig) {
+          await window.studyConfig.setQuestions21to30Enabled(next);
+        }
+        this.updateQ21to30ToggleUI();
+      });
+    }
+
+    const checkToggleAnalytics = document.getElementById('toggle-q21-30-analytics');
+    if (checkToggleAnalytics) {
+      checkToggleAnalytics.addEventListener('change', async (e) => {
+        const next = e.target.checked;
+        if (window.studyConfig) {
+          await window.studyConfig.setQuestions21to30Enabled(next);
+        }
+        this.updateQ21to30ToggleUI();
+      });
+    }
+
+    // Initial sync of Q21-30 toggle UI
+    this.updateQ21to30ToggleUI();
+
     // Modal: Import & Cloud Sync
     this.bindImportAndCloudSyncUI();
   }
@@ -1971,7 +2112,7 @@ class QueryExperimentApp {
                   <i class="fa-solid ${folderIcon} text-warning" id="folder-icon-${safeUidId}" style="font-size: 16px;"></i>
                   <strong style="color: var(--color-primary); font-size: 13px;">User ID: ${this.escapeHTML(uid)}</strong>
                   <span class="badge" style="background: rgba(99, 102, 241, 0.2); border: 1px solid rgba(99, 102, 241, 0.4); color: #a5b4fc; font-size: 10px;"><i class="fa-solid fa-layer-group"></i> ${this.escapeHTML(group.assignedGroupName || 'Unassigned')}</span>
-                  <span class="badge badge-accent" style="font-size: 10.5px;">${group.totalAnswers} / 30 Questions</span>
+                  <span class="badge badge-accent" style="font-size: 10.5px;">${group.totalAnswers} / ${this.getMaxStudyQuestions()} Questions</span>
                   <span class="badge ${group.accuracy >= 70 ? 'badge-success' : 'badge-warning'}" style="font-size: 10.5px;">${group.accuracy}% Accuracy</span>
                   <span class="badge badge-outline text-muted" style="font-size: 10px;">Avg: ${group.avgTimeMs}ms</span>
                   <span class="badge badge-outline text-muted" style="font-size: 10px;" title="Answer Changes: ${group.totalAnswerChanges || 0} total (avg ${group.avgAnswerChanges || '0.00'}/q)"><i class="fa-solid fa-arrows-rotate"></i> ${group.totalAnswerChanges || 0} changes</span>
@@ -2005,10 +2146,22 @@ class QueryExperimentApp {
                         <span><i class="fa-solid fa-earth-americas text-accent"></i> <strong>Country:</strong> ${this.escapeHTML(group.demographics.countryOfOrigin || 'N/A')}</span>
                       </div>
                     ` : ''}
-                    ${group.finalThoughts && group.finalThoughts.thoughts ? `
+                    ${group.finalThoughts ? `
                       <div class="mt-2 pt-2 border-top" style="border-top: 1px solid rgba(255,255,255,0.08); margin-top: 6px; padding-top: 6px;">
-                        <strong style="color: var(--color-accent);"><i class="fa-solid fa-comment-dots"></i> Final Thoughts:</strong>
-                        <em class="text-main" style="display: block; margin-top: 2px;">"${this.escapeHTML(group.finalThoughts.thoughts)}"</em>
+                        ${group.finalThoughts.durationExpectation ? `
+                          <div style="margin-bottom: 5px;">
+                            <strong style="color: #38bdf8;"><i class="fa-solid fa-clock-rotate-left"></i> Duration vs Expected:</strong>
+                            <span class="badge" style="background: rgba(56, 189, 248, 0.15); border: 1px solid rgba(56, 189, 248, 0.35); color: #7dd3fc; margin-left: 6px; font-weight: 600; font-size: 11px; padding: 2px 7px; border-radius: 4px;">
+                              ${this.escapeHTML(group.finalThoughts.durationExpectation)}
+                            </span>
+                          </div>
+                        ` : ''}
+                        ${group.finalThoughts.thoughts ? `
+                          <div>
+                            <strong style="color: var(--color-accent);"><i class="fa-solid fa-comment-dots"></i> Final Thoughts:</strong>
+                            <em class="text-main" style="display: block; margin-top: 2px;">"${this.escapeHTML(group.finalThoughts.thoughts)}"</em>
+                          </div>
+                        ` : ''}
                       </div>
                     ` : ''}
                   </div>

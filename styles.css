@@ -1389,6 +1389,31 @@ body.admin-unlocked #admin-login-overlay,
   outline-offset: 1px;
 }
 
+.admin-qgrid-btn.q-disabled {
+  opacity: 0.38 !important;
+  filter: grayscale(1) !important;
+  border-style: dashed !important;
+  border-color: rgba(255, 255, 255, 0.15) !important;
+  color: #64748b !important;
+  background: rgba(0, 0, 0, 0.2) !important;
+}
+
+.admin-qgrid-btn.q-disabled:hover:not(.active) {
+  opacity: 0.75 !important;
+  border-color: rgba(239, 68, 68, 0.4) !important;
+  background: rgba(239, 68, 68, 0.15) !important;
+  color: #fca5a5 !important;
+}
+
+.admin-qgrid-btn.q-disabled.active {
+  opacity: 1 !important;
+  filter: none !important;
+  border: 1.5px dashed #f59e0b !important;
+  background: rgba(245, 158, 11, 0.25) !important;
+  color: #fde68a !important;
+  box-shadow: 0 0 10px rgba(245, 158, 11, 0.3) !important;
+}
+
 /* Admin Training Question Grid Buttons (Amber theme for practice) */
 .admin-qgrid-train-btn {
   font-size: 11px;
@@ -1545,6 +1570,24 @@ body.admin-unlocked #admin-login-overlay,
 .likert-option-input:checked + .likert-option-label .likert-option-text {
   color: #ffffff;
   font-weight: 700;
+}
+
+.duration-options-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 10px;
+}
+
+@media (max-width: 768px) {
+  .duration-options-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+@media (max-width: 480px) {
+  .duration-options-grid {
+    grid-template-columns: 1fr;
+  }
 }
 
 /* Training Phase Badges & Cards */

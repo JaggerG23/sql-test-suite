@@ -32,6 +32,7 @@ const CSV_HEADERS = [
   'primary_language', 'is_english_primary',
   'country_of_origin', 'is_country_us',
   'disability_status', 'has_disability',
+  'duration_expectation',
   'final_thoughts', 'raw_query', 'dialect_sql', 'code_snippet'
 ];
 
@@ -220,6 +221,7 @@ function doPost(e) {
         isUs,
         demo.disability || '',
         hasDis,
+        thoughts.durationExpectation || thoughts.duration_expectation || '',
         thoughts.thoughts || '',
         r.rawQuery || '',
         r.dialectSql || '',

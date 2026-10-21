@@ -1,6 +1,7 @@
 *.jsonl
 participant_responses_export.csv
 participant_responses_db.json
+group_rotation.json
 scratch/
 __pycache__/
 *.pyc

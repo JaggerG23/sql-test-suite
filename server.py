@@ -10,6 +10,7 @@ import threading
 import urllib.parse
 import re
 import math
+import secrets
 from http.cookies import SimpleCookie
 from datetime import datetime
 from zoneinfo import ZoneInfo
@@ -20,6 +21,78 @@ LOG_FILE = os.path.join(BASE_DIR, "telemetry_events.jsonl")
 DB_FILE = os.path.join(BASE_DIR, "participant_responses_db.json")
 CSV_FILE = os.path.join(BASE_DIR, "participant_responses_export.csv")
 EXTRA_CREDIT_FILE = os.path.join(BASE_DIR, "extra_credit_emails.csv")
+CONFIG_FILE = os.path.join(BASE_DIR, "study_config.json")
+GROUP_ROTATION_FILE = os.path.join(BASE_DIR, "group_rotation.json")
+NUM_STUDY_GROUPS = 4
+
+config_lock = threading.Lock()
+rotation_lock = threading.Lock()
+
+def _load_rotation_state():
+    """Caller must hold rotation_lock."""
+    if os.path.exists(GROUP_ROTATION_FILE):
+        try:
+            with open(GROUP_ROTATION_FILE, 'r', encoding='utf-8') as f:
+                state = json.load(f)
+                if isinstance(state, dict):
+                    state.setdefault("next_index", None)
+                    state.setdefault("assignments", {})
+                    return state
+        except Exception:
+            pass
+    return {"next_index": None, "assignments": {}}
+
+def _save_rotation_state(state):
+    """Caller must hold rotation_lock. Writes atomically via temp file."""
+    with tempfile.NamedTemporaryFile('w', dir=BASE_DIR, delete=False, encoding='utf-8') as f:
+        json.dump(state, f, indent=2)
+        temp_name = f.name
+    os.replace(temp_name, GROUP_ROTATION_FILE)
+
+def assign_rotating_group(participant_id):
+    """Round-robin group assignment.
+
+    The very first participant gets a random group (0-3 => groups 1-4). Every
+    subsequent new participant gets the next group in order, wrapping 4 -> 1,
+    so group sizes never differ by more than one. Re-requests for an already
+    assigned participant return the same group.
+    """
+    with rotation_lock:
+        state = _load_rotation_state()
+        existing = state["assignments"].get(participant_id)
+        if isinstance(existing, int) and 0 <= existing < NUM_STUDY_GROUPS:
+            return existing
+
+        idx = state.get("next_index")
+        if not isinstance(idx, int) or not (0 <= idx < NUM_STUDY_GROUPS):
+            idx = secrets.randbelow(NUM_STUDY_GROUPS)
+
+        state["assignments"][participant_id] = idx
+        state["next_index"] = (idx + 1) % NUM_STUDY_GROUPS
+        _save_rotation_state(state)
+        return idx
+
+def reset_group_rotation():
+    with rotation_lock:
+        _save_rotation_state({"next_index": None, "assignments": {}})
+
+def load_study_config():
+    with config_lock:
+        if os.path.exists(CONFIG_FILE):
+            try:
+                with open(CONFIG_FILE, 'r', encoding='utf-8') as f:
+                    return json.load(f)
+            except Exception:
+                pass
+        return {"questions_21_30_enabled": False}
+
+def save_study_config(cfg):
+    with config_lock:
+        try:
+            with open(CONFIG_FILE, 'w', encoding='utf-8') as f:
+                json.dump(cfg, f, indent=2)
+        except Exception as e:
+            print(f"Error saving study_config: {e}")
 
 ADMIN_PASSWORD = os.environ.get("ADMIN_PASSWORD", "StefiksLabRootPassword")
 
@@ -100,6 +173,7 @@ CSV_HEADERS = [
     'primary_language', 'is_english_primary',
     'country_of_origin', 'is_country_us',
     'disability_status', 'has_disability',
+    'duration_expectation',
     'final_thoughts', 'raw_query', 'dialect_sql', 'code_snippet'
 ]
 
@@ -382,6 +456,7 @@ def export_csv(db_data):
                 country_info['is_us'],
                 dis_info['disability'],
                 dis_info['has_disability'],
+                thought_obj.get('durationExpectation', thought_obj.get('duration_expectation', '')),
                 thought_obj.get('thoughts', ''),
                 r.get('rawQuery', ''),
                 r.get('dialectSql', r.get('rawQuery', '')),
@@ -431,6 +506,10 @@ class TelemetryHandler(http.server.SimpleHTTPRequestHandler):
             self.send_response(302)
             self.send_header('Location', '/participant.html')
             self.end_headers()
+            return
+
+        if parsed_path == '/api/study-config':
+            self.send_json(200, load_study_config())
             return
 
         if parsed_path == '/api/admin/check-auth':
@@ -576,6 +655,21 @@ class TelemetryHandler(http.server.SimpleHTTPRequestHandler):
                 self.send_json(400, {"status": "error", "message": str(e)})
             return
 
+        elif parsed_path == '/api/assign-group':
+            try:
+                payload = json.loads(body.decode('utf-8'))
+                pid = str(payload.get('participantId', '')).strip()
+                if not pid:
+                    self.send_json(400, {"status": "error", "message": "Missing participantId"})
+                    return
+                idx = assign_rotating_group(pid)
+                pst_now = datetime.now(ZoneInfo('America/Los_Angeles')).strftime('%Y-%m-%d %I:%M:%S %p PST')
+                print(f"[{pst_now}] Group assigned: Participant={pid} Group={idx + 1}", flush=True)
+                self.send_json(200, {"status": "success", "groupIndex": idx, "groupNumber": idx + 1})
+            except Exception as e:
+                self.send_json(400, {"status": "error", "message": str(e)})
+            return
+
         elif parsed_path == '/api/save-extra-credit-email':
             try:
                 payload = json.loads(body.decode('utf-8'))
@@ -619,9 +713,26 @@ class TelemetryHandler(http.server.SimpleHTTPRequestHandler):
                     append_event("CLEAR_ALL", {})
                     if os.path.exists(CSV_FILE):
                         os.remove(CSV_FILE)
+                # Fresh study: next participant starts the rotation at a new random group
+                reset_group_rotation()
                 self.send_json(200, {"status": "success"})
             except Exception as e:
                 self.send_json(500, {"status": "error", "message": str(e)})
+            return
+
+        elif parsed_path == '/api/admin/study-config':
+            if not self.is_admin_authenticated():
+                self.send_json(401, {"status": "error", "message": "Unauthorized"})
+                return
+            try:
+                payload = json.loads(body.decode('utf-8'))
+                current_config = load_study_config()
+                if 'questions_21_30_enabled' in payload:
+                    current_config['questions_21_30_enabled'] = bool(payload['questions_21_30_enabled'])
+                save_study_config(current_config)
+                self.send_json(200, {"status": "success", "config": current_config})
+            except Exception as e:
+                self.send_json(400, {"status": "error", "message": str(e)})
             return
 
         return super().do_POST()
