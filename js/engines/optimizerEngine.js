@@ -35,7 +35,14 @@ class OptimizerEngine {
   }
 
   analyzeOptimizationPlan(sqlQuery) {
-    if (!this.schema) return { costScore: 0, planDetails: [] };
+    if (!this.schema) {
+      return {
+        totalCostScore: 0,
+        ioCostPages: 0,
+        cpuOperations: 0,
+        planSteps: []
+      };
+    }
 
     const parsed = this.customEngine.parseQuery(sqlQuery);
     const mainTable = this.schema.tables.find(t => t.name === parsed.mainTable);

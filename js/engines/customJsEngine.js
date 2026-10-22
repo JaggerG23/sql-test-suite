@@ -64,19 +64,24 @@ class CustomJsEngine {
         return this.executeQuery(selectStmt);
       }
 
-      // Check for UNION
-      if (sqlQuery && /\bUNION\b/i.test(sqlQuery)) {
-        const parts = sqlQuery.split(/\bUNION\b/i);
+      // Check for UNION (Standard SQL, Pipe SQL, or Quorum query:Union())
+      if (sqlQuery && (/\bUNION\b/i.test(sqlQuery) || /query:Union(?:All)?\(\)/i.test(sqlQuery))) {
+        const isUnionAll = /\bUNION\s+ALL\b/i.test(sqlQuery) || /query:UnionAll\(\)/i.test(sqlQuery);
+        const parts = sqlQuery.split(/\bUNION(?:\s+ALL|\s+DISTINCT)?\b|query:Union(?:All)?\(\)/i);
         const res1 = this.executeQuery(parts[0].trim());
         const res2 = this.executeQuery(parts[1].trim());
         if (res1.success && res2.success) {
           const seen = new Set();
           const combinedRows = [];
           [...res1.rows, ...res2.rows].forEach(r => {
-            const key = JSON.stringify(r);
-            if (!seen.has(key)) {
-              seen.add(key);
+            if (isUnionAll) {
               combinedRows.push(r);
+            } else {
+              const key = JSON.stringify(r);
+              if (!seen.has(key)) {
+                seen.add(key);
+                combinedRows.push(r);
+              }
             }
           });
           return {
@@ -85,7 +90,7 @@ class CustomJsEngine {
             rows: combinedRows,
             rowCount: combinedRows.length,
             executionTimeMs: parseFloat((performance.now() - startTime).toFixed(3)),
-            astTrace: [...res1.astTrace, '[UNION] Combined distinct tuples', ...res2.astTrace]
+            astTrace: [...(Array.isArray(res1.astTrace) ? res1.astTrace : [res1.astTrace]), '[UNION] Combined tuples', ...(Array.isArray(res2.astTrace) ? res2.astTrace : [res2.astTrace])].join('\n')
           };
         }
       }
@@ -114,12 +119,9 @@ class CustomJsEngine {
         this.schema.tables = [...originalTables.filter(t => t.name !== subquery.alias), virtualTable];
         try {
           const outerSql = `${subquery.outerBeforeFrom} FROM ${subquery.alias} ${subquery.outerRemainder}`;
-          const outerRes = this.executeQuery(outerSql);
+          return this.executeQuery(outerSql);
+        } finally {
           this.schema.tables = originalTables;
-          return outerRes;
-        } catch (err) {
-          this.schema.tables = originalTables;
-          throw err;
         }
       }
 
@@ -151,7 +153,10 @@ class CustomJsEngine {
           let matched = false;
           rightTableObj.rows.forEach(rightRow => {
             const tempTuple = { ...leftTuple };
-            Object.keys(rightRow).forEach(k => { tempTuple[`${join.table}.${k}`] = rightRow[k]; });
+            Object.keys(rightRow).forEach(k => {
+              tempTuple[`${join.table}.${k}`] = rightRow[k];
+              if (tempTuple[k] === undefined) tempTuple[k] = rightRow[k];
+            });
 
             if (this.evalPredicate(join.onCondition, tempTuple)) {
               joinedTuples.push(tempTuple);
@@ -175,6 +180,19 @@ class CustomJsEngine {
         traceLogs.push(`[STEP 3: SELECTION/WHERE] Filtered predicates -> ${dataset.length} tuples remaining`);
       }
 
+      // Helper to resolve a column or string literal from a tuple
+      const resolveTupleValue = (tuple, expr) => {
+        if (!expr) return null;
+        const litMatch = expr.match(/^['"](.*)['"]$/);
+        if (litMatch) return litMatch[1];
+        if (tuple[expr] !== undefined) return tuple[expr];
+        const bare = expr.includes('.') ? expr.split('.')[1] : expr;
+        if (tuple[`${ast.mainTable}.${bare}`] !== undefined) return tuple[`${ast.mainTable}.${bare}`];
+        if (tuple[bare] !== undefined) return tuple[bare];
+        const suffixKey = Object.keys(tuple).find(k => k.endsWith(`.${bare}`));
+        return suffixKey !== undefined ? tuple[suffixKey] : null;
+      };
+
       // Step 4: Grouping & Aggregations
       let resultRows = [];
       let finalColumns = [];
@@ -182,34 +200,38 @@ class CustomJsEngine {
       if (ast.groupBy.length > 0 || ast.aggregates.length > 0) {
         const groups = new Map();
 
-        dataset.forEach(tuple => {
-          const groupKey = ast.groupBy.map(g => {
-            if (tuple[g] !== undefined) return tuple[g];
-            if (tuple[`${ast.mainTable}.${g}`] !== undefined) return tuple[`${ast.mainTable}.${g}`];
-            if (g.includes('.') && tuple[g.split('.')[1]] !== undefined) return tuple[g.split('.')[1]];
-            return '';
-          }).join('||');
-          if (!groups.has(groupKey)) groups.set(groupKey, []);
-          groups.get(groupKey).push(tuple);
-        });
+        if (ast.groupBy.length === 0) {
+          groups.set('__all__', dataset);
+        } else {
+          dataset.forEach(tuple => {
+            const groupKey = ast.groupBy.map(g => {
+              const val = resolveTupleValue(tuple, g);
+              return val !== null && val !== undefined ? val : '';
+            }).join('||');
+            if (!groups.has(groupKey)) groups.set(groupKey, []);
+            groups.get(groupKey).push(tuple);
+          });
+        }
 
         traceLogs.push(`[STEP 4: GROUP BY] Grouped into ${groups.size} distinct aggregate buckets`);
 
-        groups.forEach((groupTuples, gKey) => {
+        groups.forEach((groupTuples) => {
           const resTuple = {};
-          // Group keys
-          ast.groupBy.forEach(gCol => {
-            const cleanCol = gCol.includes('.') ? gCol.split('.')[1] : gCol;
-            resTuple[cleanCol] = groupTuples[0][gCol] !== undefined ? groupTuples[0][gCol] : (groupTuples[0][cleanCol] !== undefined ? groupTuples[0][cleanCol] : groupTuples[0][`${ast.mainTable}.${cleanCol}`]);
-          });
+          // Projected non-aggregate columns or group keys
+          if (ast.selectSpecs && ast.selectSpecs.length > 0) {
+            ast.selectSpecs.forEach(spec => {
+              resTuple[spec.outputName] = groupTuples.length > 0 ? resolveTupleValue(groupTuples[0], spec.expr) : null;
+            });
+          } else {
+            ast.groupBy.forEach(gCol => {
+              const cleanCol = gCol.includes('.') ? gCol.split('.')[1] : gCol;
+              resTuple[cleanCol] = groupTuples.length > 0 ? resolveTupleValue(groupTuples[0], gCol) : null;
+            });
+          }
 
           // Aggregate evaluations
           ast.aggregates.forEach(agg => {
-            const vals = groupTuples.map(t => {
-              if (t[agg.column] !== undefined) return t[agg.column];
-              const matchedKey = Object.keys(t).find(k => k.endsWith(`.${agg.column}`));
-              return matchedKey !== undefined ? t[matchedKey] : undefined;
-            }).filter(v => v !== null && v !== undefined);
+            const vals = groupTuples.map(t => resolveTupleValue(t, agg.column)).filter(v => v !== null && v !== undefined);
             let aggResult = 0;
             if (agg.func === 'COUNT') aggResult = (agg.column === '*' || agg.column === '') ? groupTuples.length : vals.length;
             else if (agg.func === 'SUM') aggResult = vals.reduce((a, b) => a + Number(b), 0);
@@ -234,36 +256,47 @@ class CustomJsEngine {
         }
       } else {
         // Step 4b: Standard Projection
+        const specs = (ast.selectSpecs && ast.selectSpecs.length > 0)
+          ? ast.selectSpecs
+          : ast.selectCols.map(c => ({ expr: c, outputName: c.includes('.') ? c.split('.')[1] : c }));
+
         resultRows = dataset.map(tuple => {
           const projected = {};
           if (ast.selectCols.includes('*')) {
             Object.assign(projected, tuple);
           } else {
-            ast.selectCols.forEach(col => {
-              if (tuple[col] !== undefined) projected[col] = tuple[col];
-              else projected[col] = null;
+            specs.forEach(spec => {
+              projected[spec.outputName] = resolveTupleValue(tuple, spec.expr);
             });
           }
           return projected;
         });
         if (resultRows.length > 0) {
           finalColumns = Object.keys(resultRows[0]);
+        } else if (specs.length > 0) {
+          finalColumns = specs.map(s => s.outputName);
         }
         traceLogs.push(`[STEP 4: PROJECTION] Projected ${finalColumns.length} attributes across ${resultRows.length} tuples`);
       }
 
-      // Step 5: Sorting (ORDER BY)
-      if (ast.orderBy) {
-        const orderCol = ast.orderBy.column;
-        const cleanOrderCol = orderCol.includes('.') ? orderCol.split('.')[1] : orderCol;
+      // Step 5: Sorting (ORDER BY - supports multi-column sorting)
+      const orderList = (ast.orderByList && ast.orderByList.length > 0)
+        ? ast.orderByList
+        : (ast.orderBy ? [ast.orderBy] : []);
+
+      if (orderList.length > 0) {
         resultRows.sort((a, b) => {
-          const valA = a[orderCol] !== undefined ? a[orderCol] : (a[cleanOrderCol] !== undefined ? a[cleanOrderCol] : 0);
-          const valB = b[orderCol] !== undefined ? b[orderCol] : (b[cleanOrderCol] !== undefined ? b[cleanOrderCol] : 0);
-          if (valA < valB) return ast.orderBy.dir === 'ASC' ? -1 : 1;
-          if (valA > valB) return ast.orderBy.dir === 'ASC' ? 1 : -1;
+          for (const ord of orderList) {
+            const orderCol = ord.column;
+            const cleanOrderCol = orderCol.includes('.') ? orderCol.split('.')[1] : orderCol;
+            const valA = a[orderCol] !== undefined ? a[orderCol] : (a[cleanOrderCol] !== undefined ? a[cleanOrderCol] : 0);
+            const valB = b[orderCol] !== undefined ? b[orderCol] : (b[cleanOrderCol] !== undefined ? b[cleanOrderCol] : 0);
+            if (valA < valB) return ord.dir === 'ASC' ? -1 : 1;
+            if (valA > valB) return ord.dir === 'ASC' ? 1 : -1;
+          }
           return 0;
         });
-        traceLogs.push(`[STEP 5: SORTING] Sorted by '${ast.orderBy.column}' (${ast.orderBy.dir})`);
+        traceLogs.push(`[STEP 5: SORTING] Sorted by ${orderList.map(o => `'${o.column}' (${o.dir})`).join(', ')}`);
       }
 
       // Step 6: LIMIT
@@ -312,11 +345,13 @@ class CustomJsEngine {
     const ast = {
       mainTable: '',
       selectCols: [],
+      selectSpecs: [],
       joins: [],
       whereCondition: null,
       groupBy: [],
       aggregates: [],
       orderBy: null,
+      orderByList: [],
       limit: null
     };
 
@@ -379,7 +414,9 @@ class CustomJsEngine {
               alias: alias || `${aggMatch[1].toLowerCase()}_val`
             });
           } else if (rawExpr !== '*') {
+            const defaultName = rawExpr.includes('.') ? rawExpr.split('.')[1] : rawExpr.replace(/^['"]|['"]$/g, '');
             ast.selectCols.push(rawExpr);
+            ast.selectSpecs.push({ expr: rawExpr, outputName: alias || defaultName });
           } else {
             ast.selectCols.push('*');
           }
@@ -388,10 +425,12 @@ class CustomJsEngine {
 
       const sortMatch = line.match(/^query:Sort\("([^"]+)"(?:\s*,\s*"([^"]+)")?\)/i);
       if (sortMatch) {
-        ast.orderBy = {
-          column: fromQuorumCols(sortMatch[1]),
+        const sortSpec = {
+          column: fromQuorumCols(sortMatch[1].replace(/,+$/, '').trim()),
           dir: sortMatch[2] ? sortMatch[2].toUpperCase() : 'ASC'
         };
+        ast.orderByList.push(sortSpec);
+        if (!ast.orderBy) ast.orderBy = sortSpec;
       }
 
       const limitMatch = line.match(/^query:SetLimit\((\d+)\)/i);
@@ -407,11 +446,13 @@ class CustomJsEngine {
     const ast = {
       mainTable: '',
       selectCols: [],
+      selectSpecs: [],
       joins: [],
       whereCondition: null,
       groupBy: [],
       aggregates: [],
       orderBy: null,
+      orderByList: [],
       limit: null
     };
 
@@ -446,6 +487,10 @@ class CustomJsEngine {
 
         if (groupPart) {
           ast.groupBy = groupPart.split(',').map(s => s.trim().replace(/[`"\[\]]/g, ''));
+          ast.groupBy.forEach(g => {
+            const bare = g.includes('.') ? g.split('.')[1] : g;
+            ast.selectSpecs.push({ expr: g, outputName: bare });
+          });
         }
 
         if (aggPart) {
@@ -492,17 +537,33 @@ class CustomJsEngine {
                 alias: aggMatch[3] || `${aggMatch[1].toLowerCase()}_val`
               });
             } else {
-              ast.selectCols.push(item.replace(/[`"\[\]]/g, ''));
+              const asMatch = item.match(/^([\s\S]+?)\s+AS\s+([a-zA-Z0-9_]+)$/i);
+              if (asMatch) {
+                const expr = asMatch[1].trim().replace(/[`"\[\]]/g, '');
+                const alias = asMatch[2].trim();
+                ast.selectCols.push(expr);
+                ast.selectSpecs.push({ expr, outputName: alias });
+              } else {
+                const expr = item.trim().replace(/[`"\[\]]/g, '');
+                const bare = expr.includes('.') ? expr.split('.')[1] : expr.replace(/^['"]|['"]$/g, '');
+                ast.selectCols.push(expr);
+                ast.selectSpecs.push({ expr, outputName: bare });
+              }
             }
           }
         });
       } else if (line.startsWith('|> ORDER BY')) {
         const orderText = line.replace(/^\|>\s*ORDER BY\s+/i, '').trim();
-        const parts = orderText.split(/\s+/);
-        ast.orderBy = {
-          column: parts[0].replace(/[`"\[\]]/g, ''),
-          dir: parts[1] ? parts[1].toUpperCase() : 'ASC'
-        };
+        const terms = this.splitCsvClause(orderText);
+        terms.forEach(term => {
+          const parts = term.trim().split(/\s+/);
+          const sortSpec = {
+            column: parts[0].replace(/[`"\[\],]/g, ''),
+            dir: parts[1] ? parts[1].toUpperCase() : 'ASC'
+          };
+          ast.orderByList.push(sortSpec);
+          if (!ast.orderBy) ast.orderBy = sortSpec;
+        });
       } else if (line.startsWith('|> LIMIT')) {
         const limitText = line.replace(/^\|>\s*LIMIT\s+/i, '').trim();
         ast.limit = parseInt(limitText, 10);
@@ -516,11 +577,13 @@ class CustomJsEngine {
     const ast = {
       mainTable: '',
       selectCols: [],
+      selectSpecs: [],
       joins: [],
       whereCondition: null,
       groupBy: [],
       aggregates: [],
       orderBy: null,
+      orderByList: [],
       limit: null
     };
 
@@ -561,7 +624,18 @@ class CustomJsEngine {
               alias: aggMatch[3] ? aggMatch[3].trim() : `${aggMatch[1].toLowerCase()}_val`
             });
           } else {
-            ast.selectCols.push(part.replace(/\s+AS\s+[a-zA-Z0-9_]+/i, '').trim());
+            const asMatch = part.match(/^([\s\S]+?)\s+AS\s+([a-zA-Z0-9_]+)$/i);
+            if (asMatch) {
+              const expr = asMatch[1].trim();
+              const alias = asMatch[2].trim();
+              ast.selectCols.push(expr);
+              ast.selectSpecs.push({ expr, outputName: alias });
+            } else {
+              const expr = part.trim();
+              const bare = expr.includes('.') ? expr.split('.')[1] : expr.replace(/^['"]|['"]$/g, '');
+              ast.selectCols.push(expr);
+              ast.selectSpecs.push({ expr, outputName: bare });
+            }
           }
         }
       });
@@ -579,13 +653,19 @@ class CustomJsEngine {
       ast.groupBy = groupMatch[1].split(',').map(s => s.trim());
     }
 
-    // Extract ORDER BY
-    const orderMatch = sql.match(/ORDER BY\s+([a-zA-Z0-9._]+)\s*(ASC|DESC)?/i);
+    // Extract ORDER BY (single or multi-column)
+    const orderMatch = sql.match(/ORDER BY\s+([\s\S]+?)(?=\s+LIMIT|;|$)/i);
     if (orderMatch) {
-      ast.orderBy = {
-        column: orderMatch[1].trim(),
-        dir: orderMatch[2] ? orderMatch[2].toUpperCase() : 'ASC'
-      };
+      const terms = this.splitCsvClause(orderMatch[1].trim());
+      terms.forEach(term => {
+        const parts = term.trim().split(/\s+/);
+        const sortSpec = {
+          column: parts[0].replace(/,+$/, '').trim(),
+          dir: parts[1] ? parts[1].toUpperCase() : 'ASC'
+        };
+        ast.orderByList.push(sortSpec);
+        if (!ast.orderBy) ast.orderBy = sortSpec;
+      });
     }
 
     // Extract LIMIT
@@ -601,8 +681,43 @@ class CustomJsEngine {
     if (!condStr) return true;
 
     // Handle AND combinations
-    if (condStr.includes(' AND ')) {
+    if (/\s+AND\s+/i.test(condStr)) {
       return condStr.split(/\s+AND\s+/i).every(c => this.evalPredicate(c.trim(), tuple));
+    }
+
+    const resolveCol = (colName) => {
+      if (tuple[colName] !== undefined) return tuple[colName];
+      const suffixKey = Object.keys(tuple).find(k => k.endsWith(`.${colName}`));
+      return suffixKey !== undefined ? tuple[suffixKey] : undefined;
+    };
+
+    // Handle '!=' and '<>' comparison before '='
+    const neqMatch = condStr.match(/([a-zA-Z0-9._]+)\s*(!=|<>)\s*(.+)/);
+    if (neqMatch) {
+      const leftCol = neqMatch[1].trim();
+      const rightValRaw = neqMatch[3].trim();
+      const leftVal = resolveCol(leftCol);
+      const rightValCol = resolveCol(rightValRaw);
+      if (rightValCol !== undefined) {
+        return leftVal != rightValCol;
+      }
+      const rightVal = rightValRaw.replace(/^['"]|['"]$/g, '');
+      return leftVal != rightVal;
+    }
+
+    // Handle comparison operators (> < >= <=) before '='
+    const opMatch = condStr.match(/([a-zA-Z0-9._]+)\s*(>=|<=|>|<)\s*([0-9.]+)/);
+    if (opMatch) {
+      const leftCol = opMatch[1].trim();
+      const op = opMatch[2];
+      const numVal = parseFloat(opMatch[3]);
+
+      const rawLeft = resolveCol(leftCol);
+      const leftVal = rawLeft !== undefined ? rawLeft : 0;
+      if (op === '>') return Number(leftVal) > numVal;
+      if (op === '<') return Number(leftVal) < numVal;
+      if (op === '>=') return Number(leftVal) >= numVal;
+      if (op === '<=') return Number(leftVal) <= numVal;
     }
 
     // Handle '=' comparison
@@ -611,10 +726,10 @@ class CustomJsEngine {
       const leftCol = eqMatch[1].trim();
       const rightValRaw = eqMatch[2].trim();
 
-      const leftVal = tuple[leftCol] !== undefined ? tuple[leftCol] : tuple[Object.keys(tuple).find(k => k.endsWith(`.${leftCol}`))];
-      
+      const leftVal = resolveCol(leftCol);
+
       // If right side is a column reference in tuple
-      const rightValCol = tuple[rightValRaw] !== undefined ? tuple[rightValRaw] : tuple[Object.keys(tuple).find(k => k.endsWith(`.${rightValRaw}`))];
+      const rightValCol = resolveCol(rightValRaw);
       if (rightValCol !== undefined) {
         return leftVal == rightValCol;
       }
@@ -624,26 +739,13 @@ class CustomJsEngine {
       return leftVal == rightVal;
     }
 
-    // Handle comparison operators (> < >= <=)
-    const opMatch = condStr.match(/([a-zA-Z0-9._]+)\s*(>=|<=|>|<)\s*([0-9.]+)/);
-    if (opMatch) {
-      const leftCol = opMatch[1].trim();
-      const op = opMatch[2];
-      const numVal = parseFloat(opMatch[3]);
-
-      const leftVal = tuple[leftCol] !== undefined ? tuple[leftCol] : 0;
-      if (op === '>') return Number(leftVal) > numVal;
-      if (op === '<') return Number(leftVal) < numVal;
-      if (op === '>=') return Number(leftVal) >= numVal;
-      if (op === '<=') return Number(leftVal) <= numVal;
-    }
-
     // Handle LIKE operator
     const likeMatch = condStr.match(/([a-zA-Z0-9._]+)\s+LIKE\s+['"](.*?)['"]/i);
     if (likeMatch) {
       const leftCol = likeMatch[1].trim();
       const pattern = likeMatch[2];
-      const leftVal = String(tuple[leftCol] !== undefined ? tuple[leftCol] : (tuple[Object.keys(tuple).find(k => k.endsWith(`.${leftCol}`))] || ''));
+      const rawLeft = resolveCol(leftCol);
+      const leftVal = String(rawLeft !== undefined && rawLeft !== null ? rawLeft : '');
       const escaped = pattern.replace(/[.+^${}()|[\]\\]/g, '\\$&').replace(/%/g, '.*').replace(/_/g, '.');
       const regex = new RegExp(`^${escaped}$`, 'i');
       return regex.test(leftVal);

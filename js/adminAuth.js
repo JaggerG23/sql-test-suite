@@ -1,6 +1,9 @@
 /**
  * Admin Authentication & Security Manager
  * Restricts /index.html Admin Dashboard access to authorized administrators.
+ * Authenticates against POST /api/admin/login on the AWS Lightsail backend (server.py),
+ * with a client-side SHA-256 digest fallback for static servers (e.g. Live Server / GitHub Pages)
+ * so no plaintext password is ever stored in source code.
  */
 
 class AdminAuthManager {
@@ -37,6 +40,7 @@ class AdminAuthManager {
     style.id = 'admin-auth-styles';
     style.textContent = `
       html.admin-locked .app-container,
+      html.admin-verifying .app-container,
       body.admin-locked .app-container,
       body.admin-verifying .app-container {
         display: none !important;
@@ -47,6 +51,7 @@ class AdminAuthManager {
         display: flex !important;
       }
 
+      html.admin-verifying #admin-login-overlay,
       body.admin-verifying #admin-login-overlay,
       body.admin-unlocked #admin-login-overlay,
       .admin-modal-overlay.hidden {
@@ -209,10 +214,13 @@ class AdminAuthManager {
         if (token) {
           if (config.headers instanceof Headers) {
             config.headers.set('X-Admin-Token', token);
+            config.headers.set('Authorization', 'Bearer ' + token);
           } else if (Array.isArray(config.headers)) {
             config.headers.push(['X-Admin-Token', token]);
+            config.headers.push(['Authorization', 'Bearer ' + token]);
           } else {
             config.headers['X-Admin-Token'] = token;
+            config.headers['Authorization'] = 'Bearer ' + token;
           }
         }
       }
@@ -227,7 +235,75 @@ class AdminAuthManager {
     return path.startsWith('/') ? path : `/${path}`;
   }
 
+  async sha256Hex(message) {
+    if (typeof window !== 'undefined' && window.crypto && window.crypto.subtle) {
+      try {
+        const msgBuffer = new TextEncoder().encode(message);
+        const hashBuffer = await window.crypto.subtle.digest('SHA-256', msgBuffer);
+        const hashArray = Array.from(new Uint8Array(hashBuffer));
+        return hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
+      } catch (e) {}
+    }
+    // Pure-JS SHA-256 fallback for non-HTTPS contexts
+    const K = [
+      0x428a2f98, 0x71374491, 0xb5c0fbcf, 0xe9b5dba5, 0x3956c25b, 0x59f111f1, 0x923f82a4, 0xab1c5ed5,
+      0xd807aa98, 0x12835b01, 0x243185be, 0x550c7dc3, 0x72be5d74, 0x80deb1fe, 0x9bdc06a7, 0xc19bf174,
+      0xe49b69c1, 0xefbe4786, 0x0fc19dc6, 0x240ca1cc, 0x2de92c6f, 0x4a7484aa, 0x5cb0a9dc, 0x76f988da,
+      0x983e5152, 0xa831c66d, 0xb00327c8, 0xbf597fc7, 0xc6e00bf3, 0xd5a79147, 0x06ca6351, 0x14292967,
+      0x27b70a85, 0x2e1b2138, 0x4d2c6dfc, 0x53380d13, 0x650a7354, 0x766a0abb, 0x81c2c92e, 0x92722c85,
+      0xa2bfe8a1, 0xa81a664b, 0xc24b8b70, 0xc76c51a3, 0xd192e819, 0xd6990624, 0xf40e3585, 0x106aa070,
+      0x19a4c116, 0x1e376c08, 0x2748774c, 0x34b0bcb5, 0x391c0cb3, 0x4ed8aa4a, 0x5b9cca4f, 0x682e6ff3,
+      0x748f82ee, 0x78a5636f, 0x84c87814, 0x8cc70208, 0x90befffa, 0xa4506ceb, 0xbef9a3f7, 0xc67178f2
+    ];
+    const rotr = (n, x) => (x >>> n) | (x << (32 - n));
+    const bytes = unescape(encodeURIComponent(message));
+    const l = bytes.length * 8;
+    const words = [];
+    for (let i = 0; i < bytes.length; i++) {
+      words[i >> 2] |= (bytes.charCodeAt(i) & 0xff) << (24 - (i % 4) * 8);
+    }
+    words[l >> 5] |= 0x80 << (24 - (l % 32));
+    words[(((l + 64) >> 9) << 4) + 15] = l;
+    let H = [0x6a09e667, 0xbb67ae85, 0x3c6ef372, 0xa54ff53a, 0x510e527f, 0x9b05688c, 0x1f83d9ab, 0x5be0cd19];
+    const W = new Array(64);
+    for (let i = 0; i < words.length; i += 16) {
+      let [a, b, c, d, e, f, g, h] = H;
+      for (let t = 0; t < 64; t++) {
+        if (t < 16) {
+          W[t] = words[i + t] | 0;
+        } else {
+          const s0 = rotr(7, W[t - 15]) ^ rotr(18, W[t - 15]) ^ (W[t - 15] >>> 3);
+          const s1 = rotr(17, W[t - 2]) ^ rotr(19, W[t - 2]) ^ (W[t - 2] >>> 10);
+          W[t] = (W[t - 16] + s0 + W[t - 7] + s1) | 0;
+        }
+        const S1 = rotr(6, e) ^ rotr(11, e) ^ rotr(25, e);
+        const ch = (e & f) ^ (~e & g);
+        const temp1 = (h + S1 + ch + K[t] + W[t]) | 0;
+        const S0 = rotr(2, a) ^ rotr(13, a) ^ rotr(22, a);
+        const maj = (a & b) ^ (a & c) ^ (b & c);
+        const temp2 = (S0 + maj) | 0;
+        h = g; g = f; f = e; e = (d + temp1) | 0;
+        d = c; c = b; b = a; a = (temp1 + temp2) | 0;
+      }
+      H = H.map((v, idx) => (v + [a, b, c, d, e, f, g, h][idx]) | 0);
+    }
+    return H.map(v => (v >>> 0).toString(16).padStart(8, '0')).join('');
+  }
+
+  isValidStaticToken(token) {
+    const validHashes = [
+      '6f6c8bbe7312706026a50495f1be8b9f17f6c74b6d9e6c7035e232f2e5ed81e9',
+      '240be518fabd2724ddb6f04eeb1da5967448d7e831c08c8fa822809f74c720a9'
+    ];
+    return Boolean(token && validHashes.includes(token));
+  }
+
   async checkAuthStatus() {
+    const token = this.getToken();
+    if (!token) {
+      this.lockDashboard();
+      return;
+    }
     try {
       const endpoint = this.getApiUrl('/api/admin/check-auth');
       const res = await fetch(endpoint);
@@ -235,11 +311,10 @@ class AdminAuthManager {
         const text = await res.text();
         let data = null;
         try { data = JSON.parse(text); } catch (e) {}
-        if (data && data.authenticated) {
+        if (data && data.authenticated === true) {
           this.unlockDashboard();
-          // Always ensure telemetry is synced when verified
           if (window.app && window.app.analytics) {
-            window.app.analytics.syncWithDiskStorage().then(() => {
+            window.app.analytics.syncWithDiskStorage(true).then(() => {
               if (typeof window.app.renderAnalyticsDashboard === 'function') {
                 window.app.renderAnalyticsDashboard();
               }
@@ -247,19 +322,19 @@ class AdminAuthManager {
           }
           return;
         } else if (data && data.authenticated === false) {
-          // Server explicitly rejected the token (session expired or server restarted)
           this.setToken(null);
           this.lockDashboard();
           return;
         }
       }
     } catch (e) {
-      // Backend auth check skipped or offline
+      // Static server / offline fallback check below
     }
 
-    if (this.getToken()) {
+    if (this.isValidStaticToken(token)) {
       this.unlockDashboard();
     } else {
+      this.setToken(null);
       this.lockDashboard();
     }
   }
@@ -267,7 +342,7 @@ class AdminAuthManager {
   lockDashboard() {
     if (document.documentElement) {
       document.documentElement.classList.add('admin-locked');
-      document.documentElement.classList.remove('admin-unlocked', 'has-admin-token');
+      document.documentElement.classList.remove('admin-unlocked', 'admin-verifying', 'has-admin-token');
     }
     if (document.body) {
       document.body.classList.add('admin-locked');
@@ -278,7 +353,7 @@ class AdminAuthManager {
 
   unlockDashboard() {
     if (document.documentElement) {
-      document.documentElement.classList.remove('admin-locked');
+      document.documentElement.classList.remove('admin-locked', 'admin-verifying');
       document.documentElement.classList.add('admin-unlocked');
     }
     if (document.body) {
@@ -286,6 +361,15 @@ class AdminAuthManager {
       document.body.classList.add('admin-unlocked');
     }
     this.hideLoginModal();
+    if (typeof window !== 'undefined' && window.app) {
+      if (typeof window.app.populateAdminQuestionGrid === 'function') {
+        window.app.populateAdminQuestionGrid();
+      }
+      const container = document.getElementById('human-challenge-container');
+      if (container && !container.innerHTML.trim() && typeof window.app.loadIncrementalQuestion === 'function') {
+        window.app.loadIncrementalQuestion(window.app.currentQuestionNumber || 1);
+      }
+    }
   }
 
   bindLoginForm(modal = document.getElementById('admin-login-overlay')) {
@@ -443,8 +527,6 @@ class AdminAuthManager {
       submitBtn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Authenticating...';
     }
 
-    const validOfflinePasswords = ['StefiksLabRootPassword', 'admin123'];
-
     try {
       const endpoint = this.getApiUrl('/api/admin/login');
       const response = await fetch(endpoint, {
@@ -458,11 +540,11 @@ class AdminAuthManager {
         let data = null;
         try { data = JSON.parse(text); } catch (e) {}
 
-        if (data && data.status === 'success') {
-          this.setToken(data.token || 'session_active');
+        if (data && data.status === 'success' && data.token) {
+          this.setToken(data.token);
           this.unlockDashboard();
           if (window.app && window.app.analytics) {
-            await window.app.analytics.syncWithDiskStorage();
+            await window.app.analytics.syncWithDiskStorage(true);
             if (typeof window.app.renderAnalyticsDashboard === 'function') {
               window.app.renderAnalyticsDashboard();
             }
@@ -482,40 +564,40 @@ class AdminAuthManager {
         return;
       }
 
-      // If static host returns 404 or backend unavailable, fallback to client passwords
-      if (response.status === 404 || !response.ok) {
-        if (validOfflinePasswords.includes(password)) {
-          this.setToken('static_admin_token');
-          this.unlockDashboard();
-          if (window.app && typeof window.app.renderAnalyticsDashboard === 'function') {
-            window.app.renderAnalyticsDashboard();
-          }
-          return;
-        } else {
-          if (errBadge) {
-            errBadge.textContent = 'Incorrect password. Access denied.';
-            errBadge.style.display = 'block';
-          }
-          passInput.value = '';
-          passInput.focus();
-          return;
-        }
-      }
-    } catch (e) {
-      if (validOfflinePasswords.includes(password)) {
-        this.setToken('static_admin_token');
+      // If running on a static file server (e.g. Live Server port 5500 or GitHub Pages returning 404/405),
+      // verify against SHA-256 digest without exposing any plaintext password in source code
+      const digest = await this.sha256Hex(password);
+      if (this.isValidStaticToken(digest)) {
+        this.setToken(digest);
         this.unlockDashboard();
         if (window.app && typeof window.app.renderAnalyticsDashboard === 'function') {
           window.app.renderAnalyticsDashboard();
         }
-      } else {
-        if (errBadge) {
-          errBadge.textContent = 'Incorrect password. Access denied.';
-          errBadge.style.display = 'block';
-        }
-        passInput.value = '';
-        passInput.focus();
+        return;
       }
+
+      if (errBadge) {
+        errBadge.textContent = 'Incorrect password. Access denied.';
+        errBadge.style.display = 'block';
+      }
+      passInput.value = '';
+      passInput.focus();
+    } catch (e) {
+      const digest = await this.sha256Hex(password);
+      if (this.isValidStaticToken(digest)) {
+        this.setToken(digest);
+        this.unlockDashboard();
+        if (window.app && typeof window.app.renderAnalyticsDashboard === 'function') {
+          window.app.renderAnalyticsDashboard();
+        }
+        return;
+      }
+      if (errBadge) {
+        errBadge.textContent = 'Incorrect password. Access denied.';
+        errBadge.style.display = 'block';
+      }
+      passInput.value = '';
+      passInput.focus();
     } finally {
       if (submitBtn) {
         submitBtn.disabled = false;

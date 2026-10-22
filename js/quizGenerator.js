@@ -1,8 +1,9 @@
 /**
- * Quiz Question Generator
- * Generates randomized, beginner-friendly JavaScript code containing query manipulation, loops, counters, and status flags.
- * Features 4 beginner-friendly string query manipulation patterns interleaved with benign JavaScript counters and loops.
- * Ensures generated JS code is valid, generates a valid SQL query, has clean double-newline block spacing, and stays strictly under 28 lines total.
+ * Quiz Question & Multiple-Choice Option Generator
+ * Generates deterministic host-language code snippets (Python and JavaScript) and
+ * 4 multiple-choice answer options (A-D) for the 4 Practice Questions (T1-T4) and
+ * 25 Official Study Questions (Q1-Q25) across the 4 experimental groups
+ * (Google SQL Pipe + Python/JavaScript, Quorum + Python/JavaScript) and 5 code structures.
  */
 class QuizGenerator {
   constructor(seed = 42) {
@@ -29,7 +30,7 @@ class QuizGenerator {
     const dialectSql = dialectManager ? dialectManager.formatQueryToDialect(rawSql, currentDialect.id) : rawSql;
 
     const isQuestion1 = (qNum === 1 || (rawSql && rawSql.includes('FROM orders JOIN users ON orders.user_id = users.id')));
-    const isStudy2to30 = (!isQuestion1 && qNum !== null && qNum !== undefined && parseInt(qNum, 10) >= 2 && parseInt(qNum, 10) <= 30);
+    const isStudy2to25 = (!isQuestion1 && qNum !== null && qNum !== undefined && parseInt(qNum, 10) >= 2 && parseInt(qNum, 10) <= 25);
 
     let codeSnippet;
     let shuffled;
@@ -42,8 +43,8 @@ class QuizGenerator {
         : `let counter = 0;\nfor (let i = 0; i < 6; i++) {\n  counter++;\n}\n\nconst query = \`\n${dialectSql}\n\`;\n\nconst resultTable = db.execute(query);`;
 
       const options = this.generateTableOptions(groundTruthResult, schema, rawSql, null, 1, hostLanguage);
-      shuffled = this.shuffleAndAssignKeys(options);
-    } else if (isStudy2to30) {
+      shuffled = this.shuffleAndAssignKeys(options, (this.seed || 42) + 97);
+    } else if (isStudy2to25) {
       const qGenerator = (typeof window !== 'undefined' && window.app && window.app.queryGenerator)
         ? window.app.queryGenerator
         : new QueryGenerator();
@@ -51,11 +52,11 @@ class QuizGenerator {
 
       codeSnippet = this.generateStudyCodeSnippet(questionSpec, schema, dialectManager, currentDialect, hostLanguage);
       const options = this.generateTableOptions(groundTruthResult, schema, rawSql, questionSpec, parseInt(qNum, 10), hostLanguage);
-      shuffled = this.shuffleAndAssignKeys(options);
+      shuffled = this.shuffleAndAssignKeys(options, (this.seed || 42) + (parseInt(qNum, 10) || 2) * 97);
     } else {
       codeSnippet = this.generateCodeSnippet(rawSql, schema, dialectSql, hostLanguage, qNum, dialectManager, currentDialect);
       const options = this.generateTableOptions(groundTruthResult, schema, rawSql, null, qNum, hostLanguage);
-      shuffled = this.shuffleAndAssignKeys(options);
+      shuffled = this.shuffleAndAssignKeys(options, (this.seed || 42) + (parseInt(qNum, 10) || 0) * 97);
     }
 
     const questionType = questionSpec
@@ -66,12 +67,12 @@ class QuizGenerator {
           ? 'Relational Join Transformation'
           : 'Filter & Projection Transformation');
 
-    const maxQConfig = (typeof window !== 'undefined' && window.studyConfig && typeof window.studyConfig.getMaxQuestions === 'function') ? window.studyConfig.getMaxQuestions() : 20;
-    const totalQDisplay = (qNum && parseInt(qNum, 10) > maxQConfig) ? 30 : maxQConfig;
+    const maxQConfig = (typeof window !== 'undefined' && window.studyConfig && typeof window.studyConfig.getMaxQuestions === 'function') ? window.studyConfig.getMaxQuestions() : 25;
+    const totalQDisplay = maxQConfig;
 
     return {
       type: questionType,
-      title: isStudy2to30 ? `Embedded Query (Study Question ${qNum} / ${totalQDisplay})` : 'Embedded Query Execution Question',
+      title: isStudy2to25 ? `Embedded Query (Study Question ${qNum} / ${totalQDisplay})` : 'Embedded Query Execution Question',
       prompt: 'Select the correct final table output:',
       codeSnippet: codeSnippet,
       jsCode: codeSnippet, // For backward compatibility with existing views
@@ -141,7 +142,7 @@ class QuizGenerator {
         }
       ];
 
-      const shuffled = this.shuffleAndAssignKeys(rawOptions);
+      const shuffled = this.shuffleAndAssignKeys(rawOptions, (this.seed || 42) + (trainingQNum || 1) * 31);
 
       return {
         type: 'Training: Interface Orientation',
@@ -204,7 +205,7 @@ class QuizGenerator {
         }
       ];
 
-      const shuffled = this.shuffleAndAssignKeys(rawOptions);
+      const shuffled = this.shuffleAndAssignKeys(rawOptions, (this.seed || 42) + (trainingQNum || 1) * 31);
 
       return {
         type: 'Training: Schema Identification',
@@ -269,7 +270,7 @@ class QuizGenerator {
         }
       ];
 
-      const shuffled = this.shuffleAndAssignKeys(rawOptions);
+      const shuffled = this.shuffleAndAssignKeys(rawOptions, (this.seed || 42) + (trainingQNum || 1) * 31);
 
       return {
         type: 'Training: Column Identification',
@@ -351,7 +352,7 @@ class QuizGenerator {
         }
       ];
 
-      const shuffled = this.shuffleAndAssignKeys(rawOptions);
+      const shuffled = this.shuffleAndAssignKeys(rawOptions, (this.seed || 42) + (trainingQNum || 1) * 31);
 
       return {
         type: 'Training: Query Execution',
@@ -386,7 +387,7 @@ class QuizGenerator {
         : `let counter = 0;\nfor (let i = 0; i < 6; i++) {\n  counter++;\n}\n\nconst query = \`\n${dialectSql}\n\`;\n\nconst resultTable = db.execute(query);`;
     }
 
-    if (qNum !== null && qNum !== undefined && parseInt(qNum, 10) >= 2 && parseInt(qNum, 10) <= 30) {
+    if (qNum !== null && qNum !== undefined && parseInt(qNum, 10) >= 2 && parseInt(qNum, 10) <= 25) {
       const qGenerator = (typeof window !== 'undefined' && window.app && window.app.queryGenerator)
         ? window.app.queryGenerator
         : new QueryGenerator();
@@ -441,7 +442,7 @@ class QuizGenerator {
       return blocks.join('\n\n');
     }
 
-    // Study Question 2 & 22 (Structure 2): Simple query, use python/javascript to delete it, new query, execute
+    // Study Question 2 & 22 (Structure 2): Simple query, clear query variable (del in Python / null in JS), new query, execute
     if (spec.manipulation === 'delete_query' || spec.qNum === 2 || spec.qNum === 22) {
       if (isPython) {
         blocks.push(`query = """\n${initialDialectSql}\n"""`);
@@ -450,7 +451,7 @@ class QuizGenerator {
         blocks.push(`result_table = db.execute(query)`);
       } else {
         blocks.push(`let query = \`\n${initialDialectSql}\n\`;`);
-        blocks.push(`delete query;`);
+        blocks.push(`query = null;`);
         blocks.push(`query = \`\n${finalDialectSql}\n\`;`);
         blocks.push(`const resultTable = db.execute(query);`);
       }
@@ -523,38 +524,28 @@ class QuizGenerator {
       return blocks.join('\n\n');
     }
 
-    // Study Question 11 & 27 (Structure 4: [Query], [HostLang], [Execute]): JOIN query, HLL defines 4 strings
-    if (spec.manipulation === 'unused_column_strings' || spec.qNum === 11 || spec.qNum === 27) {
+    // Study Question 11 (Structure 4: [Query], [HostLang], [Execute]): JOIN query, HLL defines 4 strings
+    if (spec.manipulation === 'unused_column_strings' || spec.qNum === 11) {
       if (isPython) {
         blocks.push(`query = """\n${finalDialectSql}\n"""`);
-        if (spec.qNum === 27) {
-          blocks.push(`col_amount = "amount"\ncol_customer = "customer_name"\ncol_status = "status"\ncol_notes = "notes"`);
-        } else {
-          blocks.push(`col_title = "title"\ncol_category = "category_name"\ncol_status = "status"\ncol_notes = "notes"`);
-        }
+        blocks.push(`col_title = "title"\ncol_category = "category_name"\ncol_status = "status"\ncol_notes = "notes"`);
         blocks.push(`result_table = db.execute(query)`);
       } else {
         blocks.push(`const query = \`\n${finalDialectSql}\n\`;`);
-        if (spec.qNum === 27) {
-          blocks.push(`let colAmount = "amount";\nlet colCustomer = "customer_name";\nlet colStatus = "status";\nlet colNotes = "notes";`);
-        } else {
-          blocks.push(`let colTitle = "title";\nlet colCategory = "category_name";\nlet colStatus = "status";\nlet colNotes = "notes";`);
-        }
+        blocks.push(`let colTitle = "title";\nlet colCategory = "category_name";\nlet colStatus = "status";\nlet colNotes = "notes";`);
         blocks.push(`const resultTable = db.execute(query);`);
       }
       return blocks.join('\n\n');
     }
 
-    // Study Question 13 & 30 (Structure 2: [Query], [HostLang], [Query], [Execute]):
+    // Study Question 13 (Structure 2: [Query], [HostLang], [Query], [Execute]):
     // Initial query; HLL string manipulation modifies query;
     // but Query 2 completely overwrites query, and is executed.
-    if (spec.manipulation === 'severe_query_override' || spec.qNum === 13 || spec.qNum === 30) {
+    if (spec.manipulation === 'severe_query_override' || spec.qNum === 13) {
       const isQuorum = (dialectId === 'quorum');
       if (isPython) {
         blocks.push(`query = """\n${initialDialectSql}\n"""`);
-        if (spec.qNum === 30) {
-          blocks.push(`query = query.replace("reviews", "products")\nquery = query.replace("score", "rating")\nquery = query.replace("COUNT(*) AS review_count", "title, price")`);
-        } else if (isQuorum) {
+        if (isQuorum) {
           blocks.push(`query = query.replace('"orders"', '"users"')\nquery = query.replace('"amount > 15"', '"id <= 3"')\nquery = query.replace('query:AddColumn("SUM(amount)", "sum_amt")', 'query:AddColumn("id")\\nquery:AddColumn("name")')\nquery = query.replace('query:AddColumn("AVG(amount)", "avg_amt")', 'query:AddColumn("rating")')`);
         } else {
           blocks.push(`query = query.replace("orders", "users")\nquery = query.replace("amount > 15", "id <= 3")\nquery = query.replace("SUM(amount) AS sum_amt, AVG(amount) AS avg_amt", "id, name, rating")`);
@@ -563,9 +554,7 @@ class QuizGenerator {
         blocks.push(`result_table = db.execute(query)`);
       } else {
         blocks.push(`let query = \`\n${initialDialectSql}\n\`;`);
-        if (spec.qNum === 30) {
-          blocks.push(`query = query.replace("reviews", "products");\nquery = query.replace("score", "rating");\nquery = query.replace("COUNT(*) AS review_count", "title, price");`);
-        } else if (isQuorum) {
+        if (isQuorum) {
           blocks.push(`query = query.replace('"orders"', '"users"');\nquery = query.replace('"amount > 15"', '"id <= 3"');\nquery = query.replace('query:AddColumn("SUM(amount)", "sum_amt")', 'query:AddColumn("id")\\nquery:AddColumn("name")');\nquery = query.replace('query:AddColumn("AVG(amount)", "avg_amt")', 'query:AddColumn("rating")');`);
         } else {
           blocks.push(`query = query.replace("orders", "users");\nquery = query.replace("amount > 15", "id <= 3");\nquery = query.replace("SUM(amount) AS sum_amt, AVG(amount) AS avg_amt", "id, name, rating");`);
@@ -596,7 +585,7 @@ class QuizGenerator {
       return blocks.join('\n\n');
     }
 
-    // Study Question 6 (Structure 5): Query 1, Execute Query 1, HostLang, Query 2, Delete Query 2
+    // Study Question 6 (Structure 5): Query 1, Execute Query 1, HostLang loop, Query 2, clear Query 2 (del in Python / null in JS)
     if (spec.manipulation === 'delete_second_query' || spec.qNum === 6) {
       if (isPython) {
         blocks.push(`query = """\n${initialDialectSql}\n"""`);
@@ -609,13 +598,13 @@ class QuizGenerator {
         blocks.push(`const resultTable = db.execute(query);`);
         blocks.push(`let syncCheckpoints = ["checkpoint_1", "checkpoint_2"];\nlet syncProgress = 0;\nfor (let cp of syncCheckpoints) {\n  syncProgress++;\n}`);
         blocks.push(`query = \`\n${finalDialectSql}\n\`;`);
-        blocks.push(`delete query;`);
+        blocks.push(`query = null;`);
       }
       return blocks.join('\n\n');
     }
 
-    // Study Question 7 & 29 (Structure 5): Make second query the first query, inspect query in host lang, delete second execute
-    if (spec.manipulation === 'delete_second_execute' || spec.qNum === 7 || spec.qNum === 29) {
+    // Study Question 7 (Structure 5): Query 1 (SUM(price) by category_id), Execute Query 1, HostLang clause check, Query 2 without second execute
+    if (spec.manipulation === 'delete_second_execute' || spec.qNum === 7) {
       if (isPython) {
         blocks.push(`query = """\n${initialDialectSql}\n"""`);
         blocks.push(`result_table = db.execute(query)`);
@@ -764,32 +753,18 @@ class QuizGenerator {
       return blocks.join('\n\n');
     }
 
-    // Study Question 14 & 28 (Structure 3: [HostLang], [Query], [HostLang], [Execute]):
+    // Study Question 14 (Structure 3: [HostLang], [Query], [HostLang], [Execute]):
     // Uses keywords from the query in the surrounding HLL code
-    if (spec.manipulation === 'keywords_hll_confuse' || spec.qNum === 14 || spec.qNum === 28) {
-      if (spec.qNum === 28) {
-        if (isPython) {
-          blocks.push(`category_filter = [1, 2, 3]\nprice_floor = 25\navg_benchmark = round(sum([30.5, 45.2]) / 2, 2)`);
-          blocks.push(`query = """\n${finalDialectSql}\n"""`);
-          blocks.push(`group_key = "category_id"\nprice_sum = sum([26.0, 34.0])\navg_price = round(price_sum / 2, 2)`);
-          blocks.push(`result_table = db.execute(query)`);
-        } else {
-          blocks.push(`let categoryFilter = [1, 2, 3];\nlet priceFloor = 25;\nlet avgBenchmark = Math.round((30.5 + 45.2) / 2);`);
-          blocks.push(`const query = \`\n${finalDialectSql}\n\`;`);
-          blocks.push(`let groupKey = "category_id";\nlet priceSum = [26.0, 34.0].reduce((s, p) => s + p, 0);\nlet avgPrice = Math.round(priceSum / 2);`);
-          blocks.push(`const resultTable = db.execute(query);`);
-        }
-        return blocks.join('\n\n');
-      }
+    if (spec.manipulation === 'keywords_hll_confuse' || spec.qNum === 14) {
       if (isPython) {
         blocks.push(`status_checks = ["PENDING", "COMPLETED"]\nlike_match = "status LIKE 'COMP%'"\nsum_amount = sum([120.45, 80.55])\nround_target = round(sum_amount, 2)`);
         blocks.push(`query = """\n${finalDialectSql}\n"""`);
         blocks.push(`group_status = "PENDING"\namount_sum = sum([45.20, 54.80])\nrounded_total = round(amount_sum, 2)`);
         blocks.push(`result_table = db.execute(query)`);
       } else {
-        blocks.push(`let statusChecks = ["PENDING", "COMPLETED"];\nlet likeMatch = "status LIKE 'COMP%'";\nlet sumAmount = [120.45, 80.55].reduce((sum, amount) => sum + amount, 0);\nlet roundTarget = Math.round(sumAmount);`);
+        blocks.push(`let statusChecks = ["PENDING", "COMPLETED"];\nlet likeMatch = "status LIKE 'COMP%'";\nlet sumAmount = [120.45, 80.55].reduce((sum, amount) => sum + amount, 0);\nlet roundTarget = Number(sumAmount.toFixed(2));`);
         blocks.push(`const query = \`\n${finalDialectSql}\n\`;`);
-        blocks.push(`let groupStatus = "PENDING";\nlet amountSum = [45.20, 54.80].reduce((sum, amount) => sum + amount, 0);\nlet roundedTotal = Math.round(amountSum);`);
+        blocks.push(`let groupStatus = "PENDING";\nlet amountSum = [45.20, 54.80].reduce((sum, amount) => sum + amount, 0);\nlet roundedTotal = Number(amountSum.toFixed(2));`);
         blocks.push(`const resultTable = db.execute(query);`);
       }
       return blocks.join('\n\n');
@@ -1165,8 +1140,8 @@ class QuizGenerator {
       return null;
     };
 
-    // Questions 21-30 specific distractors (Structures: 21->2, 22->4, 23->5, 24->1, 25->3, 26->1, 27->4, 28->3, 29->5, 30->2)
-    if (qNum >= 21 && qNum <= 30) {
+    // Questions 21-25 specific distractors (Structures: 21->1, 22->2, 23->3, 24->4, 25->5)
+    if (qNum >= 21 && qNum <= 25) {
       const qDistractors = [];
 
       const uTable = (schema && schema.tables) ? (schema.tables.find(t => t.name === 'users') || schema.tables[0]) : null;
@@ -1192,146 +1167,71 @@ class QuizGenerator {
       };
 
       if (qNum === 21) {
-        // Distractor 1 (Option A in prompt): Assumes rows are sorted by products.price in descending order.
+        // Distractor 1: Assumes rows are sorted by products.price in descending order.
         const d1Sql = `SELECT ${pName}.id, ${pName}.price FROM ${pName} JOIN ${cName} ON ${pName}.category_id = ${cName}.id WHERE ${pName}.id <= 6 ORDER BY ${pName}.price DESC;`;
         const d1Res = runSqlWithMeta(d1Sql);
         if (d1Res) addOption(d1Res.columns, d1Res.rows, 'Assumes rows are sorted by products.price in descending order.');
 
-        // Distractor 2 (Option C in prompt): Unfiltered data (WHERE clause conditions were not applied).
+        // Distractor 2: Unfiltered data (WHERE clause conditions were not applied).
         const d2Sql = `SELECT ${pName}.id, ${pName}.price FROM ${pName} JOIN ${cName} ON ${pName}.category_id = ${cName}.id ORDER BY ${pName}.id ASC;`;
         const d2Res = runSqlWithMeta(d2Sql);
         if (d2Res) addOption(d2Res.columns, d2Res.rows, 'Unfiltered data (WHERE clause conditions were not applied).');
 
-        // Distractor 3 (Option D in prompt): Assumes rows are sorted by products.id in descending order.
+        // Distractor 3: Assumes rows are sorted by products.id in descending order.
         const d3Sql = `SELECT ${pName}.id, ${pName}.price FROM ${pName} JOIN ${cName} ON ${pName}.category_id = ${cName}.id WHERE ${pName}.id <= 6 ORDER BY ${pName}.id DESC;`;
         const d3Res = runSqlWithMeta(d3Sql);
         if (d3Res) addOption(d3Res.columns, d3Res.rows, 'Assumes rows are sorted by products.id in descending order.');
       } else if (qNum === 22) {
-        // Distractor 1 (Option A in prompt): Unfiltered data (WHERE clause conditions were not applied).
+        // Distractor 1: Unfiltered data (WHERE clause conditions were not applied).
         const d1Sql = `SELECT id, title FROM ${pName} ORDER BY id ASC;`;
         const d1Res = runSqlWithMeta(d1Sql);
         if (d1Res) addOption(d1Res.columns, d1Res.rows, 'Unfiltered data (WHERE clause conditions were not applied).');
 
-        // Distractor 2 (Option B in prompt): Inverted sort order.
+        // Distractor 2: Inverted sort order.
         const d2Sql = `SELECT id, title FROM ${pName} WHERE id > 3 ORDER BY id DESC;`;
         const d2Res = runSqlWithMeta(d2Sql);
         if (d2Res) addOption(d2Res.columns, d2Res.rows, 'Inverted sort order.');
 
-        // Distractor 3 (Option D in prompt): Evaluates the first query which was deleted prior to execution.
+        // Distractor 3: Evaluates the first query which was cleared prior to execution.
         const d3Sql = `SELECT id, title FROM ${pName} WHERE id <= 4 ORDER BY id ASC;`;
         const d3Res = runSqlWithMeta(d3Sql);
-        if (d3Res) addOption(d3Res.columns, d3Res.rows, 'Evaluates the first query which was deleted prior to execution.');
+        if (d3Res) addOption(d3Res.columns, d3Res.rows, 'Evaluates the first query which was cleared prior to execution.');
       } else if (qNum === 23) {
-        // Distractor 1 (Option B in prompt): Assumes the host-language arithmetic calculation ((40 * 3) + 15 = 135) is returned.
+        // Distractor 1: Assumes the host-language arithmetic calculation ((40 * 3) + 15 = 135) is returned.
         const mathRows = [[135]];
         addOption(['avg_price'], mathRows, 'Assumes the host-language arithmetic calculation ((40 * 3) + 15 = 135) is returned.');
 
-        // Distractor 2 (Option C in prompt): Assumes the unexecuted SQL query string is returned as text output.
+        // Distractor 2: Assumes the unexecuted SQL query string is returned as text output.
         const queryText = (questionSpec && questionSpec.finalSql) ? questionSpec.finalSql : `SELECT AVG(price) AS avg_price FROM ${pName};`;
         addOption(['query'], [[queryText]], 'Assumes the unexecuted SQL query string is returned as text output.');
 
-        // Distractor 3 (Option D in prompt): Assumes the modified string variable formatted_sql on line 2 is returned as text output.
-        addOption(['formatted_sql'], [['SELECT * FROM products']], 'Assumes the modified string variable formatted_sql on line 2 is returned as text output.');
+        // Distractor 3: Assumes the modified string variable formatted_sql is returned as text output.
+        addOption(['formatted_sql'], [['SELECT * FROM products']], 'Assumes the modified string variable formatted_sql is returned as text output.');
       } else if (qNum === 24) {
-        // Distractor 1 (Option A in prompt): Unfiltered table rows without applying the LIKE filter.
+        // Distractor 1: Unfiltered table rows without applying the LIKE filter.
         const d1Sql = `SELECT id, status FROM ${oName} ORDER BY id ASC;`;
         const d1Res = runSqlWithMeta(d1Sql);
         if (d1Res) addOption(d1Res.columns, d1Res.rows, 'Unfiltered table rows without applying the LIKE filter.');
 
-        // Distractor 2 (Option C in prompt): Assumes query.replace("P%", "S%") mutated the query in-place.
+        // Distractor 2: Assumes query.replace("P%", "S%") mutated the query in-place.
         const d2Sql = `SELECT id, status FROM ${oName} WHERE status LIKE 'S%' ORDER BY id ASC;`;
         const d2Res = runSqlWithMeta(d2Sql);
         if (d2Res) addOption(d2Res.columns, d2Res.rows, 'Assumes query.replace("P%", "S%") mutated the query in-place.');
 
-        // Distractor 3 (Option D in prompt): Evaluates an alternative LIKE pattern (statuses starting with C).
+        // Distractor 3: Evaluates an alternative LIKE pattern (statuses starting with C).
         const d3Sql = `SELECT id, status FROM ${oName} WHERE status LIKE 'C%' ORDER BY id ASC;`;
         const d3Res = runSqlWithMeta(d3Sql);
         if (d3Res) addOption(d3Res.columns, d3Res.rows, 'Evaluates an alternative LIKE pattern (statuses starting with C).');
       } else if (qNum === 25) {
-        // Distractor 1 (Option B in prompt): Assumes the aggregate expression string "MAX(score)" is returned instead of the evaluated maximum numeric score.
+        // Distractor 1: Assumes the aggregate expression string "MAX(score)" is returned instead of the evaluated maximum numeric score.
         addOption(['max_score'], [['MAX(score)']], 'Assumes the aggregate expression string "MAX(score)" is returned instead of the evaluated maximum numeric score.');
 
-        // Distractor 2 (Option C in prompt): Assumes the first unexecuted SQL query string is returned as text output.
+        // Distractor 2: Assumes the first unexecuted SQL query string is returned as text output.
         const initQueryText = (questionSpec && questionSpec.initialSql) ? questionSpec.initialSql : `SELECT AVG(price) AS avg_price FROM ${pName};`;
         addOption(['query'], [[initQueryText]], 'Assumes the first unexecuted SQL query string is returned as text output.');
 
-        // Distractor 3 (Option D in prompt): Assumes the host-language string concatenation ("MaxRating") is returned as the table output.
+        // Distractor 3: Assumes the host-language string concatenation ("MaxRating") is returned as the table output.
         addOption(['metric_label'], [['MaxRating']], 'Assumes the host-language string concatenation ("MaxRating") is returned as the table output.');
-      } else if (qNum === 26) {
-        // Distractor 1: Evaluates only the High tier branch
-        const d1Sql = `SELECT id, title, price, 'High' AS tier FROM ${pName} WHERE price >= 120;`;
-        const d1Res = runSqlWithMeta(d1Sql);
-        if (d1Res) addOption(d1Res.columns, d1Res.rows, 'Evaluates only the first SELECT branch (High tier) without the UNION.');
-
-        // Distractor 2: Evaluates only the Low tier branch
-        const d2Sql = `SELECT id, title, price, 'Low' AS tier FROM ${pName} WHERE price <= 40;`;
-        const d2Res = runSqlWithMeta(d2Sql);
-        if (d2Res) addOption(d2Res.columns, d2Res.rows, 'Evaluates only the second SELECT branch (Low tier) without the UNION.');
-
-        // Distractor 3: Evaluates Mid tier
-        const d3Sql = `SELECT id, title, price, 'Mid' AS tier FROM ${pName} WHERE price > 40 AND price < 120 LIMIT 10;`;
-        const d3Res = runSqlWithMeta(d3Sql);
-        if (d3Res) addOption(d3Res.columns, d3Res.rows, 'Filters for mid-range products (Mid tier) rather than combining High and Low tiers.');
-      } else if (qNum === 27) {
-        // Distractor 1: Sorted by amount DESC instead of id ASC
-        const d1Sql = `SELECT ${oName}.id, ${oName}.amount, ${oName}.status, ${uName}.name AS customer_name FROM ${oName} JOIN ${uName} ON ${oName}.user_id = ${uName}.id WHERE ${oName}.amount > 80 ORDER BY ${oName}.amount DESC LIMIT 4;`;
-        const d1Res = runSqlWithMeta(d1Sql);
-        if (d1Res) addOption(d1Res.columns, d1Res.rows, 'Sorts orders by amount descending (ORDER BY amount DESC) instead of id ASC.');
-
-        // Distractor 2: Inverted amount condition (amount <= 80)
-        const d2Sql = `SELECT ${oName}.id, ${oName}.amount, ${oName}.status, ${uName}.name AS customer_name FROM ${oName} JOIN ${uName} ON ${oName}.user_id = ${uName}.id WHERE ${oName}.amount <= 80 ORDER BY ${oName}.id ASC LIMIT 4;`;
-        const d2Res = runSqlWithMeta(d2Sql);
-        if (d2Res) addOption(d2Res.columns, d2Res.rows, 'Inverts the filter condition to select orders with amount <= 80.');
-
-        // Distractor 3: Filter by status = 'COMPLETED'
-        const d3Sql = `SELECT ${oName}.id, ${oName}.amount, ${oName}.status, ${uName}.name AS customer_name FROM ${oName} JOIN ${uName} ON ${oName}.user_id = ${uName}.id WHERE ${oName}.status = 'COMPLETED' ORDER BY ${oName}.id ASC LIMIT 4;`;
-        const d3Res = runSqlWithMeta(d3Sql);
-        if (d3Res) addOption(d3Res.columns, d3Res.rows, 'Filters orders by status = "COMPLETED" instead of amount threshold.');
-      } else if (qNum === 28) {
-        // Distractor 1: SUM(price) instead of AVG(price) due to HLL price_sum
-        const d1Sql = `SELECT category_id, ROUND(SUM(price), 2) AS avg_price FROM ${pName} WHERE price > 25 GROUP BY category_id ORDER BY avg_price DESC;`;
-        const d1Res = runSqlWithMeta(d1Sql);
-        if (d1Res) addOption(d1Res.columns, d1Res.rows, 'Computes total price sum (SUM) instead of average (AVG), influenced by host language variable names.');
-
-        // Distractor 2: MIN(price) instead of AVG(price)
-        const d2Sql = `SELECT category_id, ROUND(MIN(price), 2) AS avg_price FROM ${pName} WHERE price > 25 GROUP BY category_id ORDER BY avg_price DESC;`;
-        const d2Res = runSqlWithMeta(d2Sql);
-        if (d2Res) addOption(d2Res.columns, d2Res.rows, 'Computes minimum category price (MIN) instead of average (AVG).');
-
-        // Distractor 3: Sorted by avg_price ASC instead of DESC
-        const d3Sql = `SELECT category_id, ROUND(AVG(price), 2) AS avg_price FROM ${pName} WHERE price > 25 GROUP BY category_id ORDER BY avg_price ASC;`;
-        const d3Res = runSqlWithMeta(d3Sql);
-        if (d3Res) addOption(d3Res.columns, d3Res.rows, 'Sorts categories in ascending order of average price (ORDER BY avg_price ASC).');
-      } else if (qNum === 29) {
-        // Distractor 1: Assumes second query was executed (amount > 100)
-        const d1Sql = `SELECT status, COUNT(*) AS count_orders, ROUND(AVG(amount), 2) AS avg_amount FROM ${oName} WHERE amount > 100 GROUP BY status ORDER BY count_orders DESC;`;
-        const d1Res = runSqlWithMeta(d1Sql);
-        if (d1Res) addOption(d1Res.columns, d1Res.rows, 'Assumes the second query (with amount > 100) was executed.');
-
-        // Distractor 2: Total amount (SUM) instead of AVG
-        const d2Sql = `SELECT status, COUNT(*) AS count_orders, ROUND(SUM(amount), 2) AS avg_amount FROM ${oName} GROUP BY status ORDER BY count_orders DESC;`;
-        const d2Res = runSqlWithMeta(d2Sql);
-        if (d2Res) addOption(d2Res.columns, d2Res.rows, 'Computes total amount (SUM) instead of average amount (AVG).');
-
-        // Distractor 3: Sorted by avg_amount ASC
-        const d3Sql = `SELECT status, COUNT(*) AS count_orders, ROUND(AVG(amount), 2) AS avg_amount FROM ${oName} GROUP BY status ORDER BY count_orders ASC;`;
-        const d3Res = runSqlWithMeta(d3Sql);
-        if (d3Res) addOption(d3Res.columns, d3Res.rows, 'Sorts status groups by average amount ascending (ORDER BY avg_amount ASC).');
-      } else if (qNum === 30) {
-        // Distractor 1: Evaluates Query 1 on reviews
-        const d1Sql = `SELECT score, COUNT(*) AS review_count FROM ${rName} GROUP BY score ORDER BY score DESC;`;
-        const d1Res = runSqlWithMeta(d1Sql);
-        if (d1Res) addOption(d1Res.columns, d1Res.rows, 'Assumes the first query on reviews was executed before being overwritten.');
-
-        // Distractor 2: Evaluates inactive users (is_active = 0)
-        const d2Sql = `SELECT id, name, age FROM ${uName} WHERE is_active = 0 ORDER BY age ASC LIMIT 4;`;
-        const d2Res = runSqlWithMeta(d2Sql);
-        if (d2Res) addOption(d2Res.columns, d2Res.rows, 'Assumes inactive users (is_active = 0) were queried.');
-
-        // Distractor 3: Sorted by age DESC
-        const d3Sql = `SELECT id, name, age FROM ${uName} WHERE is_active = 1 ORDER BY age DESC LIMIT 4;`;
-        const d3Res = runSqlWithMeta(d3Sql);
-        if (d3Res) addOption(d3Res.columns, d3Res.rows, 'Sorts users by age descending (ORDER BY age DESC) instead of ascending.');
       }
 
       // Safe fallback if any distractor was somehow missed
@@ -1357,15 +1257,17 @@ class QuizGenerator {
       const pTable = (schema && schema.tables) ? (schema.tables.find(t => t.name === 'products') || schema.tables[0]) : null;
       const pName = pTable ? pTable.name : 'products';
 
-      // Distractor 1 (Initial query trap: ignored HLL & omitted stock column): Evaluates initial query before HLL manipulation
-      const d1Sql = `SELECT category_id, COUNT(*) AS count_items, ROUND(AVG(price), 2) AS avg_price FROM ${pName} WHERE price > 15 GROUP BY category_id ORDER BY avg_price DESC;`;
+      // Distractor 1 (Initial query trap: ignored HLL filter injection): Evaluates initialSql before HLL manipulation
+      const d1Sql = (questionSpec && questionSpec.initialSql)
+        ? questionSpec.initialSql
+        : `SELECT category_id, stock, COUNT(*) AS count_items, ROUND(AVG(price), 2) AS avg_price FROM ${pName} WHERE price > 15 GROUP BY category_id, stock ORDER BY avg_price DESC;`;
       let d1Res = runSqlWithMeta(d1Sql);
       if (d1Res && d1Res.rows && d1Res.rows.length > 0 && !areRowsEqual(d1Res.rows, correctRows)) {
         q19Distractors.push({
           columns: d1Res.columns,
           rows: d1Res.rows,
           isCorrect: false,
-          explanation: 'Evaluates the initial query grouped by category_id (ordered by avg_price DESC), omitting the stock column and assuming the host language filter injection was not applied.'
+          explanation: 'Evaluates the initial query before the host language filter (stock > 20) was injected.'
         });
       }
 
@@ -1424,7 +1326,7 @@ class QuizGenerator {
           columns: d1Res.columns,
           rows: d1Res.rows,
           isCorrect: false,
-          explanation: 'Groups results by order status (GROUP BY status) instead of user_id.'
+          explanation: 'Groups results by order status (GROUP BY status) across all orders instead of filtering by amount >= 180 and grouping by user_id.'
         });
       }
 
@@ -1440,8 +1342,8 @@ class QuizGenerator {
         });
       }
 
-      // Distractor 3 (Sort direction trap: ORDER BY total_spent ASC across all orders instead of DESC)
-      const d3Sql = `SELECT user_id, COUNT(*) AS order_count, ROUND(SUM(amount), 2) AS total_spent FROM ${oName} GROUP BY user_id ORDER BY total_spent ASC LIMIT 4;`;
+      // Distractor 3 (Sort direction trap: ORDER BY total_spent ASC instead of DESC)
+      const d3Sql = `SELECT user_id, COUNT(*) AS order_count, ROUND(SUM(amount), 2) AS total_spent FROM ${oName} WHERE amount >= 180 GROUP BY user_id ORDER BY total_spent ASC LIMIT 4;`;
       let d3Res = runSqlWithMeta(d3Sql);
       if (d3Res && d3Res.rows && d3Res.rows.length > 0 && !areRowsEqual(d3Res.rows, correctRows) && !q20Distractors.some(d => areRowsEqual(d.rows, d3Res.rows))) {
         q20Distractors.push({
@@ -1655,11 +1557,11 @@ class QuizGenerator {
 
     // Candidate 1: Result of initialSql (Structure 2 / manipulation distractor)
     if (questionSpec && questionSpec.initialSql && questionSpec.initialSql !== questionSpec.finalSql && qNum !== 5 && questionSpec.qNum !== 5 && questionSpec.manipulation !== 'omit_first_execute') {
-      const initRows = runSql(questionSpec.initialSql);
-      if (initRows && initRows.length > 0 && !areRowsEqual(initRows, correctRows)) {
+      const initRes = runSqlWithMeta(questionSpec.initialSql);
+      if (initRes && initRes.rows && initRes.rows.length > 0 && !areRowsEqual(initRes.rows, correctRows)) {
         distractorCandidates.push({
-          columns: correctColumns,
-          rows: initRows.slice(0, 30),
+          columns: (initRes.columns && initRes.columns.length > 0) ? initRes.columns : correctColumns,
+          rows: initRes.rows.slice(0, 30),
           isCorrect: false,
           explanation: questionSpec.manipulation === 'delete_query'
             ? 'Evaluates the first query which was deleted prior to execution.'
@@ -1694,8 +1596,8 @@ class QuizGenerator {
       }
     }
 
-    // Question 8 & 23 specific distractors (distinct, non-overlapping options)
-    if (qNum === 8 || qNum === 23 || (questionSpec && (questionSpec.manipulation === 'append_function' || questionSpec.qNum === 8 || questionSpec.qNum === 23))) {
+    // Question 8 specific distractors (distinct, non-overlapping options)
+    if (qNum === 8 || (questionSpec && (questionSpec.manipulation === 'append_function' || questionSpec.qNum === 8))) {
       const uTable = (schema && schema.tables) ? (schema.tables.find(t => t.name === 'users') || schema.tables[0]) : null;
       const uTableName = uTable ? uTable.name : 'users';
 
@@ -1794,8 +1696,8 @@ class QuizGenerator {
       }
     }
 
-    // Question 9 & 24 specific distractors (tests aggregate with SUM and AVG rewritten by HLL to order by order_id DESC)
-    if (qNum === 9 || qNum === 24 || (questionSpec && (questionSpec.manipulation === 'rewrite_order_desc' || questionSpec.qNum === 9 || questionSpec.qNum === 24))) {
+    // Question 9 specific distractors (tests aggregate with SUM and AVG rewritten by HLL to order by order_id DESC)
+    if (qNum === 9 || (questionSpec && (questionSpec.manipulation === 'rewrite_order_desc' || questionSpec.qNum === 9))) {
       const rTable = (schema && schema.tables) ? (schema.tables.find(t => t.name === 'reviews') || schema.tables[0]) : null;
       const rTableName = rTable ? rTable.name : 'reviews';
       const q9Distractors = [];
@@ -1896,8 +1798,8 @@ class QuizGenerator {
       }
     }
 
-    // Question 10 & 25 specific distractors (tests comparing orders quantity count vs products ID count)
-    if (qNum === 10 || qNum === 25 || (questionSpec && (questionSpec.manipulation === 'compare_counts_select_output' || questionSpec.manipulation === 'compare_counts_join_avg' || questionSpec.qNum === 10 || questionSpec.qNum === 25))) {
+    // Question 10 specific distractors (tests comparing orders quantity count vs products ID count)
+    if (qNum === 10 || (questionSpec && (questionSpec.manipulation === 'compare_counts_select_output' || questionSpec.manipulation === 'compare_counts_join_avg' || questionSpec.qNum === 10))) {
       const oTable = (schema && schema.tables) ? (schema.tables.find(t => t.name === 'orders') || schema.tables[0]) : null;
       const pTable = (schema && schema.tables) ? (schema.tables.find(t => t.name === 'products') || schema.tables[1]) : null;
       const oTableName = oTable ? oTable.name : 'orders';
@@ -1961,8 +1863,8 @@ class QuizGenerator {
       }
     }
 
-    // Question 11 & 26 specific distractors (tests JOIN on products & categories with wrong column projections)
-    if (qNum === 11 || qNum === 26 || (questionSpec && (questionSpec.qNum === 11 || questionSpec.qNum === 26 || questionSpec.manipulation === 'unused_column_strings' || (questionSpec.operators && questionSpec.operators.includes('JOIN') && questionSpec.structure === 4)))) {
+    // Question 11 specific distractors (tests JOIN on products & categories with wrong column projections)
+    if (qNum === 11 || (questionSpec && (questionSpec.qNum === 11 || questionSpec.manipulation === 'unused_column_strings' || (questionSpec.operators && questionSpec.operators.includes('JOIN') && questionSpec.structure === 4)))) {
       const pTable = (schema && schema.tables) ? (schema.tables.find(t => t.name === 'products') || schema.tables[0]) : null;
       const cTable = (schema && schema.tables) ? (schema.tables.find(t => t.name === 'categories') || schema.tables[1]) : null;
       const pTableName = pTable ? pTable.name : 'products';
@@ -2043,8 +1945,8 @@ class QuizGenerator {
       }
     }
 
-    // Question 12 & 27 specific distractors (tests JOIN + UNION across orders and users)
-    if (qNum === 12 || qNum === 27 || (questionSpec && (questionSpec.qNum === 12 || questionSpec.qNum === 27 || questionSpec.manipulation === 'join_union'))) {
+    // Question 12 specific distractors (tests JOIN + UNION across orders and users)
+    if (qNum === 12 || (questionSpec && (questionSpec.qNum === 12 || questionSpec.manipulation === 'join_union'))) {
       const oTable = (schema && schema.tables) ? (schema.tables.find(t => t.name === 'orders') || schema.tables[0]) : null;
       const uTable = (schema && schema.tables) ? (schema.tables.find(t => t.name === 'users') || schema.tables[1]) : null;
       const oTableName = oTable ? oTable.name : 'orders';
@@ -2099,8 +2001,8 @@ class QuizGenerator {
       }
     }
 
-    // Question 13 & 28 specific distractors (tests Structure 2 override: Query 1 vs HLL modified query vs Query 2 products)
-    if (qNum === 13 || qNum === 28 || (questionSpec && (questionSpec.manipulation === 'severe_query_override' || questionSpec.qNum === 13 || questionSpec.qNum === 28))) {
+    // Question 13 specific distractors (tests Structure 2 override: Query 1 vs HLL modified query vs Query 2 products)
+    if (qNum === 13 || (questionSpec && (questionSpec.manipulation === 'severe_query_override' || questionSpec.qNum === 13))) {
       const oTable = (schema && schema.tables) ? (schema.tables.find(t => t.name === 'orders') || schema.tables[0]) : null;
       const uTable = (schema && schema.tables) ? (schema.tables.find(t => t.name === 'users') || schema.tables[1]) : null;
       const pTable = (schema && schema.tables) ? (schema.tables.find(t => t.name === 'products') || schema.tables[2] || schema.tables[0]) : null;
@@ -2169,8 +2071,8 @@ class QuizGenerator {
       }
     }
 
-    // Question 14 & 29 specific distractors (tests LIKE, ROUND, and SUM on orders)
-    if (qNum === 14 || qNum === 29 || (questionSpec && (questionSpec.qNum === 14 || questionSpec.qNum === 29 || questionSpec.manipulation === 'keywords_hll_confuse' || (questionSpec.operators && questionSpec.operators.includes('ROUND'))))) {
+    // Question 14 specific distractors (tests LIKE, ROUND, and SUM on orders)
+    if (qNum === 14 || (questionSpec && (questionSpec.qNum === 14 || questionSpec.manipulation === 'keywords_hll_confuse' || (questionSpec.operators && questionSpec.operators.includes('ROUND'))))) {
       const q14Distractors = [];
 
       // Distractor 1 (Incorrect LIKE match): Assumes LIKE 'COMP%' matched non-matching status 'PENDING'
@@ -2240,8 +2142,8 @@ class QuizGenerator {
       return options;
     }
 
-    // Question 15 & 30 specific distractors (tests tracking the modified query 1 instead of overwritten query 2)
-    if (qNum === 15 || qNum === 30 || (questionSpec && (questionSpec.manipulation === 'overwrite_query' || questionSpec.qNum === 15 || questionSpec.qNum === 30))) {
+    // Question 15 specific distractors (tests tracking the modified query 1 instead of overwritten query 2)
+    if (qNum === 15 || (questionSpec && (questionSpec.manipulation === 'overwrite_query' || questionSpec.qNum === 15))) {
       const oTable = (schema && schema.tables) ? (schema.tables.find(t => t.name === 'orders') || schema.tables[0]) : null;
       const oTableName = oTable ? oTable.name : 'orders';
 
@@ -2282,9 +2184,9 @@ class QuizGenerator {
       }
     }
 
-    // Question 6 & 21 specific distractors (tests if participant assumed query 2 was executed instead of deleted)
+    // Question 6 specific distractors (tests if participant assumed query 2 was executed instead of deleted)
     // Wrong solutions include extra columns (4-5 columns) and shuffled sort orders to easily distinguish them from correct answer
-    if (qNum === 6 || qNum === 21 || (questionSpec && (questionSpec.manipulation === 'delete_second_query' || questionSpec.qNum === 6 || questionSpec.qNum === 21))) {
+    if (qNum === 6 || (questionSpec && (questionSpec.manipulation === 'delete_second_query' || questionSpec.qNum === 6))) {
       const pTable = (schema && schema.tables) ? (schema.tables.find(t => t.name === 'products') || schema.tables[0]) : null;
       const pTableName = pTable ? pTable.name : 'products';
 
@@ -2402,8 +2304,8 @@ class QuizGenerator {
       return options;
     }
 
-    // Question 7 & 22 specific distractors
-    if (qNum === 7 || qNum === 22 || (questionSpec && (questionSpec.manipulation === 'delete_second_execute' || questionSpec.qNum === 7 || questionSpec.qNum === 22))) {
+    // Question 7 specific distractors
+    if (qNum === 7 || (questionSpec && (questionSpec.manipulation === 'delete_second_execute' || questionSpec.qNum === 7))) {
       const pTable = (schema && schema.tables) ? (schema.tables.find(t => t.name === 'products') || schema.tables[0]) : null;
       const pTableName = pTable ? pTable.name : 'products';
 
@@ -2891,10 +2793,17 @@ class QuizGenerator {
     ];
   }
 
-  shuffleAndAssignKeys(options) {
+  shuffleAndAssignKeys(options, qSeed = null) {
     const arr = [...options];
+    let s = ((qSeed !== null && qSeed !== undefined ? Number(qSeed) : Number(this.seed)) || 42) >>> 0;
+    const nextRand = () => {
+      s = (s + 0x6D2B79F5) | 0;
+      let t = Math.imul(s ^ (s >>> 15), 1 | s);
+      t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+      return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+    };
     for (let i = arr.length - 1; i > 0; i--) {
-      const j = Math.floor(Math.random() * (i + 1));
+      const j = Math.floor(nextRand() * (i + 1));
       [arr[i], arr[j]] = [arr[j], arr[i]];
     }
     const correctIndex = arr.findIndex(o => o.isCorrect);

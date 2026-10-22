@@ -7,6 +7,7 @@
   <!-- Critical Anti-FOUC & Admin Security Guard: Hide admin dashboard before initial paint -->
   <style id="admin-critical-auth-css">
     html.admin-locked .app-container,
+    html.admin-verifying .app-container,
     body.admin-locked .app-container,
     body.admin-verifying .app-container {
       display: none !important;
@@ -15,6 +16,7 @@
     body.admin-locked #admin-login-overlay {
       display: flex !important;
     }
+    html.admin-verifying #admin-login-overlay,
     body.admin-verifying #admin-login-overlay,
     body.admin-unlocked #admin-login-overlay,
     #admin-login-overlay.hidden {
@@ -28,7 +30,7 @@
         var token = sessionStorage.getItem('admin_session_token');
         if (token) {
           document.documentElement.classList.remove('admin-locked');
-          document.documentElement.classList.add('has-admin-token');
+          document.documentElement.classList.add('admin-verifying', 'has-admin-token');
         } else {
           document.documentElement.classList.add('admin-locked');
         }
@@ -44,7 +46,7 @@
   <!-- FontAwesome Icons -->
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
   <!-- CSS -->
-  <link rel="stylesheet" href="styles.css?v=32">
+  <link rel="stylesheet" href="styles.css?v=33">
   <!-- sql.js (SQLite WASM) library -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/sql.js/1.8.0/sql-wasm.js"></script>
 </head>
@@ -128,7 +130,7 @@
       <div class="header-actions" style="display: flex; align-items: center; gap: 8px; flex-wrap: nowrap; white-space: nowrap;">
         <div class="counter-pill d-flex align-center gap-1" style="background: rgba(99, 102, 241, 0.12); border: 1.5px solid rgba(99, 102, 241, 0.4); padding: 5px 12px; border-radius: 6px; white-space: nowrap; box-shadow: 0 0 10px rgba(99, 102, 241, 0.15);">
           <span style="font-size: 11.5px; color: var(--text-main); font-weight: 600; white-space: nowrap;">
-            <i class="fa-solid fa-list-check text-primary"></i> Answered: <strong id="nav-questions-counter" style="color: var(--color-primary); font-size: 12px; margin-left: 2px;">0 / 20</strong>
+            <i class="fa-solid fa-list-check text-primary"></i> Answered: <strong id="nav-questions-counter" style="color: var(--color-primary); font-size: 12px; margin-left: 2px;">0 / 25</strong>
           </span>
         </div>
 
@@ -240,7 +242,7 @@
                         <option value="training:4">Practice Q4 (T4)</option>
                         <option value="training_complete">Screen After Training (Ready for Study)</option>
                       </optgroup>
-                      <optgroup label="3. Official Study (20 Questions - Q21–30 Disabled)" id="jump-select-study-group">
+                      <optgroup label="3. Official Study (25 Questions)" id="jump-select-study-group">
                         <option value="1">Question 1 (Block 1.1)</option>
                         <option value="2">Question 2 (Block 1.2)</option>
                         <option value="3">Question 3 (Block 1.3)</option>
@@ -266,11 +268,6 @@
                         <option value="23">Question 23 (Block 4.5)</option>
                         <option value="24">Question 24 (Block 4.6)</option>
                         <option value="25">Question 25 (Block 5.1)</option>
-                        <option value="26">Question 26 (Block 5.2)</option>
-                        <option value="27">Question 27 (Block 5.3)</option>
-                        <option value="28">Question 28 (Block 5.4)</option>
-                        <option value="29">Question 29 (Block 5.5)</option>
-                        <option value="30">Question 30 (Block 5.6)</option>
                       </optgroup>
                       <optgroup label="4. Post-Study Evaluation">
                         <option value="final_thoughts">Final Thoughts (Likert Scales)</option>
@@ -327,21 +324,8 @@
 
                   <!-- 3. Official Study (Questions Grid) -->
                   <div style="font-size:10px;font-weight:700;color:#a78bfa;text-transform:uppercase;letter-spacing:0.5px;margin:10px 0 5px 0; display:flex; align-items:center; justify-content:space-between;">
-                    <span id="admin-study-header-label"><i class="fa-solid fa-flask"></i> 3. Official Study (<span id="admin-study-header-count">20 Questions</span>)</span>
-                    <span id="admin-study-header-blocks" style="font-size:9.5px;color:rgba(167,139,250,0.6);">3.3 Blocks &times; 6 (20 Total)</span>
-                  </div>
-
-                  <!-- Button to Enable/Disable Questions 21-30 in Admin Dashboard -->
-                  <div style="margin:6px 0 8px 0;">
-                    <button type="button" id="btn-toggle-q21-30" class="btn" style="width:100%; display:flex; align-items:center; justify-content:space-between; padding:7px 11px; font-size:11px; font-weight:600; border-radius:6px; background:rgba(239, 68, 68, 0.14); border:1.5px solid rgba(239, 68, 68, 0.45); color:#fca5a5; cursor:pointer; transition:all 0.15s ease;" title="Click to enable or disable Questions 21–30 in the official study">
-                      <span style="display:flex; align-items:center; gap:6px;">
-                        <i id="btn-toggle-q21-30-icon" class="fa-solid fa-toggle-off" style="color:#ef4444; font-size:13px;"></i>
-                        <span>Questions 21–30:</span>
-                      </span>
-                      <span id="btn-toggle-q21-30-badge" style="background:#ef4444; color:#ffffff; font-size:10px; padding:2px 7px; border-radius:10px; font-weight:700;">
-                        Disabled (20 Total)
-                      </span>
-                    </button>
+                    <span id="admin-study-header-label"><i class="fa-solid fa-flask"></i> 3. Official Study (<span id="admin-study-header-count">25 Questions</span>)</span>
+                    <span id="admin-study-header-blocks" style="font-size:9.5px;color:rgba(167,139,250,0.6);">25 Total</span>
                   </div>
 
                   <!-- Block row labels -->
@@ -358,10 +342,10 @@
                   </div>
 
                   <div id="admin-question-grid" style="display:grid;grid-template-columns:44px 1fr;gap:4px;align-items:center;">
-                    <!-- Populated dynamically by app.js (5 rows × label + 6 cells) -->
+                    <!-- Populated dynamically by app.js (Questions 1–25) -->
                   </div>
 
-                  <div id="admin-study-footer-note" style="margin-top:6px;font-size:10px;color:rgba(255,255,255,0.3);text-align:right;">20 questions active (Questions 21–30 disabled)</div>
+                  <div id="admin-study-footer-note" style="margin-top:6px;font-size:10px;color:rgba(255,255,255,0.3);text-align:right;">25 questions active (Questions 1–25)</div>
 
                   <!-- 4. Post-Study Evaluation & Completion -->
                   <div style="font-size:10px;font-weight:700;color:#34d399;text-transform:uppercase;letter-spacing:0.5px;margin:10px 0 5px 0; display:flex; align-items:center; justify-content:space-between;">
@@ -431,15 +415,6 @@
                   </label>
                   <input type="checkbox" id="toggle-participant-reset-btn" style="cursor: pointer; accent-color: var(--color-danger); width: 15px; height: 15px;" checked title="Toggle whether participants see the 'Reset Test' button">
                   <span id="label-participant-reset-btn-status" style="font-weight: 700; font-size: 11px; color: #ef4444; margin-left: 2px;">Visible</span>
-                </div>
-
-                <!-- Toggle Questions 21-30 in Analytics Header -->
-                <div class="d-flex align-center gap-1" id="q21-30-analytics-container" style="background: rgba(139, 92, 246, 0.12); border: 1px solid rgba(139, 92, 246, 0.35); padding: 4px 10px; border-radius: 6px; font-size: 11.5px; color: #ddd6fe; display: inline-flex; align-items: center; gap: 6px;">
-                  <label for="toggle-q21-30-analytics" style="margin: 0; cursor: pointer; font-weight: 600; display: flex; align-items: center; gap: 5px; user-select: none;">
-                    <i class="fa-solid fa-layer-group"></i> Questions 21–30:
-                  </label>
-                  <input type="checkbox" id="toggle-q21-30-analytics" style="cursor: pointer; accent-color: #8b5cf6; width: 15px; height: 15px;" title="Toggle Questions 21–30 on or off (30 questions vs 20 questions)">
-                  <span id="label-q21-30-status-analytics" style="font-weight: 700; font-size: 11px; color: #ef4444; margin-left: 2px;">Disabled (20 Qs)</span>
                 </div>
 
                 <button id="btn-import-telemetry" class="btn btn-sm btn-primary"><i class="fa-solid fa-file-import"></i> Import Data</button>
@@ -552,17 +527,17 @@
   </div>
 
   <!-- JS Module Scripts -->
-  <script src="js/config.js?v=24"></script>
-  <script src="js/adminAuth.js?v=24"></script>
-  <script src="js/schemaGenerator.js?v=22"></script>
-  <script src="js/queryGenerator.js?v=45"></script>
-  <script src="js/syntaxDialects.js?v=27"></script>
-  <script src="js/quizGenerator.js?v=67"></script>
-  <script src="js/participantAnalytics.js?v=30"></script>
-  <script src="js/engines/sqliteEngine.js?v=21"></script>
-  <script src="js/engines/customJsEngine.js?v=26"></script>
-  <script src="js/engines/optimizerEngine.js?v=23"></script>
-  <script src="js/humanResolver.js?v=63"></script>
-  <script src="js/app.js?v=42"></script>
+  <script src="js/config.js?v=26"></script>
+  <script src="js/adminAuth.js?v=26"></script>
+  <script src="js/schemaGenerator.js?v=23"></script>
+  <script src="js/queryGenerator.js?v=47"></script>
+  <script src="js/syntaxDialects.js?v=28"></script>
+  <script src="js/quizGenerator.js?v=69"></script>
+  <script src="js/participantAnalytics.js?v=31"></script>
+  <script src="js/engines/sqliteEngine.js?v=22"></script>
+  <script src="js/engines/customJsEngine.js?v=27"></script>
+  <script src="js/engines/optimizerEngine.js?v=24"></script>
+  <script src="js/humanResolver.js?v=65"></script>
+  <script src="js/app.js?v=44"></script>
 </body>
 </html>

@@ -1,5 +1,8 @@
 /**
  * Main Application Orchestrator
+ * Coordinates the 25-Question SQL Readability Study (4 Practice Questions T1-T4 +
+ * 25 Official Study Questions Q1-Q25 across 4 experimental groups), multi-engine
+ * query evaluation, and the Admin Dashboard analytics & preview interface.
  */
 window.ENABLE_DEV_RESET = true;
 
@@ -105,13 +108,6 @@ class QueryExperimentApp {
     const demo = this.analytics.getDemographics(targetPid);
     if (!demo) return false;
 
-    // Anyone that visits /index.html before, during, or after the study must be required to fill out demographics again
-    const indexVisitedAt = parseInt(localStorage.getItem('sql_study_index_visited_at') || '0', 10);
-    const demoSavedAt = demo.savedAtTimestamp || (demo.timestamp ? new Date(demo.timestamp).getTime() : 0);
-    if (indexVisitedAt > 0 && demoSavedAt < indexVisitedAt) {
-      return false;
-    }
-
     const age = parseInt(demo.age, 10);
     if (isNaN(age) || age < 18) return false;
     const hasGender = demo.gender !== undefined && demo.gender !== null && demo.gender !== '';
@@ -151,17 +147,6 @@ class QueryExperimentApp {
     } catch (e) {
       console.warn('SQLite WASM init deferred:', e);
     }
-    const isIndex = typeof window !== 'undefined' && window.location && (!window.location.pathname.toLowerCase().includes('participant'));
-    if (isIndex) {
-      const visitTime = Date.now();
-      localStorage.setItem('sql_study_index_visited_at', visitTime.toString());
-      if (this.analytics && this.analytics.channel) {
-        try {
-          this.analytics.channel.postMessage({ type: 'INDEX_HTML_VISITED', timestamp: visitTime });
-        } catch (e) {}
-      }
-    }
-
     // If new participant session requested, ensure consent state starts fresh
     if (typeof window !== 'undefined' && window.location && window.location.search) {
       try {
@@ -362,12 +347,10 @@ class QueryExperimentApp {
       });
     }
 
-    // Participant View button: fresh participant session and forced demographics
+    // Participant View button: fresh participant session
     const btnParticipantView = document.getElementById('btn-participant-view-link');
     if (btnParticipantView) {
       btnParticipantView.addEventListener('click', () => {
-        const now = Date.now();
-        localStorage.setItem('sql_study_index_visited_at', now.toString());
         if (this.analytics) {
           const newPid = 'user_' + Math.random().toString(36).substring(2, 9) + Math.random().toString(36).substring(2, 5);
           this.analytics.setParticipantId(newPid);
@@ -415,71 +398,27 @@ class QueryExperimentApp {
   getMaxStudyQuestions() {
     return (window.studyConfig && typeof window.studyConfig.getMaxQuestions === 'function')
       ? window.studyConfig.getMaxQuestions()
-      : 20;
+      : 25;
   }
 
   updateQuestionJumpDropdown() {
     const group = document.getElementById('jump-select-study-group');
     if (!group) return;
-    const isEnabled = window.studyConfig ? window.studyConfig.isQuestions21to30Enabled() : false;
-    group.label = isEnabled ? '3. Official Study (30 Questions)' : '3. Official Study (20 Questions - Q21–30 Disabled)';
+    group.label = '3. Official Study (25 Questions)';
 
-    for (let q = 21; q <= 30; q++) {
+    for (let q = 21; q <= 25; q++) {
       const opt = group.querySelector(`option[value="${q}"]`);
       if (opt) {
         const b = Math.floor((q - 1) / 6) + 1;
         const v = ((q - 1) % 6) + 1;
-        if (isEnabled) {
-          opt.textContent = `Question ${q} (Block ${b}.${v})`;
-          opt.style.color = '';
-        } else {
-          opt.textContent = `Question ${q} (Block ${b}.${v} - Disabled)`;
-          opt.style.color = 'rgba(255,255,255,0.35)';
-        }
+        opt.textContent = `Question ${q} (Block ${b}.${v})`;
+        opt.style.color = '';
       }
     }
   }
 
   updateQ21to30ToggleUI() {
-    const isEnabled = window.studyConfig ? window.studyConfig.isQuestions21to30Enabled() : false;
-    const maxQ = isEnabled ? 30 : 20;
-
-    // 1. Sidebar Button (#btn-toggle-q21-30)
-    const btnToggle = document.getElementById('btn-toggle-q21-30');
-    const iconToggle = document.getElementById('btn-toggle-q21-30-icon');
-    const badgeToggle = document.getElementById('btn-toggle-q21-30-badge');
-    if (btnToggle && iconToggle && badgeToggle) {
-      if (isEnabled) {
-        btnToggle.style.background = 'rgba(139, 92, 246, 0.16)';
-        btnToggle.style.borderColor = 'rgba(139, 92, 246, 0.45)';
-        btnToggle.style.color = '#ddd6fe';
-        iconToggle.className = 'fa-solid fa-toggle-on';
-        iconToggle.style.color = '#a78bfa';
-        badgeToggle.style.background = '#8b5cf6';
-        badgeToggle.textContent = 'Enabled (30 Total)';
-      } else {
-        btnToggle.style.background = 'rgba(239, 68, 68, 0.14)';
-        btnToggle.style.borderColor = 'rgba(239, 68, 68, 0.45)';
-        btnToggle.style.color = '#fca5a5';
-        iconToggle.className = 'fa-solid fa-toggle-off';
-        iconToggle.style.color = '#ef4444';
-        badgeToggle.style.background = '#ef4444';
-        badgeToggle.textContent = 'Disabled (20 Total)';
-      }
-    }
-
-    // 2. Analytics Toolbar Checkbox (#toggle-q21-30-analytics)
-    const checkAnalytics = document.getElementById('toggle-q21-30-analytics');
-    const labelAnalytics = document.getElementById('label-q21-30-status-analytics');
-    if (checkAnalytics) {
-      checkAnalytics.checked = isEnabled;
-    }
-    if (labelAnalytics) {
-      labelAnalytics.textContent = isEnabled ? 'Enabled (30 Qs)' : 'Disabled (20 Qs)';
-      labelAnalytics.style.color = isEnabled ? '#a78bfa' : '#ef4444';
-    }
-
-    // 3. Section 3 Header & Footnote
+    const maxQ = 25;
     const headerCount = document.getElementById('admin-study-header-count');
     const headerBlocks = document.getElementById('admin-study-header-blocks');
     const footerNote = document.getElementById('admin-study-footer-note');
@@ -487,20 +426,16 @@ class QueryExperimentApp {
       headerCount.textContent = `${maxQ} Questions`;
     }
     if (headerBlocks) {
-      headerBlocks.textContent = isEnabled ? '5 Blocks \u00d7 6' : '3.3 Blocks \u00d7 6 (20 Total)';
+      headerBlocks.textContent = '25 Total';
     }
     if (footerNote) {
-      footerNote.textContent = isEnabled
-        ? '5 blocks \u00d7 6 questions = 30 total'
-        : '20 questions active (Questions 21–30 disabled)';
+      footerNote.textContent = '25 questions active (Questions 1–25)';
     }
-
-    // 4. Update Dropdown and Grid
     this.updateQuestionJumpDropdown();
   }
 
   /**
-   * Populates the 6×10 question grid in the admin sidebar.
+   * Populates the 25-question grid in the admin sidebar.
    * Called once after the first question loads; also re-called on question change
    * to highlight the currently active cell.
    */
@@ -525,38 +460,27 @@ class QueryExperimentApp {
       }
     }
 
-    // 2. Populate Official Study Questions Grid
+    // 2. Populate Official Study Questions Grid (Questions 1–25)
     const grid = document.getElementById('admin-question-grid');
     if (grid) {
       grid.innerHTML = '';
-      const isQ21_30Enabled = window.studyConfig ? window.studyConfig.isQuestions21to30Enabled() : false;
 
-      // Render 5 block rows, each with a block label + 6 question buttons
       for (let blockIdx = 1; blockIdx <= 5; blockIdx++) {
-        // Block label cell
-        const isBlock5 = blockIdx === 5;
-        const isBlockDisabled = !isQ21_30Enabled && isBlock5;
         const label = document.createElement('div');
-        label.style.cssText = `font-size:9px;font-weight:700;text-align:right;padding-right:6px;padding-top:4px;white-space:nowrap;color:${isBlockDisabled ? 'rgba(255,255,255,0.15)' : 'rgba(255,255,255,0.3)'};`;
+        label.style.cssText = 'font-size:9px;font-weight:700;text-align:right;padding-right:6px;padding-top:4px;white-space:nowrap;color:rgba(255,255,255,0.3);';
         label.textContent = `Blk ${blockIdx}`;
-        if (isBlockDisabled) {
-          label.title = `Block ${blockIdx} (Questions 25–30 Disabled in Study)`;
-        }
         grid.appendChild(label);
 
-        // 6-cell inner grid
         const row = document.createElement('div');
         row.style.cssText = 'display:grid;grid-template-columns:repeat(6,1fr);gap:4px;';
 
         for (let v = 1; v <= 6; v++) {
           const qNum = (blockIdx - 1) * 6 + v;
-          const isQDisabled = !isQ21_30Enabled && qNum >= 21;
+          if (qNum > 25) break;
           const btn = document.createElement('button');
           btn.id = `admin-qgrid-btn-${qNum}`;
-          btn.className = isQDisabled ? 'admin-qgrid-btn q-disabled' : 'admin-qgrid-btn';
-          btn.title = isQDisabled
-            ? `Q${qNum} — Block ${blockIdx}, variation ${v} (Disabled in Study)`
-            : `Q${qNum} — Block ${blockIdx}, variation ${v}`;
+          btn.className = 'admin-qgrid-btn';
+          btn.title = `Q${qNum} — Block ${blockIdx}, variation ${v}`;
           btn.textContent = qNum;
           btn.dataset.qnum = qNum;
 
@@ -565,7 +489,6 @@ class QueryExperimentApp {
             btn.classList.add('active');
           }
 
-          // Native CSS classes handle hover (:hover:not(.active)) and active state
           row.appendChild(btn);
         }
         grid.appendChild(row);
@@ -617,15 +540,13 @@ class QueryExperimentApp {
       }
     }
 
-    // 1. Study Questions 1-30
-    const isQ21_30Enabled = window.studyConfig ? window.studyConfig.isQuestions21to30Enabled() : false;
-    for (let q = 1; q <= 30; q++) {
+    // 1. Study Questions 1-25
+    for (let q = 1; q <= 25; q++) {
       const btn = document.getElementById(`admin-qgrid-btn-${q}`);
       if (!btn) continue;
       const isActive = (studyQNum !== null && q === studyQNum);
-      const isQDisabled = !isQ21_30Enabled && q >= 21;
       btn.classList.toggle('active', isActive);
-      btn.classList.toggle('q-disabled', isQDisabled);
+      btn.classList.remove('q-disabled');
 
       btn.style.border = '';
       btn.style.background = '';
@@ -834,21 +755,21 @@ class QueryExperimentApp {
         this.applyAdminGroup(btn.dataset.groupId);
       }
 
-      // Question grid clicks (Q1-Q30)
+      // Question grid clicks (Q1-Q25)
       const qBtn = e.target.closest('[id^="admin-qgrid-btn-"]');
       if (qBtn && qBtn.dataset.qnum) {
         const qNum = parseInt(qBtn.dataset.qnum, 10);
-        if (qNum >= 1 && qNum <= 30) {
+        if (qNum >= 1 && qNum <= 25) {
           this.syncAdminQuestionGrid(qNum);
           this.loadIncrementalQuestion(qNum);
         }
       }
 
-      // Practice Training Question clicks (T1-T5)
+      // Practice Training Question clicks (T1-T4)
       const trainBtn = e.target.closest('[data-train-num]');
       if (trainBtn) {
         const tNum = parseInt(trainBtn.dataset.trainNum, 10);
-        if (tNum >= 1 && tNum <= 5) {
+        if (tNum >= 1 && tNum <= 4) {
           this.syncAdminQuestionGrid(`training:${tNum}`);
           this.loadIncrementalQuestion(`training:${tNum}`);
         }
@@ -969,7 +890,7 @@ class QueryExperimentApp {
     optTrainDone.textContent = '🏁 Training: Completed Notice';
     select.appendChild(optTrainDone);
 
-    for (let qNum = 1; qNum <= 30; qNum++) {
+    for (let qNum = 1; qNum <= 25; qNum++) {
       const bIdx = Math.floor((qNum - 1) / 6) + 1;
       const vIdx = ((qNum - 1) % 6) + 1;
       const opt = document.createElement('option');
@@ -1181,13 +1102,13 @@ class QueryExperimentApp {
       return;
     }
 
-    const qNum = Math.max(1, Math.min(30, parseInt(targetQNum, 10) || 1));
+    const qNum = Math.max(1, Math.min(25, parseInt(targetQNum, 10) || 1));
     this.currentQuestionNumber = qNum;
 
     const select = document.getElementById('question-jump-select');
     if (select) select.value = qNum;
 
-    const qIndex = qNum - 1; // 0 to 29
+    const qIndex = qNum - 1; // 0 to 24
     const blockIndex = Math.floor(qIndex / 6);
     const blockSeed = this.seed + blockIndex * 137;
     const variationIndex = qIndex % 6;
@@ -1275,7 +1196,7 @@ class QueryExperimentApp {
     } else if (cur === 'thank_you') {
       await this.loadIncrementalQuestion('thank_you');
     } else {
-      const maxQ = this.isParticipantView() ? this.getMaxStudyQuestions() : 30;
+      const maxQ = this.isParticipantView() ? this.getMaxStudyQuestions() : 25;
       const num = parseInt(cur, 10) || 1;
       if (num >= maxQ) {
         await this.loadIncrementalQuestion('final_thoughts');
@@ -1292,7 +1213,7 @@ class QueryExperimentApp {
     } else if (cur === 'extra_credit') {
       await this.loadIncrementalQuestion('final_thoughts');
     } else if (cur === 'final_thoughts') {
-      const maxQ = this.isParticipantView() ? this.getMaxStudyQuestions() : 30;
+      const maxQ = this.isParticipantView() ? this.getMaxStudyQuestions() : 25;
       await this.loadIncrementalQuestion(maxQ);
     } else if (cur === 1 || cur === '1') {
       await this.loadIncrementalQuestion('training_complete');
@@ -1383,25 +1304,6 @@ class QueryExperimentApp {
     if (e3Cost && engineNum === 3) e3Cost.innerHTML = detailText || 'No cost analysis available';
   }
 
-  formatCostAnalysis(costAnalysis) {
-    if (!costAnalysis || !costAnalysis.planSteps) {
-      return '<div class="p-2 text-muted fs-xs">No cost metrics available.</div>';
-    }
-    return `
-      <div class="cost-summary mb-2 p-1" style="background: rgba(0,0,0,0.2); border-radius: 4px; font-size: 11px;">
-        <strong>Total Cost Score:</strong> <span class="badge badge-accent">${costAnalysis.costScore || 0}</span>
-      </div>
-      <div class="cost-steps" style="font-size: 10.5px;">
-        ${(costAnalysis.planSteps || []).map(step => `
-          <div class="cost-step-item mb-1 p-1" style="border-bottom: 1px solid rgba(255,255,255,0.05);">
-            <div class="d-flex justify-between"><strong>${step.phase}</strong> <span class="text-accent">${step.strategy}</span></div>
-            <div class="text-muted fs-xs">${step.desc || ''}</div>
-          </div>
-        `).join('')}
-      </div>
-    `;
-  }
-
   renderDifferentialComparison(r1, r2, r3) {
     const badge = document.getElementById('diff-status-badge');
     const body = document.getElementById('diff-summary-body');
@@ -1444,7 +1346,7 @@ class QueryExperimentApp {
   }
 
   async runBatchTestSuite() {
-    const count = parseInt(document.getElementById('cfg-batch-count').value, 10) || 20;
+    const count = parseInt(document.getElementById('cfg-batch-count').value, 10) || 25;
     const progressBadge = document.getElementById('batch-progress-text');
     const tbody = document.getElementById('batch-results-tbody');
 
@@ -1718,7 +1620,9 @@ class QueryExperimentApp {
     if (btnExtraCredit) {
       btnExtraCredit.addEventListener('click', async () => {
         try {
-          const resp = await fetch('/api/admin/download-extra-credit-emails');
+          const token = (window.adminAuth && typeof window.adminAuth.getToken === 'function') ? window.adminAuth.getToken() : '';
+          const headers = token ? { 'X-Admin-Token': token, 'Authorization': 'Bearer ' + token } : {};
+          const resp = await fetch('/api/admin/download-extra-credit-emails', { headers });
           if (resp.ok) {
             const blob = await resp.blob();
             const url = URL.createObjectURL(blob);
@@ -1780,7 +1684,7 @@ class QueryExperimentApp {
       });
     }
 
-    // Admin Dashboard Toggle for Questions 21-30 (Sidebar button & Analytics header toggle)
+    // Admin Dashboard Toggle for Questions 21-25 (Sidebar button & Analytics header toggle)
     const btnToggleQ21_30 = document.getElementById('btn-toggle-q21-30');
     if (btnToggleQ21_30) {
       btnToggleQ21_30.addEventListener('click', async () => {
@@ -1804,7 +1708,7 @@ class QueryExperimentApp {
       });
     }
 
-    // Initial sync of Q21-30 toggle UI
+    // Initial sync of Q21-25 toggle UI
     this.updateQ21to30ToggleUI();
 
     // Modal: Import & Cloud Sync
@@ -1936,7 +1840,7 @@ class QueryExperimentApp {
   async resetParticipantTest() {
     if (confirm('Reset test session and return to Questionnaire & Question 1? Previous responses will be preserved.')) {
       if (this.analytics) {
-        // Generate a new random Participant ID and pick a new completely random experimental group
+        // Generate a new random Participant ID and reset session state (group is assigned after demographics)
         const newPid = 'user_' + Math.random().toString(36).substring(2, 9) + Math.random().toString(36).substring(2, 5);
         this.analytics.setParticipantId(newPid);
         this.analytics.sessionId = 'session_' + Date.now() + '_' + Math.random().toString(36).substring(2, 7);
@@ -2148,8 +2052,23 @@ class QueryExperimentApp {
                         <span><i class="fa-solid fa-earth-americas text-accent"></i> <strong>Country:</strong> ${this.escapeHTML(group.demographics.countryOfOrigin || 'N/A')}</span>
                       </div>
                     ` : ''}
-                    ${group.finalThoughts ? `
+                    ${group.finalThoughts ? (() => {
+                      const lr = group.finalThoughts.likertRatings || {};
+                      const lc = group.finalThoughts.likert_clarity ?? lr.clarity ?? '';
+                      const ld = group.finalThoughts.likert_difficulty ?? lr.difficulty ?? '';
+                      const li = group.finalThoughts.likert_interface ?? lr.interface ?? '';
+                      const le = group.finalThoughts.likert_experience ?? lr.experience ?? '';
+                      const hasLikert = lc !== '' || ld !== '' || li !== '' || le !== '';
+                      return `
                       <div class="mt-2 pt-2 border-top" style="border-top: 1px solid rgba(255,255,255,0.08); margin-top: 6px; padding-top: 6px;">
+                        ${hasLikert ? `
+                          <div class="d-flex flex-wrap gap-3 align-center mb-1" style="display:flex; flex-wrap:wrap; gap:12px; margin-bottom:5px;">
+                            <span><i class="fa-solid fa-star text-warning"></i> <strong>Clarity:</strong> ${this.escapeHTML(lc || 'N/A')}/5</span>
+                            <span><i class="fa-solid fa-gauge-high text-warning"></i> <strong>Difficulty:</strong> ${this.escapeHTML(ld || 'N/A')}/5</span>
+                            <span><i class="fa-solid fa-desktop text-warning"></i> <strong>Interface:</strong> ${this.escapeHTML(li || 'N/A')}/5</span>
+                            <span><i class="fa-solid fa-thumbs-up text-warning"></i> <strong>Experience:</strong> ${this.escapeHTML(le || 'N/A')}/5</span>
+                          </div>
+                        ` : ''}
                         ${group.finalThoughts.durationExpectation ? `
                           <div style="margin-bottom: 5px;">
                             <strong style="color: #38bdf8;"><i class="fa-solid fa-clock-rotate-left"></i> Duration vs Expected:</strong>
@@ -2164,8 +2083,8 @@ class QueryExperimentApp {
                             <em class="text-main" style="display: block; margin-top: 2px;">"${this.escapeHTML(group.finalThoughts.thoughts)}"</em>
                           </div>
                         ` : ''}
-                      </div>
-                    ` : ''}
+                      </div>`;
+                    })() : ''}
                   </div>
                 ` : ''}
                 <div class="table-responsive" style="max-height: 380px; overflow-x: auto; overflow-y: auto; width: 100%; max-width: 100%; min-width: 0; box-sizing: border-box; border: 1px solid rgba(255,255,255,0.08); border-radius: 6px;">
@@ -2296,7 +2215,6 @@ class QueryExperimentApp {
 }
 
 window.QueryExperimentApp = QueryExperimentApp;
-window.SQLMatrixApp = QueryExperimentApp;
 
 if (document.readyState === 'loading') {
   document.addEventListener('DOMContentLoaded', () => {

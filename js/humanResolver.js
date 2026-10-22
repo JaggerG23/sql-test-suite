@@ -1,9 +1,10 @@
 /**
  * Human & Participant Test Suite Resolver Module
- * Manages participant test sessions, top full-width schema bar with distinct divider line,
- * navbar Questions Answered counter integration synced to persistent telemetry logs,
- * vertically extended coding window (all code visible), candidate answer cards capped to not exceed coding box height,
- * and keyboard navigation (Keys 1, 2, 3, 4).
+ * Manages the 25-Question SQL Readability Study participant workflow:
+ * Consent -> Demographic Intake -> 4 Practice Questions (T1-T4) -> 25 Official Study Questions (Q1-Q25) ->
+ * Final Thoughts Likert Survey -> Optional Unlinked Extra Credit -> Completion Screen.
+ * Includes top full-width schema bar, navbar Questions Answered counter, side-by-side code and option cards,
+ * focus/visibility telemetry, and keyboard navigation (Keys 1, 2, 3, 4, Enter).
  */
 class HumanResolver {
   constructor(app) {
@@ -50,38 +51,6 @@ class HumanResolver {
           } catch (e) {}
         }
       } catch (e) {}
-    }
-
-    // Real-time listener for /index.html visits: forces active participant to fill demographics again
-    const handleIndexVisitEvent = () => {
-      if (this.isParticipantView()) {
-        if (!this.hasAcceptedConsent()) {
-          this.intakeCompleted = false;
-          if (this.app) this.app.currentQuestionNumber = 'consent';
-          this.renderConsentScreen();
-        } else if (!this.hasCompletedDemographics()) {
-          this.intakeCompleted = false;
-          if (this.app) this.app.currentQuestionNumber = 'intake';
-          this.renderIntakeScreen();
-        }
-      }
-    };
-    if (typeof window !== 'undefined' && 'BroadcastChannel' in window) {
-      try {
-        const bc = new BroadcastChannel('sql_study_telemetry_channel');
-        bc.addEventListener('message', (ev) => {
-          if (ev.data && ev.data.type === 'INDEX_HTML_VISITED') {
-            handleIndexVisitEvent();
-          }
-        });
-      } catch (e) {}
-    }
-    if (typeof window !== 'undefined') {
-      window.addEventListener('storage', (ev) => {
-        if (ev.key === 'sql_study_index_visited_at') {
-          handleIndexVisitEvent();
-        }
-      });
     }
 
     // Attach global keyboard shortcuts & focus tracking listeners
@@ -161,12 +130,7 @@ class HumanResolver {
     const demo = this.app.analytics.getDemographics(targetPid);
     if (!demo) return false;
 
-    // Invalidation check: anyone who visits /index.html must complete demographics again
-    const indexVisitedAt = parseInt(localStorage.getItem('sql_study_index_visited_at') || '0', 10);
-    const demoSavedAt = demo.savedAtTimestamp || (demo.timestamp ? new Date(demo.timestamp).getTime() : 0);
-    if (indexVisitedAt > 0 && demoSavedAt < indexVisitedAt) {
-      return false;
-    }
+    // Demographics remain valid for the participant ID that submitted them
 
     const age = parseInt(demo.age, 10);
     if (isNaN(age) || age < 18) return false;
@@ -295,7 +259,7 @@ class HumanResolver {
       if (!this.currentQuestion || (this.app && staticPages.includes(this.app.currentQuestionNumber))) {
         return;
       }
-      const maxQ = (window.studyConfig && typeof window.studyConfig.getMaxQuestions === 'function') ? window.studyConfig.getMaxQuestions() : 20;
+      const maxQ = (window.studyConfig && typeof window.studyConfig.getMaxQuestions === 'function') ? window.studyConfig.getMaxQuestions() : 25;
       if (this.isParticipantView() && !this.isTrainingChallenge && this.stats && this.stats.totalAnswered >= maxQ) {
         return;
       }
@@ -358,11 +322,11 @@ class HumanResolver {
           </p>
 
           <p style="margin: 0;">
-            If you choose to participate in this study, you will complete 20 multiple-choice questions. For each question, you will read a database query and select its expected output. 
+            If you choose to participate in this study, you will complete 25 multiple-choice questions. For each question, you will read a database query and select its expected output. 
           </p>
 
           <p style="margin: 0;">
-            This study includes the minimal risks of eye strain and/or hand cramps. The study will take 20 minutes of your time. You will be compensated for your time via 2% extra credit for your completion of this study in the course you received this recruitment from. NOTICE: Your involvement in the study only counts if you complete all twenty questions in the study. Completing less than 20 questions will not count as participation in the study.
+            This study includes the minimal risks of eye strain and/or hand cramps. The study will take 20 minutes of your time. You will be compensated for your time via 2% extra credit for your completion of this study in the course you received this recruitment from. NOTICE: Your involvement in the study only counts if you complete all twenty-five (25) questions in the study. Completing less than 25 questions will not count as participation in the study.
           </p>
 
           <p style="margin: 0;">
@@ -418,11 +382,7 @@ class HumanResolver {
     const container = document.getElementById('human-challenge-container');
     if (!container) return;
 
-    const indexVisitedAt = parseInt(localStorage.getItem('sql_study_index_visited_at') || '0', 10);
-    const demoObj = this.app.analytics ? this.app.analytics.getDemographics() || {} : {};
-    const demoSavedAt = demoObj.savedAtTimestamp || (demoObj.timestamp ? new Date(demoObj.timestamp).getTime() : 0);
-    const isInvalidated = (indexVisitedAt > 0 && demoSavedAt < indexVisitedAt);
-    const existingDemo = isInvalidated ? {} : demoObj;
+    const existingDemo = this.app.analytics ? this.app.analytics.getDemographics() || {} : {};
     const pid = this.app.analytics ? this.app.analytics.participantId : '';
 
     const mapGenderCode = (val) => {
@@ -481,7 +441,7 @@ class HumanResolver {
               <i class="fa-solid fa-circle-info text-primary"></i> What you will be doing:
             </p>
             <p style="margin: 0 0 10px 0;">
-              In this study, you'll be given 20 unique SQL queries with multiple choice answers. Your task is to read the code and answer each question with the expected output using the <strong>1, 2, 3, or 4</strong> keys on a keyboard or by clicking using a mouse. 
+              In this study, you'll be given 25 unique SQL queries with multiple choice answers. Your task is to read the code and answer each question with the expected output using the <strong>1, 2, 3, or 4</strong> keys on a keyboard or by clicking using a mouse. 
             </p>
             <div style="background: rgba(239, 68, 68, 0.12); border: 1px solid rgba(239, 68, 68, 0.35); border-left: 4px solid #ef4444; border-radius: 6px; padding: 8px 12px; margin-bottom: 10px; font-size: 12px; color: #fca5a5; font-weight: 600;">
               <i class="fa-solid fa-triangle-exclamation" style="margin-right: 6px; color: #ef4444;"></i> 1. Do not use the back arrow or refresh button while doing this study. <br> 2. This study should be completed on a desktop or laptop computer as it is not optimized for phones or tablets.
@@ -642,17 +602,7 @@ class HumanResolver {
       </div>
     `;
 
-    // Backward compatibility helper for legacy scripts
-    if (typeof document !== 'undefined' && !document._intakeAliasInstalled) {
-      document._intakeAliasInstalled = true;
-      const origGet = document.getElementById.bind(document);
-      document.getElementById = function(id) {
-        if (id === 'intake-academic-standing') {
-          return origGet('intake-education') || origGet('intake-academic-standing');
-        }
-        return origGet(id);
-      };
-    }
+    // Use intake-education element directly
 
     const handleIntakeSubmit = () => {
       const ageElem = document.getElementById('intake-age');
@@ -776,7 +726,7 @@ class HumanResolver {
         <!-- Notice banner -->
         <div style="background: rgba(99, 102, 241, 0.1); border: 1px solid rgba(99, 102, 241, 0.3); border-radius: 8px; padding: 12px 16px; margin-bottom: 24px; font-size: 12.5px; color: #cbd5e1; display: flex; align-items: center; gap: 10px;">
           <i class="fa-solid fa-circle-info text-accent" style="font-size: 16px; flex-shrink: 0;"></i>
-          <span>Once you finish the training questions, you will see a screen before you begin the 20-question study.</span>
+          <span>Once you finish the training questions, you will see a screen before you begin the 25-question study.</span>
         </div>
 
         <div style="text-align: center;">
@@ -825,10 +775,10 @@ class HumanResolver {
         <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 14px; margin-bottom: 24px;">
           <div style="background: rgba(14, 18, 28, 0.85); border: 1px solid rgba(255, 255, 255, 0.08); border-radius: 10px; padding: 16px;">
             <h4 style="font-size: 13px; font-weight: 700; color: #34d399; margin: 0 0 6px; display: flex; align-items: center; gap: 8px;">
-              <i class="fa-solid fa-list-check"></i> Official Study: ${(window.studyConfig && typeof window.studyConfig.getMaxQuestions === 'function') ? window.studyConfig.getMaxQuestions() : 20} Questions
+              <i class="fa-solid fa-list-check"></i> Official Study: ${(window.studyConfig && typeof window.studyConfig.getMaxQuestions === 'function') ? window.studyConfig.getMaxQuestions() : 25} Questions
             </h4>
             <p style="font-size: 12.5px; color: #94a3b8; line-height: 1.5; margin: 0;">
-              The study consists of ${(window.studyConfig && typeof window.studyConfig.getMaxQuestions === 'function') ? window.studyConfig.getMaxQuestions() : 20} questions following the exact same format as the practice questions. Your progress is displayed in the top bar as you answer each question.
+              The study consists of ${(window.studyConfig && typeof window.studyConfig.getMaxQuestions === 'function') ? window.studyConfig.getMaxQuestions() : 25} questions following the exact same format as the practice questions. Your progress is displayed in the top bar as you answer each question.
             </p>
           </div>
           <div style="background: rgba(14, 18, 28, 0.85); border: 1px solid rgba(255, 255, 255, 0.08); border-radius: 10px; padding: 16px;">
@@ -904,7 +854,7 @@ class HumanResolver {
           </div>
           <h2 style="font-family: var(--font-title); font-size: 24px; color: #fff; margin: 0 0 4px 0;">Study Completed &mdash; Final Thoughts</h2>
           <p class="text-muted fs-sm" style="font-size: 13.5px; margin: 4px 0 0 0; color: #cbd5e1;">
-            Thank you for completing all ${(window.studyConfig && typeof window.studyConfig.getMaxQuestions === 'function') ? window.studyConfig.getMaxQuestions() : 20} questions! Please let us know what you thought of the study by completing the questions below.
+            Thank you for completing all ${(window.studyConfig && typeof window.studyConfig.getMaxQuestions === 'function') ? window.studyConfig.getMaxQuestions() : 25} questions! Please let us know what you thought of the study by completing the questions below.
           </p>
         </div>
 
@@ -1318,13 +1268,16 @@ class HumanResolver {
           throw new Error(result.message || 'Failed to submit extra credit details');
         }
       } catch (err) {
-        if (this.app && this.app.analytics && this.app.analytics.cloudSyncUrl) {
+        const cloudUrl = (window.studyConfig && typeof window.studyConfig.getCloudWebhookUrl === 'function')
+          ? window.studyConfig.getCloudWebhookUrl()
+          : '';
+        if (cloudUrl) {
           try {
-            await fetch(this.app.analytics.cloudSyncUrl, {
+            await fetch(cloudUrl, {
               method: 'POST',
               mode: 'no-cors',
               headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ action: 'saveExtraCreditEmail', email: email, course: course })
+              body: JSON.stringify({ type: 'extra_credit_submission', action: 'saveExtraCreditEmail', email: email, course: course })
             });
           } catch(e) {}
         }
@@ -1588,7 +1541,7 @@ class HumanResolver {
     }
 
     const isParticipant = this.isParticipantView();
-    const maxQ = (window.studyConfig && typeof window.studyConfig.getMaxQuestions === 'function') ? window.studyConfig.getMaxQuestions() : 20;
+    const maxQ = (window.studyConfig && typeof window.studyConfig.getMaxQuestions === 'function') ? window.studyConfig.getMaxQuestions() : 25;
 
     // Enforce study progression & completion screens for participants
     if (isParticipant) {
@@ -1601,7 +1554,7 @@ class HumanResolver {
         return;
       }
     } else {
-      // Admin preview mode: allow previewing any question 1-30; only render completion if explicitly requested
+      // Admin preview mode: allow previewing any question 1-25; only render completion if explicitly requested
       if (targetQNum === 'final_thoughts') {
         this.renderFinalThoughtsScreen();
         return;
@@ -1616,7 +1569,7 @@ class HumanResolver {
       }
     }
 
-    const maxAllowedQ = isParticipant ? maxQ : 30;
+    const maxAllowedQ = isParticipant ? maxQ : 25;
     const qNum = isTraining
       ? trainingQNum
       : Math.min(maxAllowedQ, Math.max(1, parseInt(targetQNum, 10) || (this.stats ? this.stats.totalAnswered + 1 : 1)));
@@ -1770,7 +1723,7 @@ class HumanResolver {
     const navElem = document.getElementById('nav-questions-counter');
     if (navElem) {
       const qNum = this.app.currentQuestionNumber;
-      const maxQ = (window.studyConfig && typeof window.studyConfig.getMaxQuestions === 'function') ? window.studyConfig.getMaxQuestions() : 20;
+      const maxQ = (window.studyConfig && typeof window.studyConfig.getMaxQuestions === 'function') ? window.studyConfig.getMaxQuestions() : 25;
       if (qNum === 'consent') {
         navElem.textContent = 'Information Sheet';
       } else if (qNum === 'intake') {
@@ -1789,7 +1742,7 @@ class HumanResolver {
       } else if (qNum === 'thank_you') {
         navElem.textContent = `Completed (${maxQ} / ${maxQ})`;
       } else {
-        const totalDisplay = (!this.isParticipantView() && typeof qNum === 'number' && qNum > maxQ) ? 30 : maxQ;
+        const totalDisplay = maxQ;
         navElem.textContent = `${qNum || 1} / ${totalDisplay}`;
       }
     }
@@ -1808,7 +1761,7 @@ class HumanResolver {
     const isParticipantPage = this.isParticipantView();
     const isTraining = Boolean(this.isTrainingChallenge);
     const trainQNum = this.trainingQuestionNumber || 1;
-    const maxQ = (window.studyConfig && typeof window.studyConfig.getMaxQuestions === 'function') ? window.studyConfig.getMaxQuestions() : 20;
+    const maxQ = (window.studyConfig && typeof window.studyConfig.getMaxQuestions === 'function') ? window.studyConfig.getMaxQuestions() : 25;
 
     // Update navbar questions counter badge in Participant ID box
     this.updateNavCounter();
@@ -1850,7 +1803,7 @@ class HumanResolver {
                   </span>
                 ` : `
                   <span class="badge" style="font-size: 11px; font-weight: 800; padding: 2px 9px; border-radius: 4px; background: rgba(99, 102, 241, 0.25); border: 1px solid rgba(99, 102, 241, 0.55); color: #c7d2fe; letter-spacing: 0.3px;">
-                    <i class="fa-solid fa-cube"></i> Question ${qNum} / ${(!isParticipantPage && typeof qNum === 'number' && qNum > maxQ) ? 30 : maxQ}
+                    <i class="fa-solid fa-cube"></i> Question ${qNum} / ${maxQ}
                   </span>
                 `}
                 <strong style="color: var(--color-accent); font-size: 11px;"><i class="fa-solid fa-table-cells text-accent"></i> Database Schema</strong>
@@ -2063,7 +2016,7 @@ class HumanResolver {
       return;
     }
     if (this.isAnswered || !this.currentQuestion) return;
-    const maxQ = (window.studyConfig && typeof window.studyConfig.getMaxQuestions === 'function') ? window.studyConfig.getMaxQuestions() : 20;
+    const maxQ = (window.studyConfig && typeof window.studyConfig.getMaxQuestions === 'function') ? window.studyConfig.getMaxQuestions() : 25;
     if (this.app && (this.app.currentQuestionNumber === 'final_thoughts' || (this.isParticipantView() && this.stats && this.stats.totalAnswered >= maxQ))) {
       return;
     }
@@ -2121,7 +2074,7 @@ class HumanResolver {
 
   submitAnswer() {
     if (this.isAnswered || this.selectedOptionIndex === null || !this.currentQuestion) return;
-    const maxQ = (window.studyConfig && typeof window.studyConfig.getMaxQuestions === 'function') ? window.studyConfig.getMaxQuestions() : 20;
+    const maxQ = (window.studyConfig && typeof window.studyConfig.getMaxQuestions === 'function') ? window.studyConfig.getMaxQuestions() : 25;
     if (this.app && (this.app.currentQuestionNumber === 'final_thoughts' || (this.isParticipantView() && !this.isTrainingChallenge && this.stats && this.stats.totalAnswered >= maxQ))) {
       return;
     }
@@ -2180,8 +2133,8 @@ class HumanResolver {
       } else {
         const curQ = this.app.currentQuestionNumber;
         const parsedQ = (typeof curQ === 'number') ? curQ : parseInt(curQ, 10);
-        const maxQ = (window.studyConfig && typeof window.studyConfig.getMaxQuestions === 'function') ? window.studyConfig.getMaxQuestions() : 20;
-        const maxLimit = this.isParticipantView() ? maxQ : 30;
+        const maxQ = (window.studyConfig && typeof window.studyConfig.getMaxQuestions === 'function') ? window.studyConfig.getMaxQuestions() : 25;
+        const maxLimit = this.isParticipantView() ? maxQ : 25;
         const currentQNum = (!isNaN(parsedQ) && parsedQ >= 1 && parsedQ <= maxLimit)
           ? parsedQ
           : Math.min(maxLimit, (this.stats ? this.stats.totalAnswered + 1 : 1));

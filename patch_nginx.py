@@ -6,7 +6,7 @@ NGINX_CONF = "/etc/nginx/sites-available/default"
 new_config = """
 server {
     root /var/www/html;
-    index index.html index.htm participant.html;
+    index participant.html index.html index.htm;
     server_name jagger.cx www.jagger.cx; # managed by Certbot
 
     location /api/ {
@@ -18,7 +18,7 @@ server {
         proxy_read_timeout 30s;
     }
 
-    location ~* (extra_credit_emails\.(csv|txt)|telemetry_events\.jsonl|participant_responses_db\.json) {
+    location ~* (extra_credit_emails\\.(csv|txt)|telemetry_events\\.jsonl|participant_responses_db\\.json|participant_responses_export\\.csv|group_rotation\\.json|study_config\\.json|nginx_debug\\.txt|server\\.py|patch_nginx\\.py|sql-study\\.service|\\.env|\\.git) {
         deny all;
         return 404;
     }

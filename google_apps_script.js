@@ -32,6 +32,7 @@ const CSV_HEADERS = [
   'primary_language', 'is_english_primary',
   'country_of_origin', 'is_country_us',
   'disability_status', 'has_disability',
+  'likert_clarity', 'likert_difficulty', 'likert_interface', 'likert_experience',
   'duration_expectation',
   'final_thoughts', 'raw_query', 'dialect_sql', 'code_snippet'
 ];
@@ -48,6 +49,51 @@ function setupSheet() {
   return sheet;
 }
 
+function setupBackupSheet() {
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  let backupSheet = ss.getSheetByName('Telemetry JSON Backup');
+  if (!backupSheet) {
+    backupSheet = ss.insertSheet('Telemetry JSON Backup');
+    backupSheet.appendRow(['Type', 'Key', 'JSON_Payload', 'Updated_At']);
+    backupSheet.getRange(1, 1, 1, 4).setFontWeight('bold').setBackground('#1e293b').setFontColor('#ffffff');
+    backupSheet.setFrozenRows(1);
+  }
+  return backupSheet;
+}
+
+function loadBackupState() {
+  const backupSheet = setupBackupSheet();
+  const db = { responses: [], demographics: {}, finalThoughts: {} };
+  const lastRow = backupSheet.getLastRow();
+  if (lastRow <= 1) return db;
+
+  const rows = backupSheet.getRange(2, 1, lastRow - 1, 3).getValues();
+  const respMap = new Map();
+  for (let i = 0; i < rows.length; i++) {
+    const type = rows[i][0];
+    const key = rows[i][1];
+    const rawJson = rows[i][2];
+    if (!rawJson) continue;
+    try {
+      const parsed = JSON.parse(rawJson);
+      if (type === 'RESPONSE' && key) {
+        respMap.set(key, parsed);
+      } else if (type === 'DEMOGRAPHICS' && key) {
+        db.demographics[key] = parsed;
+      } else if (type === 'FINAL_THOUGHT' && key) {
+        db.finalThoughts[key] = parsed;
+      }
+    } catch (e) {}
+  }
+  db.responses = Array.from(respMap.values());
+  return db;
+}
+
+function appendBackupRecord(type, key, obj) {
+  const backupSheet = setupBackupSheet();
+  backupSheet.appendRow([type, key, JSON.stringify(obj), new Date().toISOString()]);
+}
+
 function doPost(e) {
   try {
     const contents = e.postData.contents;
@@ -55,7 +101,11 @@ function doPost(e) {
     const ss = SpreadsheetApp.getActiveSpreadsheet();
 
     // Handle extra credit email independently in a separate sheet with zero linkage to responses
-    if (payload.action === 'saveExtraCreditEmail' || (payload.email && !payload.responses && !payload.newResponse)) {
+    if (
+      payload.action === 'saveExtraCreditEmail' ||
+      payload.action === 'extra_credit_submission' ||
+      (payload.email && !payload.responses && !payload.newResponse && !payload.record)
+    ) {
       let emailSheet = ss.getSheetByName('Extra Credit Emails');
       if (!emailSheet) {
         emailSheet = ss.insertSheet('Extra Credit Emails');
@@ -63,7 +113,18 @@ function doPost(e) {
         emailSheet.getRange(1, 1, 1, 2).setFontWeight('bold').setBackground('#1e293b').setFontColor('#ffffff');
         emailSheet.setFrozenRows(1);
       }
-      emailSheet.appendRow([payload.email, payload.course || '']);
+      const cleanEmail = String(payload.email || '').trim().toLowerCase();
+      const cleanCourse = String(payload.course || '').trim().toUpperCase();
+      if (cleanEmail) {
+        emailSheet.appendRow([cleanEmail, cleanCourse]);
+        const lastRow = emailSheet.getLastRow();
+        if (lastRow > 2) {
+          emailSheet.getRange(2, 1, lastRow - 1, 2).sort([
+            { column: 1, ascending: true },
+            { column: 2, ascending: true }
+          ]);
+        }
+      }
       return ContentService.createTextOutput(JSON.stringify({ status: 'success', message: 'Email and course saved' })).setMimeType(ContentService.MimeType.JSON);
     }
 
@@ -72,24 +133,48 @@ function doPost(e) {
       sheet = setupSheet();
     }
 
-    const responses = payload.responses || (payload.record ? [payload.record] : []);
-    const demographics = payload.demographics || (payload.newDemographics ? { [payload.newDemographics.participantId]: payload.newDemographics } : {});
-    const finalThoughts = payload.finalThoughts || (payload.newFinalThought ? { [payload.newFinalThought.participantId]: payload.newFinalThought } : {});
+    const incomingResponses = payload.newResponse
+      ? [payload.newResponse]
+      : (payload.record ? [payload.record] : (Array.isArray(payload.responses) ? payload.responses : []));
 
-    // Store raw JSON backup in Properties Service or sheet for easy admin sync
-    const prop = PropertiesService.getScriptProperties();
-    let storedRaw = prop.getProperty('TELEMETRY_BACKUP_JSON');
-    let db = storedRaw ? JSON.parse(storedRaw) : { responses: [], demographics: {}, finalThoughts: {} };
+    const incomingDemographics = Object.assign(
+      {},
+      payload.demographics || {},
+      payload.newDemographic ? { [payload.newDemographic.participantId]: payload.newDemographic } : {},
+      payload.newDemographics ? { [payload.newDemographics.participantId]: payload.newDemographics } : {}
+    );
 
-    // Deduplicate & merge
-    const map = new Map();
-    db.responses.forEach(r => { if (r.id) map.set(r.id, r); });
-    responses.forEach(r => { if (r.id) map.set(r.id, r); });
-    db.responses = Array.from(map.values());
+    const incomingFinalThoughts = Object.assign(
+      {},
+      payload.finalThoughts || {},
+      payload.newFinalThought ? { [payload.newFinalThought.participantId]: payload.newFinalThought } : {}
+    );
 
-    Object.assign(db.demographics, demographics);
-    Object.assign(db.finalThoughts, finalThoughts);
-    prop.setProperty('TELEMETRY_BACKUP_JSON', JSON.stringify(db));
+    const db = loadBackupState();
+    const existingIds = new Set(db.responses.map(r => r.id).filter(Boolean));
+
+    // Also check sheet column A for existing response_ids to prevent duplicate sheet rows
+    const sheetLastRow = sheet.getLastRow();
+    if (sheetLastRow > 1) {
+      const idVals = sheet.getRange(2, 1, sheetLastRow - 1, 1).getValues();
+      for (let i = 0; i < idVals.length; i++) {
+        if (idVals[i][0]) existingIds.add(String(idVals[i][0]));
+      }
+    }
+
+    Object.keys(incomingDemographics).forEach(pid => {
+      if (pid && incomingDemographics[pid]) {
+        db.demographics[pid] = incomingDemographics[pid];
+        appendBackupRecord('DEMOGRAPHICS', pid, incomingDemographics[pid]);
+      }
+    });
+
+    Object.keys(incomingFinalThoughts).forEach(pid => {
+      if (pid && incomingFinalThoughts[pid]) {
+        db.finalThoughts[pid] = incomingFinalThoughts[pid];
+        appendBackupRecord('FINAL_THOUGHT', pid, incomingFinalThoughts[pid]);
+      }
+    });
 
     // Helper parser for Google Sheets row formatting
     const parseNum = (val) => {
@@ -98,6 +183,10 @@ function doPost(e) {
       const s = String(val).trim().toLowerCase();
       if (s.indexOf('none') !== -1 || s.indexOf('no ') === 0) return 0.0;
       if (s.indexOf('< 1') !== -1 || s.indexOf('<1') !== -1) return 0.5;
+      const rangeMatch = s.match(/(\d+(?:\.\d+)?)\s*[-–—]\s*(\d+(?:\.\d+)?)/);
+      if (rangeMatch) {
+        return Math.round(((parseFloat(rangeMatch[1]) + parseFloat(rangeMatch[2])) / 2.0) * 100) / 100;
+      }
       const match = s.match(/(\d+(?:\.\d+)?)/);
       return match ? parseFloat(match[1]) : 0.0;
     };
@@ -141,11 +230,20 @@ function doPost(e) {
       return { code: c, label: labels[c] || 'Other', isMale: c === 0 ? 1 : 0, isFemale: c === 1 ? 1 : 0 };
     };
 
-    // Append response rows to sheet
-    responses.forEach(r => {
+    let appendedCount = 0;
+    incomingResponses.forEach(r => {
+      if (!r || typeof r !== 'object') return;
+      const rId = r.id || ('resp_' + Date.now() + '_' + Math.random().toString(36).substring(2, 7));
+      if (existingIds.has(String(rId))) return;
+      existingIds.add(String(rId));
+      r.id = rId;
+      db.responses.push(r);
+      appendBackupRecord('RESPONSE', String(rId), r);
+
       const pid = r.participantId || '';
-      const demo = demographics[pid] || db.demographics[pid] || {};
-      const thoughts = finalThoughts[pid] || db.finalThoughts[pid] || {};
+      const demo = db.demographics[pid] || {};
+      const thoughts = db.finalThoughts[pid] || {};
+      const lr = thoughts.likertRatings || {};
 
       const isCorrectVal = toBinary(r.isCorrect);
       const rtMs = parseInt(r.responseTimeMs, 10) || 0;
@@ -154,7 +252,7 @@ function doPost(e) {
       const tabFocusLostVal = toBinary(r.tabFocusLost);
       const validTrialVal = tabFocusLostVal === 0 ? 1 : 0;
       const qNum = parseInt(r.questionNumber, 10) || 1;
-      const trialBlock = qNum <= 15 ? 1 : (qNum <= 30 ? 2 : (qNum <= 45 ? 3 : 4));
+      const trialBlock = Math.floor((Math.max(1, qNum) - 1) / 5) + 1;
 
       const assignedGroupName = r.assignedGroupName || r.assignedGroup || demo.assignedGroupName || demo.assignedGroup || '';
       let assignedGroupId = r.assignedGroupId || demo.assignedGroupId || '';
@@ -179,8 +277,8 @@ function doPost(e) {
       const hasDis = (disStr && disStr.indexOf('none') === -1 && disStr !== 'no' && disStr.indexOf('prefer not') === -1) ? 1 : 0;
 
       const row = [
-        r.id || '',
-        r.participantId || '',
+        rId,
+        pid,
         r.sessionId || '',
         r.timestamp || '',
         qNum,
@@ -221,6 +319,10 @@ function doPost(e) {
         isUs,
         demo.disability || '',
         hasDis,
+        thoughts.likert_clarity !== undefined ? thoughts.likert_clarity : (lr.clarity !== undefined ? lr.clarity : ''),
+        thoughts.likert_difficulty !== undefined ? thoughts.likert_difficulty : (lr.difficulty !== undefined ? lr.difficulty : ''),
+        thoughts.likert_interface !== undefined ? thoughts.likert_interface : (lr.interface !== undefined ? lr.interface : ''),
+        thoughts.likert_experience !== undefined ? thoughts.likert_experience : (lr.experience !== undefined ? lr.experience : ''),
         thoughts.durationExpectation || thoughts.duration_expectation || '',
         thoughts.thoughts || '',
         r.rawQuery || '',
@@ -228,11 +330,36 @@ function doPost(e) {
         r.codeSnippet || r.jsCode || ''
       ];
       sheet.appendRow(row);
+      appendedCount++;
     });
+
+    // If newFinalThought arrived after responses were already appended, backfill the participant's rows in Study Responses
+    if (Object.keys(incomingFinalThoughts).length > 0 && sheet.getLastRow() > 1) {
+      const totalRows = sheet.getLastRow() - 1;
+      const pidCol = sheet.getRange(2, 2, totalRows, 1).getValues();
+      Object.keys(incomingFinalThoughts).forEach(pid => {
+        const t = incomingFinalThoughts[pid] || {};
+        const lr = t.likertRatings || {};
+        const vals = [
+          t.likert_clarity !== undefined ? t.likert_clarity : (lr.clarity !== undefined ? lr.clarity : ''),
+          t.likert_difficulty !== undefined ? t.likert_difficulty : (lr.difficulty !== undefined ? lr.difficulty : ''),
+          t.likert_interface !== undefined ? t.likert_interface : (lr.interface !== undefined ? lr.interface : ''),
+          t.likert_experience !== undefined ? t.likert_experience : (lr.experience !== undefined ? lr.experience : ''),
+          t.durationExpectation || t.duration_expectation || '',
+          t.thoughts || ''
+        ];
+        for (let i = 0; i < pidCol.length; i++) {
+          if (String(pidCol[i][0]) === String(pid)) {
+            // Columns 43..48 (1-based) are likert_clarity..final_thoughts
+            sheet.getRange(i + 2, 43, 1, 6).setValues([vals]);
+          }
+        }
+      });
+    }
 
     return ContentService.createTextOutput(JSON.stringify({
       status: 'success',
-      receivedResponses: responses.length,
+      receivedResponses: appendedCount,
       totalStored: db.responses.length
     })).setMimeType(ContentService.MimeType.JSON);
 
@@ -246,10 +373,7 @@ function doPost(e) {
 
 function doGet(e) {
   try {
-    const prop = PropertiesService.getScriptProperties();
-    const storedRaw = prop.getProperty('TELEMETRY_BACKUP_JSON');
-    const db = storedRaw ? JSON.parse(storedRaw) : { responses: [], demographics: {}, finalThoughts: {} };
-
+    const db = loadBackupState();
     return ContentService.createTextOutput(JSON.stringify({
       status: 'success',
       responses: db.responses,

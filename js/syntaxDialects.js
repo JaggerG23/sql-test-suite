@@ -42,8 +42,8 @@ class SyntaxDialectManager {
 
   initBalancedSequence(seed = 42) {
     const list = [];
-    for (let i = 0; i < 15; i++) list.push('pipe');
-    for (let i = 0; i < 15; i++) list.push('quorum');
+    for (let i = 0; i < 13; i++) list.push('pipe');
+    for (let i = 0; i < 12; i++) list.push('quorum');
 
     // Deterministic Fisher-Yates Shuffle using pseudo-RNG
     let currentSeed = seed * 10007 + 1337;
@@ -87,10 +87,10 @@ class SyntaxDialectManager {
         return this.availableDialects[g.sqlDialect] || this.availableDialects.pipe;
       }
     }
-    if (!this.balancedSequence || this.balancedSequence.length !== 30) {
+    if (!this.balancedSequence || this.balancedSequence.length !== 25) {
       this.initBalancedSequence(seed);
     }
-    const qIdx = Math.max(0, Math.min(29, (parseInt(qNumber, 10) || 1) - 1));
+    const qIdx = Math.max(0, Math.min(24, (parseInt(qNumber, 10) || 1) - 1));
     const key = this.balancedSequence[qIdx] || 'pipe';
     return this.availableDialects[key] || this.availableDialects.pipe;
   }
@@ -204,6 +204,13 @@ class SyntaxDialectManager {
 
   formatToPipeSyntax(sql) {
     if (!sql) return '';
+
+    // Handle multi-statement SQL separated by semicolons
+    const statements = sql.trim().split(';').map(s => s.trim()).filter(s => s.length > 0);
+    if (statements.length > 1) {
+      return statements.map(stmt => this.formatToPipeSyntax(stmt)).join('\n\n');
+    }
+
     const cleanSql = sql.trim().replace(/;$/, '');
 
     // Handle DML statements directly
@@ -384,6 +391,13 @@ class SyntaxDialectManager {
 
   formatToQuorumSyntax(sql) {
     if (!sql) return '';
+
+    // Handle multi-statement SQL separated by semicolons
+    const statements = sql.trim().split(';').map(s => s.trim()).filter(s => s.length > 0);
+    if (statements.length > 1) {
+      return statements.map(stmt => this.formatToQuorumSyntax(stmt)).join('\n\n');
+    }
+
     const cleanSql = sql.trim().replace(/;$/, '');
 
     // Handle DML statements directly
@@ -394,8 +408,9 @@ class SyntaxDialectManager {
     // Handle UNION ALL / UNION DISTINCT / UNION
     if (/\bUNION\b/i.test(cleanSql)) {
       const isUnionAll = /\bUNION\s+ALL\b/i.test(cleanSql);
+      const unionAction = isUnionAll ? 'query:UnionAll()' : 'query:Union()';
       const parts = cleanSql.split(isUnionAll ? /\bUNION\s+ALL\b/i : /\bUNION(?:\s+DISTINCT)?\b/i);
-      return parts.map(p => this.formatToQuorumSyntax(p.trim())).join('\n\n');
+      return parts.map(p => this.formatToQuorumSyntax(p.trim())).join(`\n${unionAction}\n`);
     }
 
     // Handle nested subquery in FROM (e.g., SELECT ... FROM (SELECT ... FROM table GROUP BY ...) sub GROUP BY ...)
@@ -492,12 +507,15 @@ class SyntaxDialectManager {
       });
     }
 
-    // 6. Sort (ORDER BY)
+    // 6. Sort (ORDER BY) - supports single or multi-column ORDER BY
     if (rawOrder) {
-      const orderParts = rawOrder.split(/\s+/);
-      const col = toQuorumCols(orderParts[0].trim());
-      const dir = orderParts[1] ? orderParts[1].toUpperCase() : 'ASC';
-      lines.push(`query:Sort("${col}", "${dir}")`);
+      const orderTerms = this.splitCsvClause(rawOrder);
+      orderTerms.forEach(term => {
+        const orderParts = term.trim().split(/\s+/);
+        const col = toQuorumCols(orderParts[0].replace(/,+$/, '').trim());
+        const dir = orderParts[1] ? orderParts[1].toUpperCase() : 'ASC';
+        lines.push(`query:Sort("${col}", "${dir}")`);
+      });
     }
 
     // 7. Limit

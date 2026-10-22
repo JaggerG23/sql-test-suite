@@ -27,7 +27,11 @@ class ParticipantAnalytics {
     this.assignedGroup = this.initAssignedGroup(this.participantId);
 
     this.initRealtimeChannel();
-    this.syncWithDiskStorage();
+    if (this.isParticipantView()) {
+      this.prefetchRotatingGroupIndex(this.participantId);
+    } else {
+      this.syncWithDiskStorage(true);
+    }
   }
 
   // Auto-migrate legacy storage keys
@@ -155,15 +159,6 @@ class ParticipantAnalytics {
     }
     const demo = this.demographics[targetPid];
     if (!demo) return false;
-
-    // Check if invalidated by admin visiting index.html
-    if (typeof localStorage !== 'undefined') {
-      const indexVisitedAt = parseInt(localStorage.getItem('sql_study_index_visited_at') || '0', 10);
-      const demoSavedAt = demo.savedAtTimestamp || (demo.timestamp ? new Date(demo.timestamp).getTime() : 0);
-      if (indexVisitedAt > 0 && demoSavedAt < indexVisitedAt) {
-        return false;
-      }
-    }
 
     const age = parseInt(demo.age, 10);
     if (isNaN(age) || age < 18) return false;
@@ -374,28 +369,60 @@ class ParticipantAnalytics {
   }
 
   /**
-   * Asks the backend for this participant's round-robin group index (0-3).
-   * Synchronous on purpose: callers of decideAssignedGroupAfterDemographics
-   * expect the group immediately. Runs once per participant (result is cached
-   * in localStorage/demographics). Returns null if the backend is unavailable.
+   * Asynchronously prefetches this participant's round-robin group index (0-3)
+   * from the backend so decideAssignedGroupAfterDemographics never blocks the main thread.
    */
-  requestRotatingGroupIndex(pid) {
-    if (typeof XMLHttpRequest === 'undefined' || !pid) return null;
+  async prefetchRotatingGroupIndex(pid = this.participantId) {
+    if (!pid || typeof fetch === 'undefined') return null;
+    const cacheKey = `sql_study_prefetched_group_idx_${pid}`;
     try {
-      const xhr = new XMLHttpRequest();
-      xhr.open('POST', this.getApiUrl('/api/assign-group'), false);
-      xhr.setRequestHeader('Content-Type', 'application/json');
-      xhr.send(JSON.stringify({ participantId: pid }));
-      if (xhr.status === 200) {
-        const data = JSON.parse(xhr.responseText);
+      const cached = sessionStorage.getItem(cacheKey);
+      if (cached !== null) {
+        const parsed = parseInt(cached, 10);
+        if (!isNaN(parsed) && parsed >= 0 && parsed < ParticipantAnalytics.STUDY_GROUPS.length) {
+          return parsed;
+        }
+      }
+    } catch (e) {}
+
+    try {
+      const res = await fetch(this.getApiUrl('/api/assign-group'), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ participantId: pid })
+      });
+      if (res.ok) {
+        const data = await res.json();
         const idx = parseInt(data && data.groupIndex, 10);
         if (!isNaN(idx) && idx >= 0 && idx < ParticipantAnalytics.STUDY_GROUPS.length) {
+          try { sessionStorage.setItem(cacheKey, String(idx)); } catch (e) {}
           return idx;
         }
       }
     } catch (e) {
       // Backend offline or static hosting
     }
+    return null;
+  }
+
+  /**
+   * Returns the prefetched round-robin group index (0-3) without blocking the UI thread,
+   * and triggers an async background sync if not yet cached.
+   */
+  requestRotatingGroupIndex(pid) {
+    if (!pid) return null;
+    const cacheKey = `sql_study_prefetched_group_idx_${pid}`;
+    try {
+      const cached = sessionStorage.getItem(cacheKey);
+      if (cached !== null) {
+        const idx = parseInt(cached, 10);
+        if (!isNaN(idx) && idx >= 0 && idx < ParticipantAnalytics.STUDY_GROUPS.length) {
+          return idx;
+        }
+      }
+    } catch (e) {}
+    // Kick off non-blocking fetch for future lookups
+    this.prefetchRotatingGroupIndex(pid);
     return null;
   }
 
@@ -523,9 +550,16 @@ class ParticipantAnalytics {
   }
 
   async syncWithDiskStorage(pullOnly = false) {
+    if (this.isParticipantView()) {
+      return;
+    }
     try {
       const endpoint = this.getApiUrl('/api/load-telemetry');
-      const res = await fetch(endpoint);
+      const token = (typeof window !== 'undefined' && window.adminAuth && typeof window.adminAuth.getToken === 'function')
+        ? window.adminAuth.getToken()
+        : '';
+      const headers = token ? { 'X-Admin-Token': token, 'Authorization': 'Bearer ' + token } : {};
+      const res = await fetch(endpoint, { headers });
       if (res.ok) {
         const text = await res.text();
         let diskData = null;
@@ -595,6 +629,7 @@ class ParticipantAnalytics {
   }
 
   async pushToCloudWebhook(incrementalData = null) {
+    if (!incrementalData || Object.keys(incrementalData).length === 0) return;
     const webhookUrl = window.studyConfig ? window.studyConfig.getCloudWebhookUrl() : '';
     if (!webhookUrl) return;
 
@@ -652,7 +687,7 @@ class ParticipantAnalytics {
     const existingResponses = this.getParticipantResponses(this.participantId);
     const maxQ = (typeof window !== 'undefined' && window.studyConfig && typeof window.studyConfig.getMaxQuestions === 'function')
       ? window.studyConfig.getMaxQuestions()
-      : 20;
+      : 25;
     if (existingResponses.length >= maxQ) {
       console.warn(`[ParticipantAnalytics] Participant ${this.participantId} has already completed the maximum of ${maxQ} questions. Dropping additional submission.`);
       return null;
@@ -769,6 +804,7 @@ class ParticipantAnalytics {
       thoughtsText = String(thoughtsData || '');
     }
 
+    const lr = likertRatings || {};
     const record = {
       participantId: pid,
       assignedGroup: assignedGroup ? assignedGroup.name : '',
@@ -776,6 +812,10 @@ class ParticipantAnalytics {
       assignedGroupName: assignedGroup ? assignedGroup.name : '',
       thoughts: thoughtsText,
       likertRatings: likertRatings,
+      likert_clarity: lr.clarity ?? (thoughtsData && thoughtsData.likert_clarity) ?? '',
+      likert_difficulty: lr.difficulty ?? (thoughtsData && thoughtsData.likert_difficulty) ?? '',
+      likert_interface: lr.interface ?? (thoughtsData && thoughtsData.likert_interface) ?? '',
+      likert_experience: lr.experience ?? (thoughtsData && thoughtsData.likert_experience) ?? '',
       durationExpectation: durationExpectation,
       timestamp: new Date().toISOString(),
       timestampPST: pst.dateTimePST,
@@ -1179,15 +1219,16 @@ class ParticipantAnalytics {
         const row = parseCSVLine(lines[i]);
         if (row.length < 5) continue;
 
-        const pid = getVal(row, ['Participant ID', 'participantId'], 1) || 'user_imported';
-        const assignedGroupVal = getVal(row, ['Assigned Group', 'assignedGroup', 'assignedGroupName'], undefined);
-        const hostLangVal = getVal(row, ['Host Language', 'hostLanguage'], undefined);
-        const codeVal = getVal(row, ['Code Snippet', 'codeSnippet', 'JS Code Snippet', 'jsCode'], undefined);
+        const pid = getVal(row, ['participant_id', 'Participant ID', 'participantId'], 1) || 'user_imported';
+        const assignedGroupVal = getVal(row, ['assigned_group', 'Assigned Group', 'assignedGroup', 'assignedGroupName'], undefined);
+        const assignedGroupIdVal = getVal(row, ['assigned_group_id', 'Assigned Group ID', 'assignedGroupId'], undefined);
+        const hostLangVal = getVal(row, ['host_language', 'Host Language', 'hostLanguage'], undefined);
+        const codeVal = getVal(row, ['code_snippet', 'Code Snippet', 'codeSnippet', 'JS Code Snippet', 'jsCode'], undefined);
 
-        const rawCorrect = getVal(row, ['is_correct', 'Is Correct', 'isCorrect'], 11);
+        const rawCorrect = getVal(row, ['is_correct', 'Is Correct', 'isCorrect'], 12);
         const isCorrectParsed = (rawCorrect === 1 || rawCorrect === '1' || String(rawCorrect).trim().toUpperCase() === 'TRUE');
 
-        const rawFocus = getVal(row, ['tab_focus_lost', 'Tab Focus Lost', 'tabFocusLost'], 14);
+        const rawFocus = getVal(row, ['tab_focus_lost', 'Tab Focus Lost', 'tabFocusLost'], 16);
         const focusLostParsed = (rawFocus === 1 || rawFocus === '1' || String(rawFocus).trim().toUpperCase() === 'TRUE');
 
         const resp = {
@@ -1196,36 +1237,38 @@ class ParticipantAnalytics {
           sessionId: getVal(row, ['session_id', 'Session ID', 'sessionId'], 2) || '',
           timestamp: getVal(row, ['timestamp_iso', 'Timestamp (ISO)', 'timestamp'], 3) || new Date().toISOString(),
           questionNumber: parseInt(getVal(row, ['question_number', 'Question Number', 'questionNumber'], 4), 10) || 1,
-          questionCategory: getVal(row, ['question_category', 'Question Category', 'questionCategory'], 5) || 'General',
+          questionCategory: getVal(row, ['question_category', 'Question Category', 'questionCategory'], 6) || 'General',
           assignedGroup: assignedGroupVal || '',
+          assignedGroupId: assignedGroupIdVal || '',
           assignedGroupName: assignedGroupVal || '',
           hostLanguage: hostLangVal || '',
-          activeDialect: getVal(row, ['syntax_dialect_id', 'Syntax Dialect ID', 'activeDialect'], 6) || 'ansi',
-          activeDialectName: getVal(row, ['syntax_dialect_name', 'Syntax Dialect Name', 'activeDialectName'], 7) || 'ANSI SQL',
-          selectedKey: getVal(row, ['selected_key', 'Selected Key (1-4)', 'selectedKey'], 8) ? parseInt(getVal(row, ['selected_key', 'Selected Key (1-4)', 'selectedKey'], 8), 10) : null,
-          selectedOptionText: getVal(row, ['selected_option', 'Selected Option', 'selectedOptionText'], 9) || '',
-          correctOptionText: getVal(row, ['correct_option', 'Correct Option', 'correctOptionText'], 10) || '',
+          activeDialect: getVal(row, ['syntax_dialect_id', 'Syntax Dialect ID', 'activeDialect'], 10) || 'pipe',
+          activeDialectName: getVal(row, ['syntax_dialect_name', 'Syntax Dialect Name', 'activeDialectName'], 11) || 'Google SQL (Pipe Syntax)',
+          selectedKey: getVal(row, ['selected_key', 'Selected Key (1-4)', 'selectedKey'], 21) ? parseInt(getVal(row, ['selected_key', 'Selected Key (1-4)', 'selectedKey'], 21), 10) : null,
+          selectedOptionText: getVal(row, ['selected_option', 'Selected Option', 'selectedOptionText'], 22) || '',
+          correctOptionText: getVal(row, ['correct_option', 'Correct Option', 'correctOptionText'], 23) || '',
           isCorrect: isCorrectParsed ? 1 : 0,
-          responseTimeMs: parseInt(getVal(row, ['response_time_ms', 'Response Time (ms)', 'responseTimeMs'], 12), 10) || 0,
+          responseTimeMs: parseInt(getVal(row, ['response_time_ms', 'Response Time (ms)', 'responseTimeMs'], 13), 10) || 0,
           tabFocusLost: focusLostParsed ? 1 : 0,
-          tabSwitchCount: parseInt(getVal(row, ['tab_switch_count', 'Tab Switch Count', 'tabSwitchCount'], 15), 10) || 0,
-          focusLostDurationMs: parseInt(getVal(row, ['focus_lost_duration_ms', 'Focus Lost Duration (ms)', 'focusLostDurationMs'], 16), 10) || 0,
-          answerChangeCount: parseInt(getVal(row, ['answer_change_count', 'Answer Change Count', 'Answer Changes', 'answerChangeCount'], 17), 10) || 0,
-          rawQuery: getVal(row, ['raw_query', 'Raw SQL Query', 'rawQuery'], row.length > 28 ? 26 : 24) || '',
-          dialectSql: getVal(row, ['dialect_sql', 'Dialect SQL Query', 'dialectSql'], row.length > 28 ? 27 : 25) || '',
+          tabSwitchCount: parseInt(getVal(row, ['tab_switch_count', 'Tab Switch Count', 'tabSwitchCount'], 18), 10) || 0,
+          focusLostDurationMs: parseInt(getVal(row, ['focus_lost_duration_ms', 'Focus Lost Duration (ms)', 'focusLostDurationMs'], 19), 10) || 0,
+          answerChangeCount: parseInt(getVal(row, ['answer_change_count', 'Answer Change Count', 'Answer Changes', 'answerChangeCount'], 20), 10) || 0,
+          rawQuery: getVal(row, ['raw_query', 'Raw SQL Query', 'rawQuery'], undefined) || '',
+          dialectSql: getVal(row, ['dialect_sql', 'Dialect SQL Query', 'dialectSql'], undefined) || '',
           codeSnippet: codeVal || '',
           jsCode: codeVal || ''
         };
         responses.push(resp);
 
-        const age = getVal(row, ['age', 'Age'], 17);
-        const gender = getVal(row, ['gender', 'Gender'], 18);
-        const education = getVal(row, ['highest_education', 'Highest Level of Education', 'Education', 'Academic Standing', 'academicStanding', 'education'], 19);
+        const age = getVal(row, ['age', 'Age'], undefined);
+        const gender = getVal(row, ['gender_label', 'gender', 'Gender'], undefined);
+        const education = getVal(row, ['education_label', 'education', 'highest_education', 'Highest Level of Education', 'Education', 'Academic Standing', 'academicStanding'], undefined);
 
         if (!demographics[pid] && (age || gender || education)) {
           demographics[pid] = {
             participantId: pid,
             assignedGroup: assignedGroupVal || '',
+            assignedGroupId: assignedGroupIdVal || '',
             assignedGroupName: assignedGroupVal || '',
             hostLanguage: hostLangVal || '',
             age: age || '',
@@ -1233,21 +1276,38 @@ class ParticipantAnalytics {
             education: education || '',
             highestEducation: education || '',
             academicStanding: education || '',
-            codingExp: getVal(row, ['Programming Experience', 'Coding Experience', 'codingExp'], 20) || '',
-            dbExp: getVal(row, ['Database Experience', 'dbExp'], 21) || '',
-            primaryLanguage: getVal(row, ['Primary Language', 'primaryLanguage'], 22) || '',
-            countryOfOrigin: getVal(row, ['Country of Origin', 'countryOfOrigin'], 23) || '',
-            disability: getVal(row, ['Disability Status', 'disability'], 24) || '',
-            queryExp: getVal(row, ['Query Writing Experience', 'queryExp']) || 'Completed via updated survey',
+            codingExp: getVal(row, ['coding_exp_years', 'Programming Experience', 'Coding Experience', 'codingExp'], undefined) || '',
+            dbExp: getVal(row, ['db_exp_years', 'Database Experience', 'dbExp'], undefined) || '',
+            primaryLanguage: getVal(row, ['primary_language', 'Primary Language', 'primaryLanguage'], undefined) || '',
+            countryOfOrigin: getVal(row, ['country_of_origin', 'Country of Origin', 'countryOfOrigin'], undefined) || '',
+            disability: getVal(row, ['disability_status', 'Disability Status', 'disability'], undefined) || '',
+            queryExp: getVal(row, ['Query Writing Experience', 'queryExp'], undefined) || 'Completed via updated survey',
             timestamp: resp.timestamp || new Date().toISOString()
           };
         }
 
-        const thoughts = getVal(row, ['Final Thoughts', 'finalThoughts'], 23);
-        if (!finalThoughts[pid] && thoughts) {
+        const likertClarity = getVal(row, ['likert_clarity', 'Likert Clarity'], undefined);
+        const likertDifficulty = getVal(row, ['likert_difficulty', 'Likert Difficulty'], undefined);
+        const likertInterface = getVal(row, ['likert_interface', 'Likert Interface'], undefined);
+        const likertExperience = getVal(row, ['likert_experience', 'Likert Experience'], undefined);
+        const durationExpectation = getVal(row, ['duration_expectation', 'Duration Expectation', 'durationExpectation'], undefined);
+        const thoughts = getVal(row, ['final_thoughts', 'Final Thoughts', 'finalThoughts'], undefined);
+
+        if (!finalThoughts[pid] && (thoughts || durationExpectation || likertClarity || likertDifficulty || likertInterface || likertExperience)) {
           finalThoughts[pid] = {
             participantId: pid,
-            thoughts: thoughts,
+            thoughts: thoughts || '',
+            durationExpectation: durationExpectation || '',
+            likert_clarity: likertClarity !== '' ? Number(likertClarity) : '',
+            likert_difficulty: likertDifficulty !== '' ? Number(likertDifficulty) : '',
+            likert_interface: likertInterface !== '' ? Number(likertInterface) : '',
+            likert_experience: likertExperience !== '' ? Number(likertExperience) : '',
+            likertRatings: {
+              clarity: likertClarity !== '' ? Number(likertClarity) : undefined,
+              difficulty: likertDifficulty !== '' ? Number(likertDifficulty) : undefined,
+              interface: likertInterface !== '' ? Number(likertInterface) : undefined,
+              experience: likertExperience !== '' ? Number(likertExperience) : undefined
+            },
             timestamp: resp.timestamp || new Date().toISOString()
           };
         }
@@ -1430,11 +1490,8 @@ class ParticipantAnalytics {
   }
 
   getTrialBlock(qNum) {
-    const q = parseInt(qNum, 10) || 1;
-    if (q <= 15) return 1;
-    if (q <= 30) return 2;
-    if (q <= 45) return 3;
-    return 4;
+    const q = Math.max(1, parseInt(qNum, 10) || 1);
+    return Math.floor((q - 1) / 5) + 1;
   }
 
   calcLogRT(rtMs) {
@@ -1488,6 +1545,11 @@ class ParticipantAnalytics {
       'is_country_us',
       'disability_status',
       'has_disability',
+      'likert_clarity',
+      'likert_difficulty',
+      'likert_interface',
+      'likert_experience',
+      'duration_expectation',
       'final_thoughts',
       'raw_query',
       'dialect_sql',
@@ -1578,6 +1640,11 @@ class ParticipantAnalytics {
       countryInfo.is_us,
       disInfo.disability,
       disInfo.has_disability,
+      thoughtsObj.likert_clarity ?? (thoughtsObj.likertRatings && thoughtsObj.likertRatings.clarity) ?? '',
+      thoughtsObj.likert_difficulty ?? (thoughtsObj.likertRatings && thoughtsObj.likertRatings.difficulty) ?? '',
+      thoughtsObj.likert_interface ?? (thoughtsObj.likertRatings && thoughtsObj.likertRatings.interface) ?? '',
+      thoughtsObj.likert_experience ?? (thoughtsObj.likertRatings && thoughtsObj.likertRatings.experience) ?? '',
+      thoughtsObj.durationExpectation || thoughtsObj.duration_expectation || '',
       thoughtsObj.thoughts || '',
       r.rawQuery || '',
       r.dialectSql || r.rawQuery || '',

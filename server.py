@@ -1,3 +1,8 @@
+"""
+Backend Telemetry & Study Configuration Server (25-Question SQL Readability Study)
+Serves API endpoints (/api/telemetry, /api/group-assign, /api/config, /api/admin/*,
+/api/export-csv, /api/export-extra-credit) behind Nginx on AWS Lightsail or standalone locally.
+"""
 import http.server
 import socketserver
 import json
@@ -5,6 +10,7 @@ import os
 import sys
 import csv
 import hashlib
+import hmac
 import tempfile
 import threading
 import urllib.parse
@@ -81,10 +87,14 @@ def load_study_config():
         if os.path.exists(CONFIG_FILE):
             try:
                 with open(CONFIG_FILE, 'r', encoding='utf-8') as f:
-                    return json.load(f)
+                    cfg = json.load(f)
+                    if isinstance(cfg, dict):
+                        cfg["questions_21_30_enabled"] = True
+                        cfg["total_questions"] = 25
+                        return cfg
             except Exception:
                 pass
-        return {"questions_21_30_enabled": False}
+        return {"questions_21_30_enabled": True, "total_questions": 25}
 
 def save_study_config(cfg):
     with config_lock:
@@ -94,10 +104,47 @@ def save_study_config(cfg):
         except Exception as e:
             print(f"Error saving study_config: {e}")
 
-ADMIN_PASSWORD = os.environ.get("ADMIN_PASSWORD", "StefiksLabRootPassword")
+ADMIN_PASSWORD = os.environ.get("ADMIN_PASSWORD", "")
+if not ADMIN_PASSWORD:
+    # Load from .env file if present
+    env_file = os.path.join(BASE_DIR, ".env")
+    if os.path.exists(env_file):
+        try:
+            with open(env_file, "r", encoding="utf-8") as ef:
+                for line in ef:
+                    line = line.strip()
+                    if line.startswith("ADMIN_PASSWORD="):
+                        ADMIN_PASSWORD = line.split("=", 1)[1].strip().strip('"').strip("'")
+                        break
+        except Exception:
+            pass
+if not ADMIN_PASSWORD:
+    print("WARNING: ADMIN_PASSWORD environment variable is not set. Using fallback password from environment default.", file=sys.stderr)
+    ADMIN_PASSWORD = "StefiksLabRootPassword"
 
-def get_admin_token():
-    return hashlib.sha256(ADMIN_PASSWORD.encode('utf-8')).hexdigest()
+auth_lock = threading.Lock()
+ACTIVE_ADMIN_TOKENS = set()
+
+def create_admin_session_token():
+    token = secrets.token_hex(32)
+    with auth_lock:
+        ACTIVE_ADMIN_TOKENS.add(token)
+    return token
+
+def verify_admin_session_token(token):
+    if not token:
+        return False
+    expected_digest = hashlib.sha256(ADMIN_PASSWORD.encode('utf-8')).hexdigest()
+    if hmac.compare_digest(token.encode('utf-8'), expected_digest.encode('utf-8')):
+        return True
+    with auth_lock:
+        return token in ACTIVE_ADMIN_TOKENS
+
+def revoke_admin_session_token(token):
+    if not token:
+        return
+    with auth_lock:
+        ACTIVE_ADMIN_TOKENS.discard(token)
 
 db_lock = threading.Lock()
 email_lock = threading.Lock()
@@ -133,11 +180,15 @@ def append_extra_credit_email(email, course=""):
                     writer.writerow(r)
 
         if (clean_email, clean_course) not in existing_entries:
-            with open(EXTRA_CREDIT_FILE, 'a', encoding='utf-8', newline='') as f:
+            existing_entries.add((clean_email, clean_course))
+            sorted_rows = sorted(existing_entries, key=lambda x: (x[0], x[1]))
+            with tempfile.NamedTemporaryFile('w', dir=BASE_DIR, delete=False, encoding='utf-8', newline='') as f:
                 writer = csv.writer(f)
-                if not file_exists:
-                    writer.writerow(['Email', 'Course'])
-                writer.writerow([clean_email, clean_course])
+                writer.writerow(['Email', 'Course'])
+                for em, cs in sorted_rows:
+                    writer.writerow([em, cs])
+                temp_name = f.name
+            os.replace(temp_name, EXTRA_CREDIT_FILE)
         return True
 
 def migrate_legacy_txt_emails():
@@ -173,6 +224,7 @@ CSV_HEADERS = [
     'primary_language', 'is_english_primary',
     'country_of_origin', 'is_country_us',
     'disability_status', 'has_disability',
+    'likert_clarity', 'likert_difficulty', 'likert_interface', 'likert_experience',
     'duration_expectation',
     'final_thoughts', 'raw_query', 'dialect_sql', 'code_snippet'
 ]
@@ -379,16 +431,13 @@ def export_csv(db_data):
             except:
                 ans_change_cnt = 0
 
-            # Trial sequence & block (1 to 4)
+            # Trial sequence & block (5 blocks of 5 questions for 25-question study)
             raw_q_num = r.get('questionNumber', 1)
             try:
                 q_num = int(raw_q_num)
             except:
                 q_num = 1
-            if q_num <= 15: trial_block = 1
-            elif q_num <= 30: trial_block = 2
-            elif q_num <= 45: trial_block = 3
-            else: trial_block = 4
+            trial_block = ((max(1, q_num) - 1) // 5) + 1
 
             # Group and Dialect
             assigned_group = r.get('assignedGroupName', r.get('assignedGroup', demo.get('assignedGroupName', demo.get('assignedGroup', ''))))
@@ -456,6 +505,10 @@ def export_csv(db_data):
                 country_info['is_us'],
                 dis_info['disability'],
                 dis_info['has_disability'],
+                thought_obj.get('likert_clarity', (thought_obj.get('likertRatings') or {}).get('clarity', '')),
+                thought_obj.get('likert_difficulty', (thought_obj.get('likertRatings') or {}).get('difficulty', '')),
+                thought_obj.get('likert_interface', (thought_obj.get('likertRatings') or {}).get('interface', '')),
+                thought_obj.get('likert_experience', (thought_obj.get('likertRatings') or {}).get('experience', '')),
                 thought_obj.get('durationExpectation', thought_obj.get('duration_expectation', '')),
                 thought_obj.get('thoughts', ''),
                 r.get('rawQuery', ''),
@@ -468,14 +521,19 @@ def export_csv(db_data):
 class TelemetryHandler(http.server.SimpleHTTPRequestHandler):
     directory = BASE_DIR
 
-    def is_admin_authenticated(self):
+    def get_request_admin_token(self):
+        auth_header = self.headers.get('Authorization', '')
+        if auth_header.startswith('Bearer '):
+            return auth_header[7:].strip()
+        header_token = self.headers.get('X-Admin-Token', '').strip()
+        if header_token:
+            return header_token
         cookies = parse_cookies(self.headers.get('Cookie', ''))
-        token = cookies.get('admin_session')
-        valid_token = get_admin_token()
-        if token and token == valid_token: return True
-        header_token = self.headers.get('X-Admin-Token')
-        if header_token and header_token == valid_token: return True
-        return False
+        return cookies.get('admin_session', '').strip()
+
+    def is_admin_authenticated(self):
+        token = self.get_request_admin_token()
+        return verify_admin_session_token(token)
 
     def send_json(self, status_code, data, extra_headers=None):
         self.send_response(status_code)
@@ -526,7 +584,17 @@ class TelemetryHandler(http.server.SimpleHTTPRequestHandler):
             self.send_json(200, data)
             return
 
-        if parsed_path in ('/extra_credit_emails.csv', '/extra_credit_emails.txt', '/telemetry_events.jsonl', '/participant_responses_db.json'):
+        if parsed_path.startswith('/.') or parsed_path in (
+            '/server.py', '/patch_nginx.py', '/sql-study.service', '/nginx.conf', '/nginx_lightsail.conf'
+        ):
+            self.send_json(403, {"status": "error", "message": "Forbidden"})
+            return
+
+        if parsed_path in (
+            '/extra_credit_emails.csv', '/extra_credit_emails.txt',
+            '/telemetry_events.jsonl', '/participant_responses_db.json',
+            '/participant_responses_export.csv', '/group_rotation.json', '/study_config.json'
+        ):
             if not self.is_admin_authenticated():
                 self.send_json(401, {"status": "error", "message": "Unauthorized"})
                 return
@@ -580,8 +648,9 @@ class TelemetryHandler(http.server.SimpleHTTPRequestHandler):
         if parsed_path == '/api/admin/login':
             try:
                 payload = json.loads(body.decode('utf-8'))
-                if payload.get('password', '') == ADMIN_PASSWORD:
-                    token = get_admin_token()
+                submitted_pw = str(payload.get('password', ''))
+                if hmac.compare_digest(submitted_pw.encode('utf-8'), ADMIN_PASSWORD.encode('utf-8')):
+                    token = create_admin_session_token()
                     self.send_json(200, {"status": "success", "token": token}, {
                         'Set-Cookie': f'admin_session={token}; Path=/; HttpOnly; SameSite=Lax'
                     })
@@ -592,6 +661,7 @@ class TelemetryHandler(http.server.SimpleHTTPRequestHandler):
             return
 
         elif parsed_path == '/api/admin/logout':
+            revoke_admin_session_token(self.get_request_admin_token())
             self.send_json(200, {"status": "success"}, {
                 'Set-Cookie': 'admin_session=; Path=/; Expires=Thu, 01 Jan 1970 00:00:00 GMT'
             })
@@ -727,8 +797,8 @@ class TelemetryHandler(http.server.SimpleHTTPRequestHandler):
             try:
                 payload = json.loads(body.decode('utf-8'))
                 current_config = load_study_config()
-                if 'questions_21_30_enabled' in payload:
-                    current_config['questions_21_30_enabled'] = bool(payload['questions_21_30_enabled'])
+                current_config['questions_21_30_enabled'] = True
+                current_config['total_questions'] = 25
                 save_study_config(current_config)
                 self.send_json(200, {"status": "success", "config": current_config})
             except Exception as e:
@@ -748,6 +818,8 @@ if __name__ == '__main__':
         ServerClass = ThreadingHTTPServer
 
     migrate_legacy_txt_emails()
+    with db_lock:
+        export_csv(load_db_data())
     httpd = ServerClass(server_address, TelemetryHandler)
     print(f"=========================================================")
     print(f"   SQL Test Suite Telemetry Server Started at:")

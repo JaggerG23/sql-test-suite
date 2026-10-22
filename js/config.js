@@ -1,9 +1,9 @@
 /**
- * Experiment & Telemetry Configuration
+ * Experiment & Telemetry Configuration (25-Question SQL Readability Study)
  * 
- * Supports both local Python backend and static hosting (GitHub Pages, Vercel, Netlify).
- * For static sites (GitHub Pages), telemetry can sync automatically to a free Google Sheet
- * via Google Apps Script Webhook or any Cloud REST API.
+ * Supports AWS Lightsail / Python backend (server.py behind Nginx) as well as
+ * static hosting (GitHub Pages, Live Server) with optional Google Apps Script
+ * or REST webhook telemetry synchronization.
  */
 (function() {
   const LOCAL_STORAGE_KEY_CLOUD = 'sql_study_cloud_webhook_url';
@@ -26,8 +26,9 @@
     // Toggle participant view "Reset Test" button visibility
     PARTICIPANT_RESET_BTN_ENABLED: true,
 
-    // Toggle Questions 21-30 enabled (30 total) or disabled (20 total)
-    QUESTIONS_21_30_ENABLED: false
+    // Official study has 25 questions (Questions 1-25)
+    TOTAL_QUESTIONS: 25,
+    QUESTIONS_21_30_ENABLED: true
   };
 
   class StudyConfigManager {
@@ -36,7 +37,7 @@
       this.loadPersistedConfig();
       this.fetchRemoteConfig();
 
-      if (typeof window !== 'undefined') {
+      if (typeof window !== 'undefined' && typeof window.addEventListener === 'function') {
         window.addEventListener('storage', (e) => {
           if (e.key === LOCAL_STORAGE_KEY_RESET_BTN || e.key === LOCAL_STORAGE_KEY_CLOUD || e.key === LOCAL_STORAGE_KEY_BACKEND || e.key === LOCAL_STORAGE_KEY_Q21_30) {
             this.loadPersistedConfig();
@@ -88,10 +89,7 @@
           this.config.PARTICIPANT_RESET_BTN_ENABLED = savedResetBtn === 'true';
         }
 
-        const savedQ21_30 = localStorage.getItem(LOCAL_STORAGE_KEY_Q21_30);
-        if (savedQ21_30 !== null) {
-          this.config.QUESTIONS_21_30_ENABLED = savedQ21_30 === 'true';
-        }
+        this.config.QUESTIONS_21_30_ENABLED = true;
       } catch (e) {}
     }
 
@@ -100,21 +98,7 @@
         const endpoint = this.getEndpoint('/api/study-config');
         const resp = await fetch(endpoint);
         if (resp.ok) {
-          const data = await resp.json();
-          if (data && typeof data.questions_21_30_enabled !== 'undefined') {
-            const val = Boolean(data.questions_21_30_enabled);
-            if (this.config.QUESTIONS_21_30_ENABLED !== val) {
-              this.config.QUESTIONS_21_30_ENABLED = val;
-              try {
-                localStorage.setItem(LOCAL_STORAGE_KEY_Q21_30, String(val));
-              } catch (e) {}
-              if (typeof window !== 'undefined') {
-                window.dispatchEvent(new CustomEvent('study-config-updated', {
-                  detail: { key: 'QUESTIONS_21_30_ENABLED', value: val }
-                }));
-              }
-            }
-          }
+          await resp.json();
         }
       } catch (e) {}
     }
@@ -124,46 +108,35 @@
     }
 
     isQuestions21to30Enabled() {
-      return this.config.QUESTIONS_21_30_ENABLED === true;
+      return true;
     }
 
     getMaxQuestions() {
-      return this.isQuestions21to30Enabled() ? 30 : 20;
+      return 25;
     }
 
     async setQuestions21to30Enabled(enabled) {
-      this.config.QUESTIONS_21_30_ENABLED = Boolean(enabled);
+      this.config.QUESTIONS_21_30_ENABLED = true;
       try {
-        localStorage.setItem(LOCAL_STORAGE_KEY_Q21_30, String(this.config.QUESTIONS_21_30_ENABLED));
+        localStorage.setItem(LOCAL_STORAGE_KEY_Q21_30, 'true');
       } catch (e) {}
 
-      if (typeof window !== 'undefined') {
-        if ('BroadcastChannel' in window) {
-          try {
-            const ch = new BroadcastChannel('sql_study_telemetry_channel');
-            ch.postMessage({
-              type: 'CONFIG_UPDATED',
-              key: 'QUESTIONS_21_30_ENABLED',
-              value: this.config.QUESTIONS_21_30_ENABLED
-            });
-          } catch (err) {}
-        }
-        window.dispatchEvent(new CustomEvent('study-config-updated', {
-          detail: { key: 'QUESTIONS_21_30_ENABLED', value: this.config.QUESTIONS_21_30_ENABLED }
-        }));
-      }
-
-      // Sync to backend server
+      // Sync to backend server with admin auth token if available
       try {
         const endpoint = this.getEndpoint('/api/admin/study-config');
+        const token = (window.adminAuth && typeof window.adminAuth.getToken === 'function')
+          ? window.adminAuth.getToken()
+          : (sessionStorage.getItem('sql_study_admin_token') || '');
+        const headers = { 'Content-Type': 'application/json' };
+        if (token) headers['Authorization'] = `Bearer ${token}`;
         await fetch(endpoint, {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ questions_21_30_enabled: this.config.QUESTIONS_21_30_ENABLED })
+          headers,
+          body: JSON.stringify({ questions_21_30_enabled: true, total_questions: 25 })
         });
       } catch (e) {}
 
-      return this.config.QUESTIONS_21_30_ENABLED;
+      return true;
     }
 
     isParticipantResetButtonEnabled() {
