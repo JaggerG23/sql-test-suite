@@ -207,7 +207,7 @@ class QueryExperimentApp {
         this.humanResolver.stats.totalAnswered = Math.min(maxQ, completedCount);
       }
 
-      if (completedCount >= maxQ) {
+      if (this.isParticipantView() && completedCount >= maxQ) {
         const hasFinished = typeof localStorage !== 'undefined' && localStorage.getItem('sql_study_completed_finished') === 'true';
         const hasFinalThoughts = typeof localStorage !== 'undefined' && (localStorage.getItem('sql_study_final_thoughts_done_' + pid) === 'true' || (this.analytics && this.analytics.getFinalThoughts(pid)));
         if (hasFinished) {
@@ -220,8 +220,10 @@ class QueryExperimentApp {
           this.currentQuestionNumber = 'final_thoughts';
           await this.loadIncrementalQuestion('final_thoughts');
         }
-      } else {
+      } else if (this.isParticipantView()) {
         await this.loadIncrementalQuestion(Math.min(maxQ, completedCount + 1));
+      } else {
+        await this.loadIncrementalQuestion(1);
       }
     }
     this.renderAnalyticsDashboard();
@@ -1209,7 +1211,7 @@ class QueryExperimentApp {
     }
 
     if (qNum === 1) {
-      this.currentQuery = 'SELECT orders.id, orders.amount FROM orders JOIN users ON orders.user_id = users.id WHERE orders.id <= 6;';
+      this.currentQuery = 'SELECT orders.id, orders.amount FROM orders JOIN users ON orders.user_id = users.id WHERE orders.id <= 6 ORDER BY orders.id ASC;';
     } else {
       this.queryGenerator = new QueryGenerator(blockSeed);
       this.currentQuery = this.queryGenerator.generateIncrementalQuery(this.currentSchema, 'medium', true, variationIndex, qNum);
@@ -1273,7 +1275,7 @@ class QueryExperimentApp {
     } else if (cur === 'thank_you') {
       await this.loadIncrementalQuestion('thank_you');
     } else {
-      const maxQ = this.getMaxStudyQuestions();
+      const maxQ = this.isParticipantView() ? this.getMaxStudyQuestions() : 30;
       const num = parseInt(cur, 10) || 1;
       if (num >= maxQ) {
         await this.loadIncrementalQuestion('final_thoughts');
@@ -1290,7 +1292,7 @@ class QueryExperimentApp {
     } else if (cur === 'extra_credit') {
       await this.loadIncrementalQuestion('final_thoughts');
     } else if (cur === 'final_thoughts') {
-      const maxQ = this.getMaxStudyQuestions();
+      const maxQ = this.isParticipantView() ? this.getMaxStudyQuestions() : 30;
       await this.loadIncrementalQuestion(maxQ);
     } else if (cur === 1 || cur === '1') {
       await this.loadIncrementalQuestion('training_complete');

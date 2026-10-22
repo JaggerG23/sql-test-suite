@@ -166,7 +166,7 @@ WHERE ${orderTable.name}.status = 'COMPLETED';`
         operators: ['SELECT', 'WHERE', 'GROUP BY', 'COUNT', 'ORDER BY'],
         initialSql: `SELECT id, amount, status FROM ${orderTable.name} WHERE amount > 50;`,
         manipulation: 'overwrite_query',
-        finalSql: `SELECT status, COUNT(*) AS order_count FROM ${orderTable.name} GROUP BY status ORDER BY order_count DESC;`
+        finalSql: `SELECT status, COUNT(*) AS order_count FROM ${orderTable.name} GROUP BY status ORDER BY order_count DESC, status DESC;`
       },
       // Q16 (Structure 3: [HostLang], [Query], [HostLang], [Execute])
       {
@@ -206,45 +206,42 @@ WHERE ${orderTable.name}.status = 'COMPLETED';`
         manipulation: 'q20_compute_threshold_hll',
         finalSql: `SELECT user_id, COUNT(*) AS order_count, ROUND(SUM(amount), 2) AS total_spent FROM ${orderTable.name} WHERE amount >= 180 GROUP BY user_id ORDER BY total_spent DESC LIMIT 4;`
       },
-      // Q21 (Structure 2: [Query], [HostLang], [Query], [Execute] - inspired by Q2)
-      {
-        structure: 2,
-        operators: ['SELECT', 'WHERE', 'ORDER BY', 'LIMIT'],
-        initialSql: `SELECT id, title, price, stock FROM ${productTable.name} WHERE price < 40 ORDER BY price ASC LIMIT 4;`,
-        manipulation: 'delete_query',
-        finalSql: `SELECT id, title, price, stock FROM ${productTable.name} WHERE price >= 40 AND stock > 10 ORDER BY price DESC LIMIT 4;`
-      },
-      // Q22 (Structure 4: [Query], [HostLang], [Execute] - inspired by Q9)
-      {
-        structure: 4,
-        operators: ['SELECT', 'GROUP BY', 'COUNT', 'AVG', 'ROUND', 'ORDER BY', 'LIMIT'],
-        manipulation: 'rewrite_order_desc',
-        initialSql: `SELECT user_id, COUNT(*) AS order_count, ROUND(AVG(amount), 2) AS avg_spent FROM ${orderTable.name} GROUP BY user_id ORDER BY avg_spent ASC LIMIT 4;`,
-        finalSql: `SELECT user_id, COUNT(*) AS order_count, ROUND(AVG(amount), 2) AS avg_spent FROM ${orderTable.name} GROUP BY user_id ORDER BY avg_spent DESC LIMIT 4;`
-      },
-      // Q23 (Structure 5: [Query], [Execute], [HostLang], [Query], [Execute] - inspired by Q6)
-      {
-        structure: 5,
-        operators: ['SELECT', 'WHERE', 'ORDER BY', 'LIMIT'],
-        initialSql: `SELECT id, name, age, is_active FROM ${userTable.name} WHERE age >= 25 AND is_active = 1 ORDER BY age ASC LIMIT 4;`,
-        manipulation: 'delete_second_query',
-        finalSql: `SELECT id, name, age, rating FROM ${userTable.name} WHERE age < 35 ORDER BY age DESC LIMIT 4;`
-      },
-      // Q24 (Structure 1: [HostLang], [Query], [Execute] - inspired by Q10)
+      // Q21 (Structure 1: [HostLang], [Query], [Execute] - counterpart to Q1)
       {
         structure: 1,
-        operators: ['SELECT', 'WHERE', 'ORDER BY', 'LIMIT'],
-        manipulation: 'compare_counts_select_output',
-        initialSql: `SELECT id, score, rating, title FROM ${reviewTable.name} WHERE score <= 2 ORDER BY id ASC LIMIT 4;`,
-        finalSql: `SELECT id, score, rating, title FROM ${reviewTable.name} WHERE score >= 4 ORDER BY id ASC LIMIT 4;`
+        operators: ['SELECT', 'JOIN', 'WHERE', 'ORDER BY'],
+        manipulation: 'q21_step_loop',
+        finalSql: `SELECT ${productTable.name}.id, ${productTable.name}.price FROM ${productTable.name} JOIN ${categoryTable.name} ON ${productTable.name}.category_id = ${categoryTable.name}.id WHERE ${productTable.name}.id <= 6 ORDER BY ${productTable.name}.id ASC;`
       },
-      // Q25 (Structure 3: [HostLang], [Query], [HostLang], [Execute] - inspired by Q8)
+      // Q22 (Structure 2: [Query], [HostLang], [Query], [Execute] - counterpart to Q2)
+      {
+        structure: 2,
+        operators: ['SELECT', 'WHERE', 'ORDER BY'],
+        initialSql: `SELECT id, title FROM ${productTable.name} WHERE id <= 4;`,
+        manipulation: 'delete_query',
+        finalSql: `SELECT id, title FROM ${productTable.name} WHERE id > 3 ORDER BY id ASC;`
+      },
+      // Q23 (Structure 3: [HostLang], [Query], [HostLang], [Execute] - counterpart to Q3)
       {
         structure: 3,
-        operators: ['SELECT', 'WHERE', 'ORDER BY', 'LIMIT'],
-        initialSql: `SELECT id, title, price, stock FROM ${productTable.name} WHERE stock > 15 ORDER BY price ASC LIMIT 4;`,
-        manipulation: 'append_function',
-        finalSql: `SELECT id, title, price, stock FROM ${productTable.name} WHERE stock > 15 ORDER BY price ASC LIMIT 4;`
+        operators: ['SELECT', 'AVG'],
+        manipulation: 'q23_template_string_math',
+        finalSql: `SELECT AVG(price) AS avg_price FROM ${productTable.name};`
+      },
+      // Q24 (Structure 4: [Query], [HostLang], [Execute] - counterpart to Q4)
+      {
+        structure: 4,
+        operators: ['SELECT', 'WHERE', 'LIKE'],
+        manipulation: 'noop_replace',
+        finalSql: `SELECT id, status FROM ${orderTable.name} WHERE status LIKE 'P%';`
+      },
+      // Q25 (Structure 5: Query 1 AVG on products, omit execute 1, HLL string concatenation, Query 2 MAX on reviews, execute 2 - counterpart to Q5)
+      {
+        structure: 5,
+        operators: ['SELECT', 'AVG', 'MAX'],
+        manipulation: 'omit_first_execute',
+        initialSql: `SELECT AVG(price) AS avg_price FROM ${productTable.name};`,
+        finalSql: `SELECT MAX(score) AS max_score FROM ${reviewTable.name};`
       },
       // Q26 (Structure 1: [HostLang], [Query], [Execute] - inspired by Q12)
       {
@@ -321,7 +318,7 @@ SELECT id, title, price, 'Low' AS tier FROM ${productTable.name} WHERE price <= 
     if (qNum !== null && qNum !== undefined) {
       const parsedQ = parseInt(qNum, 10);
       if (parsedQ === 1) {
-        return 'SELECT orders.id, orders.amount FROM orders JOIN users ON orders.user_id = users.id WHERE orders.id <= 6;';
+        return 'SELECT orders.id, orders.amount FROM orders JOIN users ON orders.user_id = users.id WHERE orders.id <= 6 ORDER BY orders.id ASC;';
       }
       if (parsedQ >= 2 && parsedQ <= 30) {
         const spec = this.getStudyQuestionSpec(schema, parsedQ);

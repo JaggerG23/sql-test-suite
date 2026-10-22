@@ -296,7 +296,7 @@ class HumanResolver {
         return;
       }
       const maxQ = (window.studyConfig && typeof window.studyConfig.getMaxQuestions === 'function') ? window.studyConfig.getMaxQuestions() : 20;
-      if (!this.isTrainingChallenge && this.stats && this.stats.totalAnswered >= maxQ) {
+      if (this.isParticipantView() && !this.isTrainingChallenge && this.stats && this.stats.totalAnswered >= maxQ) {
         return;
       }
 
@@ -1127,20 +1127,20 @@ class HumanResolver {
               </div>
               <span style="font-size: 18px; font-weight: 700; color: #94a3b8; user-select: none; line-height: 1;">&minus;</span>
               <div style="flex: 1; min-width: 0;">
-                <input type="text" id="extra-credit-course-sec" class="form-control" placeholder="456" maxlength="12" style="width: 100%; padding: 11px 10px; background: rgba(0,0,0,0.4); border: 1px solid rgba(255,255,255,0.18); border-radius: 8px; color: #fff; font-size: 13.5px; font-family: monospace; font-weight: 700; text-transform: uppercase; text-align: center; letter-spacing: 0.5px;" autocomplete="off" spellcheck="false" title="Identifier or Section (e.g. 456)">
+                <input type="text" id="extra-credit-course-sec" class="form-control" placeholder="1001" maxlength="4" inputmode="numeric" pattern="[0-9]{4}" style="width: 100%; padding: 11px 10px; background: rgba(0,0,0,0.4); border: 1px solid rgba(255,255,255,0.18); border-radius: 8px; color: #fff; font-size: 13.5px; font-family: monospace; font-weight: 700; text-transform: uppercase; text-align: center; letter-spacing: 0.5px;" autocomplete="off" spellcheck="false" title="4-digit Section (e.g. 1001)">
               </div>
               <input type="hidden" id="extra-credit-course-input" value="">
             </div>
             <div style="font-size: 11.5px; color: #94a3b8; margin-top: 6px; display: flex; align-items: center; gap: 4px;">
               <i class="fa-solid fa-circle-info" style="font-size: 10.5px; color: var(--color-accent);"></i>
-              <span>Examples: <strong style="color: #e2e8f0; font-family: monospace;">CS302-456</strong>, <strong style="color: #e2e8f0; font-family: monospace;">CS789-2341</strong>, <strong style="color: #e2e8f0; font-family: monospace;">CS130-1001</strong></span>
+              <span>Examples: <strong style="color: #e2e8f0; font-family: monospace;">CS302-1001</strong>, <strong style="color: #e2e8f0; font-family: monospace;">CS789-2341</strong>, <strong style="color: #e2e8f0; font-family: monospace;">CS130-1002</strong></span>
             </div>
           </div>
         </div>
 
         <div id="finish-validation-hint" style="font-size: 12.5px; color: #f59e0b; display: flex; align-items: center; gap: 6px; margin-bottom: 22px; padding: 8px 12px; background: rgba(245, 158, 11, 0.1); border-radius: 6px;">
           <i class="fa-solid fa-lock" style="font-size: 11px;"></i>
-          <span>Enter your email, course number, and section above to enable Finish.</span>
+          <span>Enter your email, course number, and 4-digit section above to enable Finish.</span>
         </div>
 
         <!-- Action Buttons -->
@@ -1173,7 +1173,7 @@ class HumanResolver {
 
       const emailValid = isValidEmail(email);
       const deptValid = dept.length > 0;
-      const secValid = sec.length > 0;
+      const secValid = /^\d{4}$/.test(sec);
       const isAllValid = emailValid && deptValid && secValid;
 
       if (btnFinish) {
@@ -1198,7 +1198,7 @@ class HumanResolver {
           const missing = [];
           if (!emailValid) missing.push('email');
           if (!deptValid) missing.push('course number');
-          if (!secValid) missing.push('section');
+          if (!secValid) missing.push(sec.length > 0 ? '4-digit section' : 'section (4 digits)');
           finishHint.style.color = '#f59e0b';
           finishHint.style.background = 'rgba(245, 158, 11, 0.1)';
           finishHint.innerHTML = `<i class="fa-solid fa-lock" style="font-size: 11px;"></i> <span>Please fill out your ${missing.join(', ')} above to finish.</span>`;
@@ -1244,7 +1244,7 @@ class HumanResolver {
           const delim = text.includes('-') ? '-' : ' ';
           const parts = text.split(delim);
           deptInput.value = (parts[0] || '').trim().toUpperCase();
-          secInput.value = parts.slice(1).join('-').trim().toUpperCase();
+          secInput.value = parts.slice(1).join('').replace(/\D/g, '').slice(0, 4);
           syncCourseValue();
           validateFinishFields();
           secInput.focus();
@@ -1256,8 +1256,8 @@ class HumanResolver {
         if (val.includes('-')) {
           const parts = val.split('-');
           deptInput.value = parts[0].trim().toUpperCase();
-          if (parts[1]) {
-            secInput.value = parts.slice(1).join('-').trim().toUpperCase();
+          if (parts[1] !== undefined) {
+            secInput.value = parts.slice(1).join('').replace(/\D/g, '').slice(0, 4);
           }
           syncCourseValue();
           validateFinishFields();
@@ -1287,12 +1287,8 @@ class HumanResolver {
       });
 
       secInput.addEventListener('input', () => {
-        let val = secInput.value;
-        if (val.includes('-')) {
-          secInput.value = val.replace(/-/g, '').toUpperCase();
-        } else {
-          secInput.value = val.toUpperCase();
-        }
+        let val = secInput.value.replace(/\D/g, '').slice(0, 4);
+        secInput.value = val;
         syncCourseValue();
         validateFinishFields();
       });
@@ -1591,19 +1587,39 @@ class HumanResolver {
       this.trainingQuestionNumber = null;
     }
 
+    const isParticipant = this.isParticipantView();
     const maxQ = (window.studyConfig && typeof window.studyConfig.getMaxQuestions === 'function') ? window.studyConfig.getMaxQuestions() : 20;
-    if (!isTraining && (targetQNum === 'final_thoughts' || targetQNum > maxQ || (this.stats && this.stats.totalAnswered >= maxQ && !this.adminPreviewGroup))) {
-      if (this.studyCompletedSuccessfully || (typeof localStorage !== 'undefined' && localStorage.getItem('sql_study_completed_finished') === 'true')) {
+
+    // Enforce study progression & completion screens for participants
+    if (isParticipant) {
+      if (!isTraining && (targetQNum === 'final_thoughts' || targetQNum > maxQ || (this.stats && this.stats.totalAnswered >= maxQ && !this.adminPreviewGroup))) {
+        if (this.studyCompletedSuccessfully || (typeof localStorage !== 'undefined' && localStorage.getItem('sql_study_completed_finished') === 'true')) {
+          this.renderThankYouScreen();
+          return;
+        }
+        this.renderFinalThoughtsScreen();
+        return;
+      }
+    } else {
+      // Admin preview mode: allow previewing any question 1-30; only render completion if explicitly requested
+      if (targetQNum === 'final_thoughts') {
+        this.renderFinalThoughtsScreen();
+        return;
+      }
+      if (targetQNum === 'thank_you') {
         this.renderThankYouScreen();
         return;
       }
-      this.renderFinalThoughtsScreen();
-      return;
+      if (targetQNum === 'extra_credit') {
+        this.renderExtraCreditScreen();
+        return;
+      }
     }
 
+    const maxAllowedQ = isParticipant ? maxQ : 30;
     const qNum = isTraining
       ? trainingQNum
-      : Math.min(maxQ, Math.max(1, parseInt(targetQNum, 10) || (this.stats ? this.stats.totalAnswered + 1 : 1)));
+      : Math.min(maxAllowedQ, Math.max(1, parseInt(targetQNum, 10) || (this.stats ? this.stats.totalAnswered + 1 : 1)));
 
     this.currentSchema = schema;
     this.currentRawQuery = query;
@@ -1773,7 +1789,8 @@ class HumanResolver {
       } else if (qNum === 'thank_you') {
         navElem.textContent = `Completed (${maxQ} / ${maxQ})`;
       } else {
-        navElem.textContent = `${qNum || 1} / ${maxQ}`;
+        const totalDisplay = (!this.isParticipantView() && typeof qNum === 'number' && qNum > maxQ) ? 30 : maxQ;
+        navElem.textContent = `${qNum || 1} / ${totalDisplay}`;
       }
     }
   }
@@ -1791,6 +1808,7 @@ class HumanResolver {
     const isParticipantPage = this.isParticipantView();
     const isTraining = Boolean(this.isTrainingChallenge);
     const trainQNum = this.trainingQuestionNumber || 1;
+    const maxQ = (window.studyConfig && typeof window.studyConfig.getMaxQuestions === 'function') ? window.studyConfig.getMaxQuestions() : 20;
 
     // Update navbar questions counter badge in Participant ID box
     this.updateNavCounter();
@@ -1832,7 +1850,7 @@ class HumanResolver {
                   </span>
                 ` : `
                   <span class="badge" style="font-size: 11px; font-weight: 800; padding: 2px 9px; border-radius: 4px; background: rgba(99, 102, 241, 0.25); border: 1px solid rgba(99, 102, 241, 0.55); color: #c7d2fe; letter-spacing: 0.3px;">
-                    <i class="fa-solid fa-cube"></i> Question ${qNum} / ${(window.studyConfig && typeof window.studyConfig.getMaxQuestions === 'function') ? window.studyConfig.getMaxQuestions() : 20}
+                    <i class="fa-solid fa-cube"></i> Question ${qNum} / ${(!isParticipantPage && typeof qNum === 'number' && qNum > maxQ) ? 30 : maxQ}
                   </span>
                 `}
                 <strong style="color: var(--color-accent); font-size: 11px;"><i class="fa-solid fa-table-cells text-accent"></i> Database Schema</strong>
@@ -2046,7 +2064,7 @@ class HumanResolver {
     }
     if (this.isAnswered || !this.currentQuestion) return;
     const maxQ = (window.studyConfig && typeof window.studyConfig.getMaxQuestions === 'function') ? window.studyConfig.getMaxQuestions() : 20;
-    if (this.app && (this.app.currentQuestionNumber === 'final_thoughts' || (this.stats && this.stats.totalAnswered >= maxQ))) {
+    if (this.app && (this.app.currentQuestionNumber === 'final_thoughts' || (this.isParticipantView() && this.stats && this.stats.totalAnswered >= maxQ))) {
       return;
     }
 
@@ -2104,7 +2122,7 @@ class HumanResolver {
   submitAnswer() {
     if (this.isAnswered || this.selectedOptionIndex === null || !this.currentQuestion) return;
     const maxQ = (window.studyConfig && typeof window.studyConfig.getMaxQuestions === 'function') ? window.studyConfig.getMaxQuestions() : 20;
-    if (this.app && (this.app.currentQuestionNumber === 'final_thoughts' || (!this.isTrainingChallenge && this.stats && this.stats.totalAnswered >= maxQ))) {
+    if (this.app && (this.app.currentQuestionNumber === 'final_thoughts' || (this.isParticipantView() && !this.isTrainingChallenge && this.stats && this.stats.totalAnswered >= maxQ))) {
       return;
     }
 
@@ -2163,9 +2181,10 @@ class HumanResolver {
         const curQ = this.app.currentQuestionNumber;
         const parsedQ = (typeof curQ === 'number') ? curQ : parseInt(curQ, 10);
         const maxQ = (window.studyConfig && typeof window.studyConfig.getMaxQuestions === 'function') ? window.studyConfig.getMaxQuestions() : 20;
-        const currentQNum = (!isNaN(parsedQ) && parsedQ >= 1 && parsedQ <= maxQ)
+        const maxLimit = this.isParticipantView() ? maxQ : 30;
+        const currentQNum = (!isNaN(parsedQ) && parsedQ >= 1 && parsedQ <= maxLimit)
           ? parsedQ
-          : Math.min(maxQ, (this.stats ? this.stats.totalAnswered + 1 : 1));
+          : Math.min(maxLimit, (this.stats ? this.stats.totalAnswered + 1 : 1));
 
         this.app.analytics.logResponse({
           questionNumber: currentQNum,

@@ -1,0 +1,4553 @@
+[
+  {
+    "qNum": 1,
+    "rawSql": "SELECT orders.id, orders.amount FROM orders JOIN users ON orders.user_id = users.id WHERE orders.id <= 6 ORDER BY orders.id ASC;",
+    "prompt": "Select the correct final table output:",
+    "codeSnippet": "counter = 0\nfor i in range(6):\n    counter += 1\n\nquery = \"\"\"\nFROM orders\n|> JOIN users ON orders.user_id = users.id\n|> WHERE orders.id <= 6\n|> SELECT orders.id, orders.amount\n|> ORDER BY id ASC\n\"\"\"\n\nresult_table = db.execute(query)",
+    "correctIndex": 0,
+    "correctLetter": "A",
+    "options": [
+      {
+        "index": 0,
+        "letter": "A",
+        "isCorrect": true,
+        "columns": [
+          "id",
+          "amount"
+        ],
+        "rowCount": 6,
+        "rows": [
+          [
+            1,
+            185.51
+          ],
+          [
+            2,
+            183.64
+          ],
+          [
+            3,
+            148.45
+          ],
+          [
+            4,
+            29.23
+          ],
+          [
+            5,
+            21.95
+          ],
+          [
+            6,
+            176.21
+          ]
+        ],
+        "explanation": "Matches exact query output."
+      },
+      {
+        "index": 1,
+        "letter": "B",
+        "isCorrect": false,
+        "columns": [
+          "id",
+          "amount"
+        ],
+        "rowCount": 30,
+        "rows": [
+          [
+            1,
+            185.51
+          ],
+          [
+            2,
+            183.64
+          ],
+          [
+            3,
+            148.45
+          ],
+          [
+            4,
+            29.23
+          ],
+          [
+            5,
+            21.95
+          ],
+          [
+            6,
+            176.21
+          ],
+          [
+            7,
+            24.96
+          ],
+          [
+            8,
+            57.03
+          ],
+          [
+            9,
+            26.82
+          ],
+          [
+            10,
+            16.76
+          ],
+          [
+            11,
+            203.08
+          ],
+          [
+            12,
+            11.42
+          ],
+          [
+            13,
+            162.1
+          ],
+          [
+            14,
+            91.33
+          ],
+          [
+            15,
+            40.08
+          ],
+          [
+            16,
+            159.03
+          ],
+          [
+            17,
+            116.09
+          ],
+          [
+            18,
+            14.97
+          ],
+          [
+            19,
+            70.25
+          ],
+          [
+            20,
+            96.16
+          ],
+          [
+            21,
+            175.5
+          ],
+          [
+            22,
+            99.32
+          ],
+          [
+            23,
+            36.67
+          ],
+          [
+            24,
+            108.62
+          ],
+          [
+            25,
+            104.87
+          ],
+          [
+            26,
+            55.31
+          ],
+          [
+            27,
+            185.23
+          ],
+          [
+            28,
+            122.33
+          ],
+          [
+            29,
+            95.11
+          ],
+          [
+            30,
+            143.22
+          ]
+        ],
+        "explanation": "Unfiltered data (WHERE clause conditions were not applied)."
+      },
+      {
+        "index": 2,
+        "letter": "C",
+        "isCorrect": false,
+        "columns": [
+          "id",
+          "amount"
+        ],
+        "rowCount": 6,
+        "rows": [
+          [
+            1,
+            185.51
+          ],
+          [
+            2,
+            183.64
+          ],
+          [
+            6,
+            176.21
+          ],
+          [
+            3,
+            148.45
+          ],
+          [
+            4,
+            29.23
+          ],
+          [
+            5,
+            21.95
+          ]
+        ],
+        "explanation": "Assumes rows are sorted by orders.amount in descending order."
+      },
+      {
+        "index": 3,
+        "letter": "D",
+        "isCorrect": false,
+        "columns": [
+          "id",
+          "amount"
+        ],
+        "rowCount": 6,
+        "rows": [
+          [
+            6,
+            176.21
+          ],
+          [
+            5,
+            21.95
+          ],
+          [
+            4,
+            29.23
+          ],
+          [
+            3,
+            148.45
+          ],
+          [
+            2,
+            183.64
+          ],
+          [
+            1,
+            185.51
+          ]
+        ],
+        "explanation": "Assumes rows are sorted by orders.id in descending order."
+      }
+    ]
+  },
+  {
+    "qNum": 2,
+    "rawSql": "SELECT id, name FROM users WHERE id > 2 ORDER BY id ASC;",
+    "prompt": "Select the correct final table output:",
+    "codeSnippet": "query = \"\"\"\nFROM users\n|> WHERE id <= 5\n|> SELECT id, name\n\"\"\"\n\ndel query\n\nquery = \"\"\"\nFROM users\n|> WHERE id > 2\n|> SELECT id, name\n|> ORDER BY id ASC\n\"\"\"\n\nresult_table = db.execute(query)",
+    "correctIndex": 2,
+    "correctLetter": "C",
+    "options": [
+      {
+        "index": 0,
+        "letter": "A",
+        "isCorrect": false,
+        "columns": [
+          "id",
+          "name"
+        ],
+        "rowCount": 5,
+        "rows": [
+          [
+            1,
+            "George Jones"
+          ],
+          [
+            2,
+            "Fiona Williams"
+          ],
+          [
+            3,
+            "Charlie Rodriguez"
+          ],
+          [
+            4,
+            "Fiona Miller"
+          ],
+          [
+            5,
+            "Ian Smith"
+          ]
+        ],
+        "explanation": "Evaluates the first query which was deleted prior to execution."
+      },
+      {
+        "index": 1,
+        "letter": "B",
+        "isCorrect": false,
+        "columns": [
+          "id",
+          "name"
+        ],
+        "rowCount": 30,
+        "rows": [
+          [
+            1,
+            "George Jones"
+          ],
+          [
+            2,
+            "Fiona Williams"
+          ],
+          [
+            3,
+            "Charlie Rodriguez"
+          ],
+          [
+            4,
+            "Fiona Miller"
+          ],
+          [
+            5,
+            "Ian Smith"
+          ],
+          [
+            6,
+            "Alice Johnson"
+          ],
+          [
+            7,
+            "Bob Rodriguez"
+          ],
+          [
+            8,
+            "Evan Smith"
+          ],
+          [
+            9,
+            "Charlie Miller"
+          ],
+          [
+            10,
+            "Ian Garcia"
+          ],
+          [
+            11,
+            "Alice Miller"
+          ],
+          [
+            12,
+            "Alice Martinez"
+          ],
+          [
+            13,
+            "Bob Smith"
+          ],
+          [
+            14,
+            "Ian Smith"
+          ],
+          [
+            15,
+            "Hannah Johnson"
+          ],
+          [
+            16,
+            "Julia Garcia"
+          ],
+          [
+            17,
+            "Diana Garcia"
+          ],
+          [
+            18,
+            "Evan Rodriguez"
+          ],
+          [
+            19,
+            "Evan Garcia"
+          ],
+          [
+            20,
+            "Diana Davis"
+          ],
+          [
+            21,
+            "Ian Johnson"
+          ],
+          [
+            22,
+            "George Williams"
+          ],
+          [
+            23,
+            "Diana Williams"
+          ],
+          [
+            24,
+            "Hannah Brown"
+          ],
+          [
+            25,
+            "Alice Davis"
+          ],
+          [
+            26,
+            "Charlie Miller"
+          ],
+          [
+            27,
+            "Hannah Davis"
+          ],
+          [
+            28,
+            "Alice Williams"
+          ],
+          [
+            29,
+            "Bob Johnson"
+          ],
+          [
+            30,
+            "Evan Jones"
+          ]
+        ],
+        "explanation": "Unfiltered data (WHERE clause conditions were not applied)."
+      },
+      {
+        "index": 2,
+        "letter": "C",
+        "isCorrect": true,
+        "columns": [
+          "id",
+          "name"
+        ],
+        "rowCount": 28,
+        "rows": [
+          [
+            3,
+            "Charlie Rodriguez"
+          ],
+          [
+            4,
+            "Fiona Miller"
+          ],
+          [
+            5,
+            "Ian Smith"
+          ],
+          [
+            6,
+            "Alice Johnson"
+          ],
+          [
+            7,
+            "Bob Rodriguez"
+          ],
+          [
+            8,
+            "Evan Smith"
+          ],
+          [
+            9,
+            "Charlie Miller"
+          ],
+          [
+            10,
+            "Ian Garcia"
+          ],
+          [
+            11,
+            "Alice Miller"
+          ],
+          [
+            12,
+            "Alice Martinez"
+          ],
+          [
+            13,
+            "Bob Smith"
+          ],
+          [
+            14,
+            "Ian Smith"
+          ],
+          [
+            15,
+            "Hannah Johnson"
+          ],
+          [
+            16,
+            "Julia Garcia"
+          ],
+          [
+            17,
+            "Diana Garcia"
+          ],
+          [
+            18,
+            "Evan Rodriguez"
+          ],
+          [
+            19,
+            "Evan Garcia"
+          ],
+          [
+            20,
+            "Diana Davis"
+          ],
+          [
+            21,
+            "Ian Johnson"
+          ],
+          [
+            22,
+            "George Williams"
+          ],
+          [
+            23,
+            "Diana Williams"
+          ],
+          [
+            24,
+            "Hannah Brown"
+          ],
+          [
+            25,
+            "Alice Davis"
+          ],
+          [
+            26,
+            "Charlie Miller"
+          ],
+          [
+            27,
+            "Hannah Davis"
+          ],
+          [
+            28,
+            "Alice Williams"
+          ],
+          [
+            29,
+            "Bob Johnson"
+          ],
+          [
+            30,
+            "Evan Jones"
+          ]
+        ],
+        "explanation": "Matches exact query output."
+      },
+      {
+        "index": 3,
+        "letter": "D",
+        "isCorrect": false,
+        "columns": [
+          "id",
+          "name"
+        ],
+        "rowCount": 28,
+        "rows": [
+          [
+            30,
+            "Evan Jones"
+          ],
+          [
+            29,
+            "Bob Johnson"
+          ],
+          [
+            28,
+            "Alice Williams"
+          ],
+          [
+            27,
+            "Hannah Davis"
+          ],
+          [
+            26,
+            "Charlie Miller"
+          ],
+          [
+            25,
+            "Alice Davis"
+          ],
+          [
+            24,
+            "Hannah Brown"
+          ],
+          [
+            23,
+            "Diana Williams"
+          ],
+          [
+            22,
+            "George Williams"
+          ],
+          [
+            21,
+            "Ian Johnson"
+          ],
+          [
+            20,
+            "Diana Davis"
+          ],
+          [
+            19,
+            "Evan Garcia"
+          ],
+          [
+            18,
+            "Evan Rodriguez"
+          ],
+          [
+            17,
+            "Diana Garcia"
+          ],
+          [
+            16,
+            "Julia Garcia"
+          ],
+          [
+            15,
+            "Hannah Johnson"
+          ],
+          [
+            14,
+            "Ian Smith"
+          ],
+          [
+            13,
+            "Bob Smith"
+          ],
+          [
+            12,
+            "Alice Martinez"
+          ],
+          [
+            11,
+            "Alice Miller"
+          ],
+          [
+            10,
+            "Ian Garcia"
+          ],
+          [
+            9,
+            "Charlie Miller"
+          ],
+          [
+            8,
+            "Evan Smith"
+          ],
+          [
+            7,
+            "Bob Rodriguez"
+          ],
+          [
+            6,
+            "Alice Johnson"
+          ],
+          [
+            5,
+            "Ian Smith"
+          ],
+          [
+            4,
+            "Fiona Miller"
+          ],
+          [
+            3,
+            "Charlie Rodriguez"
+          ]
+        ],
+        "explanation": "Inverted sort order."
+      }
+    ]
+  },
+  {
+    "qNum": 3,
+    "rawSql": "SELECT AVG(amount) AS avg_amount FROM orders;",
+    "prompt": "Select the correct final table output:",
+    "codeSnippet": "query = \"\"\"\nFROM orders\n|> AGGREGATE AVG(amount) AS avg_amount\n\"\"\"\n\nformatted_sql = query.replace(\"WHERE\", \"\").strip()\n\ntotal_score = (100 * 2) + 50\n\nresult_table = db.execute(query)",
+    "correctIndex": 3,
+    "correctLetter": "D",
+    "options": [
+      {
+        "index": 0,
+        "letter": "A",
+        "isCorrect": false,
+        "columns": [
+          "query"
+        ],
+        "rowCount": 1,
+        "rows": [
+          [
+            "SELECT AVG(amount) AS avg_amount FROM orders;"
+          ]
+        ],
+        "explanation": "Assumes the unexecuted SQL query string is returned as text output."
+      },
+      {
+        "index": 1,
+        "letter": "B",
+        "isCorrect": false,
+        "columns": [
+          "avg_amount"
+        ],
+        "rowCount": 1,
+        "rows": [
+          [
+            250
+          ]
+        ],
+        "explanation": "Assumes the second host-language arithmetic calculation ((100 * 2) + 50 = 250) is returned."
+      },
+      {
+        "index": 2,
+        "letter": "C",
+        "isCorrect": false,
+        "columns": [
+          "avg_amount"
+        ],
+        "rowCount": 1,
+        "rows": [
+          [
+            "AVG(amount)"
+          ]
+        ],
+        "explanation": "Assumes the aggregate expression string \"AVG(amount)\" is returned instead of being calculated."
+      },
+      {
+        "index": 3,
+        "letter": "D",
+        "isCorrect": true,
+        "columns": [
+          "avg_amount"
+        ],
+        "rowCount": 1,
+        "rows": [
+          [
+            98.70833333333331
+          ]
+        ],
+        "explanation": "Matches exact query output."
+      }
+    ]
+  },
+  {
+    "qNum": 4,
+    "rawSql": "SELECT id, name FROM users WHERE name LIKE 'A%';",
+    "prompt": "Select the correct final table output:",
+    "codeSnippet": "query = \"\"\"\nFROM users\n|> WHERE name LIKE 'A%'\n|> SELECT id, name\n\"\"\"\n\nquery.replace(\"A%\", \"B%\")\n\nresult_table = db.execute(query)",
+    "correctIndex": 2,
+    "correctLetter": "C",
+    "options": [
+      {
+        "index": 0,
+        "letter": "A",
+        "isCorrect": false,
+        "columns": [
+          "id",
+          "name"
+        ],
+        "rowCount": 3,
+        "rows": [
+          [
+            3,
+            "Charlie Rodriguez"
+          ],
+          [
+            9,
+            "Charlie Miller"
+          ],
+          [
+            26,
+            "Charlie Miller"
+          ]
+        ],
+        "explanation": "Evaluates an alternative LIKE pattern (names starting with C)."
+      },
+      {
+        "index": 1,
+        "letter": "B",
+        "isCorrect": false,
+        "columns": [
+          "id",
+          "name"
+        ],
+        "rowCount": 4,
+        "rows": [
+          [
+            1,
+            "George Jones"
+          ],
+          [
+            2,
+            "Fiona Williams"
+          ],
+          [
+            3,
+            "Charlie Rodriguez"
+          ],
+          [
+            4,
+            "Fiona Miller"
+          ]
+        ],
+        "explanation": "Unfiltered table rows without applying the LIKE filter."
+      },
+      {
+        "index": 2,
+        "letter": "C",
+        "isCorrect": true,
+        "columns": [
+          "id",
+          "name"
+        ],
+        "rowCount": 5,
+        "rows": [
+          [
+            6,
+            "Alice Johnson"
+          ],
+          [
+            11,
+            "Alice Miller"
+          ],
+          [
+            12,
+            "Alice Martinez"
+          ],
+          [
+            25,
+            "Alice Davis"
+          ],
+          [
+            28,
+            "Alice Williams"
+          ]
+        ],
+        "explanation": "Matches exact query output."
+      },
+      {
+        "index": 3,
+        "letter": "D",
+        "isCorrect": false,
+        "columns": [
+          "id",
+          "name"
+        ],
+        "rowCount": 3,
+        "rows": [
+          [
+            7,
+            "Bob Rodriguez"
+          ],
+          [
+            13,
+            "Bob Smith"
+          ],
+          [
+            29,
+            "Bob Johnson"
+          ]
+        ],
+        "explanation": "Assumes query.replace(\"A%\", \"B%\") mutated the query in-place."
+      }
+    ]
+  },
+  {
+    "qNum": 5,
+    "rawSql": "SELECT MIN(score) AS min_score FROM reviews;",
+    "prompt": "Select the correct final table output:",
+    "codeSnippet": "query = \"\"\"\nFROM orders\n|> AGGREGATE AVG(amount) AS avg_amount\n\"\"\"\n\nstr1 = \"Review\"\nstr2 = \"Score\"\ncombined_text = str1 + str2\n\nquery = \"\"\"\nFROM reviews\n|> AGGREGATE MIN(score) AS min_score\n\"\"\"\n\nresult_table = db.execute(query)",
+    "correctIndex": 0,
+    "correctLetter": "A",
+    "options": [
+      {
+        "index": 0,
+        "letter": "A",
+        "isCorrect": true,
+        "columns": [
+          "min_score"
+        ],
+        "rowCount": 1,
+        "rows": [
+          [
+            1
+          ]
+        ],
+        "explanation": "Matches exact query output."
+      },
+      {
+        "index": 1,
+        "letter": "B",
+        "isCorrect": false,
+        "columns": [
+          "min_score"
+        ],
+        "rowCount": 1,
+        "rows": [
+          [
+            "MIN(score)"
+          ]
+        ],
+        "explanation": "Assumes the aggregate expression string \"MIN(score)\" is returned instead of the evaluated minimum numeric score."
+      },
+      {
+        "index": 2,
+        "letter": "C",
+        "isCorrect": false,
+        "columns": [
+          "combined_text"
+        ],
+        "rowCount": 1,
+        "rows": [
+          [
+            "ReviewScore"
+          ]
+        ],
+        "explanation": "Assumes the host-language string concatenation (\"ReviewScore\") is returned as the table output."
+      },
+      {
+        "index": 3,
+        "letter": "D",
+        "isCorrect": false,
+        "columns": [
+          "query"
+        ],
+        "rowCount": 1,
+        "rows": [
+          [
+            "SELECT AVG(amount) AS avg_amount FROM orders;"
+          ]
+        ],
+        "explanation": "Assumes the first unexecuted SQL query string is returned as text output."
+      }
+    ]
+  },
+  {
+    "qNum": 6,
+    "rawSql": "SELECT category_id, MIN(price) AS min_price, MAX(price) AS max_price FROM products WHERE price > 20 GROUP BY category_id ORDER BY category_id ASC;",
+    "prompt": "Select the correct final table output:",
+    "codeSnippet": "query = \"\"\"\nFROM products\n|> WHERE price > 20\n|> AGGREGATE MIN(price) AS min_price, MAX(price) AS max_price GROUP BY category_id\n|> ORDER BY category_id ASC\n\"\"\"\n\nresult_table = db.execute(query)\n\nsync_checkpoints = [\"checkpoint_1\", \"checkpoint_2\"]\nsync_progress = 0\nfor cp in sync_checkpoints:\n    sync_progress += 1\n\nquery = \"\"\"\nFROM products\n|> WHERE price > 35\n|> AGGREGATE MAX(price) AS max_price, MIN(price) AS min_price GROUP BY category_id\n|> ORDER BY category_id DESC\n\"\"\"\n\ndel query",
+    "correctIndex": 1,
+    "correctLetter": "B",
+    "options": [
+      {
+        "index": 0,
+        "letter": "A",
+        "isCorrect": false,
+        "columns": [
+          "category_id",
+          "max_price",
+          "min_price",
+          "item_count",
+          "avg_price"
+        ],
+        "rowCount": 16,
+        "rows": [
+          [
+            30,
+            176.9,
+            176.9,
+            1,
+            176.9
+          ],
+          [
+            29,
+            137.24,
+            108.67,
+            2,
+            122.96
+          ],
+          [
+            25,
+            172.4,
+            172.4,
+            1,
+            172.4
+          ],
+          [
+            21,
+            117.2,
+            114.2,
+            2,
+            115.7
+          ],
+          [
+            20,
+            196.19,
+            196.19,
+            1,
+            196.19
+          ],
+          [
+            19,
+            143.3,
+            143.3,
+            1,
+            143.3
+          ],
+          [
+            18,
+            163.71,
+            67.4,
+            2,
+            115.56
+          ],
+          [
+            16,
+            98.81,
+            98.81,
+            1,
+            98.81
+          ],
+          [
+            15,
+            147.41,
+            114.27,
+            3,
+            130.94
+          ],
+          [
+            14,
+            141.2,
+            141.2,
+            1,
+            141.2
+          ],
+          [
+            11,
+            171.62,
+            171.62,
+            1,
+            171.62
+          ],
+          [
+            10,
+            138.58,
+            35.32,
+            5,
+            87.05
+          ],
+          [
+            9,
+            138.86,
+            138.86,
+            1,
+            138.86
+          ],
+          [
+            5,
+            166.52,
+            110.14,
+            2,
+            138.33
+          ],
+          [
+            3,
+            106.31,
+            91.08,
+            2,
+            98.7
+          ],
+          [
+            2,
+            50.94,
+            50.94,
+            1,
+            50.94
+          ]
+        ],
+        "explanation": "Evaluates query 2 with extra aggregate summary columns (item_count, avg_price) sorted by category_id DESC."
+      },
+      {
+        "index": 1,
+        "letter": "B",
+        "isCorrect": true,
+        "columns": [
+          "category_id",
+          "min_price",
+          "max_price"
+        ],
+        "rowCount": 16,
+        "rows": [
+          [
+            2,
+            50.94,
+            50.94
+          ],
+          [
+            3,
+            91.08,
+            106.31
+          ],
+          [
+            5,
+            32.83,
+            166.52
+          ],
+          [
+            9,
+            138.86,
+            138.86
+          ],
+          [
+            10,
+            35.32,
+            138.58
+          ],
+          [
+            11,
+            171.62,
+            171.62
+          ],
+          [
+            14,
+            141.2,
+            141.2
+          ],
+          [
+            15,
+            114.27,
+            147.41
+          ],
+          [
+            16,
+            20.62,
+            98.81
+          ],
+          [
+            18,
+            67.4,
+            163.71
+          ],
+          [
+            19,
+            143.3,
+            143.3
+          ],
+          [
+            20,
+            31.97,
+            196.19
+          ],
+          [
+            21,
+            114.2,
+            117.2
+          ],
+          [
+            25,
+            172.4,
+            172.4
+          ],
+          [
+            29,
+            108.67,
+            137.24
+          ],
+          [
+            30,
+            176.9,
+            176.9
+          ]
+        ],
+        "explanation": "Matches exact query output."
+      },
+      {
+        "index": 2,
+        "letter": "C",
+        "isCorrect": false,
+        "columns": [
+          "category_id",
+          "min_price",
+          "max_price",
+          "product_count"
+        ],
+        "rowCount": 16,
+        "rows": [
+          [
+            30,
+            176.9,
+            176.9,
+            1
+          ],
+          [
+            25,
+            172.4,
+            172.4,
+            1
+          ],
+          [
+            11,
+            171.62,
+            171.62,
+            1
+          ],
+          [
+            19,
+            143.3,
+            143.3,
+            1
+          ],
+          [
+            14,
+            141.2,
+            141.2,
+            1
+          ],
+          [
+            9,
+            138.86,
+            138.86,
+            1
+          ],
+          [
+            15,
+            114.27,
+            147.41,
+            3
+          ],
+          [
+            21,
+            114.2,
+            117.2,
+            2
+          ],
+          [
+            29,
+            108.67,
+            137.24,
+            2
+          ],
+          [
+            3,
+            91.08,
+            106.31,
+            2
+          ],
+          [
+            18,
+            67.4,
+            163.71,
+            2
+          ],
+          [
+            2,
+            50.94,
+            50.94,
+            1
+          ],
+          [
+            10,
+            35.32,
+            138.58,
+            5
+          ],
+          [
+            5,
+            32.83,
+            166.52,
+            3
+          ],
+          [
+            20,
+            31.97,
+            196.19,
+            2
+          ],
+          [
+            16,
+            20.62,
+            98.81,
+            2
+          ]
+        ],
+        "explanation": "Evaluates unfiltered MIN/MAX with an extra product_count column sorted by min_price DESC."
+      },
+      {
+        "index": 3,
+        "letter": "D",
+        "isCorrect": false,
+        "columns": [
+          "category_id",
+          "min_price",
+          "max_price",
+          "total_stock",
+          "avg_rating"
+        ],
+        "rowCount": 16,
+        "rows": [
+          [
+            15,
+            114.27,
+            147.41,
+            229,
+            3.4
+          ],
+          [
+            21,
+            114.2,
+            117.2,
+            195,
+            3
+          ],
+          [
+            10,
+            35.32,
+            138.58,
+            190,
+            2.6
+          ],
+          [
+            29,
+            108.67,
+            137.24,
+            167,
+            4
+          ],
+          [
+            18,
+            67.4,
+            163.71,
+            129,
+            2.9
+          ],
+          [
+            3,
+            91.08,
+            106.31,
+            119,
+            2.7
+          ],
+          [
+            5,
+            32.83,
+            166.52,
+            111,
+            3.1
+          ],
+          [
+            20,
+            31.97,
+            196.19,
+            89,
+            2.2
+          ],
+          [
+            25,
+            172.4,
+            172.4,
+            86,
+            3.4
+          ],
+          [
+            30,
+            176.9,
+            176.9,
+            85,
+            4
+          ],
+          [
+            2,
+            50.94,
+            50.94,
+            71,
+            3.3
+          ],
+          [
+            16,
+            20.62,
+            98.81,
+            56,
+            2
+          ],
+          [
+            11,
+            171.62,
+            171.62,
+            54,
+            1.8
+          ],
+          [
+            14,
+            141.2,
+            141.2,
+            35,
+            4.8
+          ],
+          [
+            9,
+            138.86,
+            138.86,
+            23,
+            1.7
+          ],
+          [
+            19,
+            143.3,
+            143.3,
+            16,
+            2.2
+          ]
+        ],
+        "explanation": "Evaluates query 1 with extra inventory and rating columns (total_stock, avg_rating) sorted by total_stock DESC."
+      }
+    ]
+  },
+  {
+    "qNum": 7,
+    "rawSql": "SELECT category_id, ROUND(SUM(price), 2) AS sum_price FROM products WHERE price > 20 GROUP BY category_id ORDER BY category_id ASC;",
+    "prompt": "Select the correct final table output:",
+    "codeSnippet": "query = \"\"\"\nFROM products\n|> WHERE price > 20\n|> AGGREGATE ROUND(SUM(price), 2) AS sum_price GROUP BY category_id\n|> ORDER BY category_id ASC\n\"\"\"\n\nresult_table = db.execute(query)\n\nquery_clauses = [\"SELECT\", \"WHERE\", \"GROUP BY\"]\nactive_clauses = [c for c in query_clauses if c in query]\n\nquery = \"\"\"\nUPDATE products SET price = price * 2;\n\"\"\"",
+    "correctIndex": 3,
+    "correctLetter": "D",
+    "options": [
+      {
+        "index": 0,
+        "letter": "A",
+        "isCorrect": false,
+        "columns": [
+          "category_id",
+          "sum_price",
+          "item_count",
+          "avg_price"
+        ],
+        "rowCount": 15,
+        "rows": [
+          [
+            1,
+            66.52,
+            1,
+            66.52
+          ],
+          [
+            7,
+            323.1,
+            3,
+            107.7
+          ],
+          [
+            12,
+            136.91,
+            1,
+            136.91
+          ],
+          [
+            13,
+            334.7,
+            2,
+            167.35
+          ],
+          [
+            15,
+            265.67,
+            2,
+            132.84
+          ],
+          [
+            16,
+            48.62,
+            1,
+            48.62
+          ],
+          [
+            17,
+            128.92,
+            1,
+            128.92
+          ],
+          [
+            19,
+            87.27,
+            1,
+            87.27
+          ],
+          [
+            21,
+            314.9,
+            4,
+            78.73
+          ],
+          [
+            22,
+            160.42,
+            1,
+            160.42
+          ],
+          [
+            23,
+            333.99,
+            2,
+            167
+          ],
+          [
+            24,
+            223.86,
+            2,
+            111.93
+          ],
+          [
+            26,
+            244.08,
+            2,
+            122.04
+          ],
+          [
+            27,
+            200.78,
+            2,
+            100.39
+          ],
+          [
+            29,
+            267.49,
+            2,
+            133.75
+          ]
+        ],
+        "explanation": "Evaluates unnecessary additional columns (item_count, avg_price)."
+      },
+      {
+        "index": 1,
+        "letter": "B",
+        "isCorrect": false,
+        "columns": [
+          "category_id",
+          "sum_price"
+        ],
+        "rowCount": 15,
+        "rows": [
+          [
+            29,
+            267.49
+          ],
+          [
+            27,
+            200.78
+          ],
+          [
+            26,
+            244.08
+          ],
+          [
+            24,
+            223.86
+          ],
+          [
+            23,
+            333.99
+          ],
+          [
+            22,
+            160.42
+          ],
+          [
+            21,
+            314.9
+          ],
+          [
+            19,
+            87.27
+          ],
+          [
+            17,
+            128.92
+          ],
+          [
+            16,
+            48.62
+          ],
+          [
+            15,
+            265.67
+          ],
+          [
+            13,
+            334.7
+          ],
+          [
+            12,
+            136.91
+          ],
+          [
+            7,
+            323.1
+          ],
+          [
+            1,
+            66.52
+          ]
+        ],
+        "explanation": "Inverted sort order for query 1 (DESC instead of ASC)."
+      },
+      {
+        "index": 2,
+        "letter": "C",
+        "isCorrect": false,
+        "columns": [
+          "category_id",
+          "item_count"
+        ],
+        "rowCount": 15,
+        "rows": [
+          [
+            1,
+            1
+          ],
+          [
+            7,
+            3
+          ],
+          [
+            12,
+            1
+          ],
+          [
+            13,
+            2
+          ],
+          [
+            15,
+            2
+          ],
+          [
+            16,
+            1
+          ],
+          [
+            17,
+            1
+          ],
+          [
+            19,
+            1
+          ],
+          [
+            21,
+            4
+          ],
+          [
+            22,
+            1
+          ],
+          [
+            23,
+            2
+          ],
+          [
+            24,
+            2
+          ],
+          [
+            26,
+            2
+          ],
+          [
+            27,
+            2
+          ],
+          [
+            29,
+            2
+          ]
+        ],
+        "explanation": "Evaluates the item count (COUNT) instead of the total price (SUM)."
+      },
+      {
+        "index": 3,
+        "letter": "D",
+        "isCorrect": true,
+        "columns": [
+          "category_id",
+          "sum_price"
+        ],
+        "rowCount": 15,
+        "rows": [
+          [
+            1,
+            66.52
+          ],
+          [
+            7,
+            323.1
+          ],
+          [
+            12,
+            136.91
+          ],
+          [
+            13,
+            334.7
+          ],
+          [
+            15,
+            265.67
+          ],
+          [
+            16,
+            48.62
+          ],
+          [
+            17,
+            128.92
+          ],
+          [
+            19,
+            87.27
+          ],
+          [
+            21,
+            314.9
+          ],
+          [
+            22,
+            160.42
+          ],
+          [
+            23,
+            333.99
+          ],
+          [
+            24,
+            223.86
+          ],
+          [
+            26,
+            244.08
+          ],
+          [
+            27,
+            200.78
+          ],
+          [
+            29,
+            267.49
+          ]
+        ],
+        "explanation": "Matches exact query output."
+      }
+    ]
+  },
+  {
+    "qNum": 8,
+    "rawSql": "SELECT id, name FROM users WHERE id <= 5 ORDER BY name ASC;",
+    "prompt": "Select the correct final table output:",
+    "codeSnippet": "def append_to_query(clause):\n    log_buffer = [\"audit_marker\"]\n    log_buffer.append(clause)\n    return len(log_buffer)\n\nquery = \"\"\"\nFROM users\n|> WHERE id <= 5\n|> SELECT id, name\n|> ORDER BY name ASC\n\"\"\"\n\nappend_status = append_to_query(\"ORDER BY id DESC\")\n\nresult_table = db.execute(query)",
+    "correctIndex": 0,
+    "correctLetter": "A",
+    "options": [
+      {
+        "index": 0,
+        "letter": "A",
+        "isCorrect": true,
+        "columns": [
+          "id",
+          "name"
+        ],
+        "rowCount": 5,
+        "rows": [
+          [
+            4,
+            "Bob Garcia"
+          ],
+          [
+            2,
+            "Charlie Davis"
+          ],
+          [
+            3,
+            "Fiona Jones"
+          ],
+          [
+            1,
+            "George Martinez"
+          ],
+          [
+            5,
+            "Hannah Smith"
+          ]
+        ],
+        "explanation": "Matches exact query output."
+      },
+      {
+        "index": 1,
+        "letter": "B",
+        "isCorrect": false,
+        "columns": [
+          "id",
+          "name"
+        ],
+        "rowCount": 5,
+        "rows": [
+          [
+            6,
+            "Alice Rodriguez"
+          ],
+          [
+            8,
+            "Bob Miller"
+          ],
+          [
+            7,
+            "Fiona Garcia"
+          ],
+          [
+            9,
+            "Hannah Miller"
+          ],
+          [
+            10,
+            "Hannah Smith"
+          ]
+        ],
+        "explanation": "Evaluates an alternative filter range (ids 6 to 10)."
+      },
+      {
+        "index": 2,
+        "letter": "C",
+        "isCorrect": false,
+        "columns": [
+          "id",
+          "name"
+        ],
+        "rowCount": 5,
+        "rows": [
+          [
+            1,
+            "George Martinez"
+          ],
+          [
+            2,
+            "Charlie Davis"
+          ],
+          [
+            3,
+            "Fiona Jones"
+          ],
+          [
+            4,
+            "Bob Garcia"
+          ],
+          [
+            5,
+            "Hannah Smith"
+          ]
+        ],
+        "explanation": "Assumes rows are sorted by id ASC instead of name ASC."
+      },
+      {
+        "index": 3,
+        "letter": "D",
+        "isCorrect": false,
+        "columns": [
+          "id",
+          "name"
+        ],
+        "rowCount": 5,
+        "rows": [
+          [
+            5,
+            "Hannah Smith"
+          ],
+          [
+            4,
+            "Bob Garcia"
+          ],
+          [
+            3,
+            "Fiona Jones"
+          ],
+          [
+            2,
+            "Charlie Davis"
+          ],
+          [
+            1,
+            "George Martinez"
+          ]
+        ],
+        "explanation": "Assumes the append function call modified the query to sort by id DESC."
+      }
+    ]
+  },
+  {
+    "qNum": 9,
+    "rawSql": "SELECT order_id, SUM(score) AS total_score, ROUND(AVG(score), 2) AS avg_score FROM reviews GROUP BY order_id ORDER BY order_id DESC;",
+    "prompt": "Select the correct final table output:",
+    "codeSnippet": "query = \"\"\"\nFROM reviews\n|> AGGREGATE SUM(score) AS total_score, ROUND(AVG(score), 2) AS avg_score GROUP BY order_id\n|> ORDER BY order_id ASC\n\"\"\"\n\nquery = query.replace(\"ASC\", \"DESC\")\n\nresult_table = db.execute(query)",
+    "correctIndex": 3,
+    "correctLetter": "D",
+    "options": [
+      {
+        "index": 0,
+        "letter": "A",
+        "isCorrect": false,
+        "columns": [
+          "order_id",
+          "total_score",
+          "avg_score",
+          "min_score"
+        ],
+        "rowCount": 7,
+        "rows": [
+          [
+            1,
+            21,
+            2.63,
+            1
+          ],
+          [
+            2,
+            17,
+            4.25,
+            4
+          ],
+          [
+            4,
+            15,
+            3,
+            1
+          ],
+          [
+            6,
+            11,
+            2.75,
+            1
+          ],
+          [
+            8,
+            9,
+            1.8,
+            1
+          ],
+          [
+            7,
+            9,
+            3,
+            2
+          ],
+          [
+            3,
+            2,
+            2,
+            2
+          ]
+        ],
+        "explanation": "Assumes the query was sorted by total_score DESC with an extra min_score column."
+      },
+      {
+        "index": 1,
+        "letter": "B",
+        "isCorrect": false,
+        "columns": [
+          "order_id",
+          "item_count",
+          "avg_score",
+          "max_score"
+        ],
+        "rowCount": 7,
+        "rows": [
+          [
+            1,
+            8,
+            2.63,
+            5
+          ],
+          [
+            8,
+            5,
+            1.8,
+            3
+          ],
+          [
+            4,
+            5,
+            3,
+            5
+          ],
+          [
+            6,
+            4,
+            2.75,
+            5
+          ],
+          [
+            2,
+            4,
+            4.25,
+            5
+          ],
+          [
+            7,
+            3,
+            3,
+            4
+          ],
+          [
+            3,
+            1,
+            2,
+            2
+          ]
+        ],
+        "explanation": "Evaluates item_count and max_score sorted by item_count DESC."
+      },
+      {
+        "index": 2,
+        "letter": "C",
+        "isCorrect": false,
+        "columns": [
+          "order_id",
+          "total_score",
+          "avg_score"
+        ],
+        "rowCount": 7,
+        "rows": [
+          [
+            1,
+            21,
+            2.63
+          ],
+          [
+            2,
+            17,
+            4.25
+          ],
+          [
+            3,
+            2,
+            2
+          ],
+          [
+            4,
+            15,
+            3
+          ],
+          [
+            6,
+            11,
+            2.75
+          ],
+          [
+            7,
+            9,
+            3
+          ],
+          [
+            8,
+            9,
+            1.8
+          ]
+        ],
+        "explanation": "Evaluates the initial query (ordered by order_id ASC), assuming the HLL string rewrite to DESC was not applied."
+      },
+      {
+        "index": 3,
+        "letter": "D",
+        "isCorrect": true,
+        "columns": [
+          "order_id",
+          "total_score",
+          "avg_score"
+        ],
+        "rowCount": 7,
+        "rows": [
+          [
+            8,
+            9,
+            1.8
+          ],
+          [
+            7,
+            9,
+            3
+          ],
+          [
+            6,
+            11,
+            2.75
+          ],
+          [
+            4,
+            15,
+            3
+          ],
+          [
+            3,
+            2,
+            2
+          ],
+          [
+            2,
+            17,
+            4.25
+          ],
+          [
+            1,
+            21,
+            2.63
+          ]
+        ],
+        "explanation": "Matches exact query output."
+      }
+    ]
+  },
+  {
+    "qNum": 10,
+    "rawSql": "SELECT orders.id AS order_id FROM orders ORDER BY orders.id ASC;",
+    "prompt": "Select the correct final table output:",
+    "codeSnippet": "orders_quantity = [15, 8, 22, 5, 12, 30]\nproducts_id = [1, 2, 3]\norders_count = len(orders_quantity)\nproducts_count = len(products_id)\n\nif orders_count >= products_count:\n    query = \"\"\"\nFROM orders\n|> SELECT orders.id AS order_id\n|> ORDER BY order_id ASC\n\"\"\"\nelse:\n    query = \"\"\"\nFROM products\n|> ORDER BY id ASC\n|> SELECT products.title AS product_name\n\"\"\"\n\nresult_table = db.execute(query)",
+    "correctIndex": 0,
+    "correctLetter": "A",
+    "options": [
+      {
+        "index": 0,
+        "letter": "A",
+        "isCorrect": true,
+        "columns": [
+          "order_id"
+        ],
+        "rowCount": 30,
+        "rows": [
+          [
+            1
+          ],
+          [
+            2
+          ],
+          [
+            3
+          ],
+          [
+            4
+          ],
+          [
+            5
+          ],
+          [
+            6
+          ],
+          [
+            7
+          ],
+          [
+            8
+          ],
+          [
+            9
+          ],
+          [
+            10
+          ],
+          [
+            11
+          ],
+          [
+            12
+          ],
+          [
+            13
+          ],
+          [
+            14
+          ],
+          [
+            15
+          ],
+          [
+            16
+          ],
+          [
+            17
+          ],
+          [
+            18
+          ],
+          [
+            19
+          ],
+          [
+            20
+          ],
+          [
+            21
+          ],
+          [
+            22
+          ],
+          [
+            23
+          ],
+          [
+            24
+          ],
+          [
+            25
+          ],
+          [
+            26
+          ],
+          [
+            27
+          ],
+          [
+            28
+          ],
+          [
+            29
+          ],
+          [
+            30
+          ]
+        ],
+        "explanation": "Matches exact query output."
+      },
+      {
+        "index": 1,
+        "letter": "B",
+        "isCorrect": false,
+        "columns": [
+          "quantity"
+        ],
+        "rowCount": 30,
+        "rows": [
+          [
+            68
+          ],
+          [
+            81
+          ],
+          [
+            8
+          ],
+          [
+            2
+          ],
+          [
+            62
+          ],
+          [
+            46
+          ],
+          [
+            84
+          ],
+          [
+            20
+          ],
+          [
+            50
+          ],
+          [
+            27
+          ],
+          [
+            59
+          ],
+          [
+            74
+          ],
+          [
+            78
+          ],
+          [
+            33
+          ],
+          [
+            95
+          ],
+          [
+            94
+          ],
+          [
+            52
+          ],
+          [
+            53
+          ],
+          [
+            55
+          ],
+          [
+            89
+          ],
+          [
+            90
+          ],
+          [
+            14
+          ],
+          [
+            66
+          ],
+          [
+            62
+          ],
+          [
+            46
+          ],
+          [
+            38
+          ],
+          [
+            88
+          ],
+          [
+            60
+          ],
+          [
+            14
+          ],
+          [
+            11
+          ]
+        ],
+        "explanation": "Outputs the order quantities instead of the order IDs."
+      },
+      {
+        "index": 2,
+        "letter": "C",
+        "isCorrect": false,
+        "columns": [
+          "product_name"
+        ],
+        "rowCount": 30,
+        "rows": [
+          [
+            "Smartwatch"
+          ],
+          [
+            "Keyboard"
+          ],
+          [
+            "Camera"
+          ],
+          [
+            "Mouse"
+          ],
+          [
+            "Monitor"
+          ],
+          [
+            "Monitor"
+          ],
+          [
+            "Mouse"
+          ],
+          [
+            "Laptop"
+          ],
+          [
+            "Monitor"
+          ],
+          [
+            "Laptop"
+          ],
+          [
+            "Camera"
+          ],
+          [
+            "Camera"
+          ],
+          [
+            "Smartphone"
+          ],
+          [
+            "Monitor"
+          ],
+          [
+            "Camera"
+          ],
+          [
+            "Speaker"
+          ],
+          [
+            "Monitor"
+          ],
+          [
+            "Monitor"
+          ],
+          [
+            "Laptop"
+          ],
+          [
+            "Keyboard"
+          ],
+          [
+            "Mouse"
+          ],
+          [
+            "Headphones"
+          ],
+          [
+            "Smartphone"
+          ],
+          [
+            "Keyboard"
+          ],
+          [
+            "Mouse"
+          ],
+          [
+            "Keyboard"
+          ],
+          [
+            "Smartwatch"
+          ],
+          [
+            "Smartphone"
+          ],
+          [
+            "Keyboard"
+          ],
+          [
+            "Smartphone"
+          ]
+        ],
+        "explanation": "Assumes the count of products ID was strictly greater than orders quantity, which would output all product names."
+      },
+      {
+        "index": 3,
+        "letter": "D",
+        "isCorrect": false,
+        "columns": [
+          "total_count"
+        ],
+        "rowCount": 1,
+        "rows": [
+          [
+            30
+          ]
+        ],
+        "explanation": "Outputs the numeric count value instead of selecting the table rows."
+      }
+    ]
+  },
+  {
+    "qNum": 11,
+    "rawSql": "SELECT products.id, products.title, categories.name AS category_name, products.price FROM products JOIN categories ON products.category_id = categories.id WHERE products.id <= 5 ORDER BY products.id ASC;",
+    "prompt": "Select the correct final table output:",
+    "codeSnippet": "query = \"\"\"\nFROM products\n|> JOIN categories ON products.category_id = categories.id\n|> WHERE products.id <= 5\n|> SELECT products.id, products.title, categories.name AS category_name, products.price\n|> ORDER BY id ASC\n\"\"\"\n\ncol_title = \"title\"\ncol_category = \"category_name\"\ncol_status = \"status\"\ncol_notes = \"notes\"\n\nresult_table = db.execute(query)",
+    "correctIndex": 3,
+    "correctLetter": "D",
+    "options": [
+      {
+        "index": 0,
+        "letter": "A",
+        "isCorrect": false,
+        "columns": [
+          "id",
+          "title",
+          "price"
+        ],
+        "rowCount": 5,
+        "rows": [
+          [
+            1,
+            "Smartwatch",
+            77.28
+          ],
+          [
+            2,
+            "Keyboard",
+            87.28
+          ],
+          [
+            3,
+            "Camera",
+            77.59
+          ],
+          [
+            4,
+            "Mouse",
+            87.27
+          ],
+          [
+            5,
+            "Monitor",
+            136.1
+          ]
+        ],
+        "explanation": "Evaluates the JOIN result but omits the joined category_name column."
+      },
+      {
+        "index": 1,
+        "letter": "B",
+        "isCorrect": false,
+        "columns": [
+          "id",
+          "title",
+          "category_id",
+          "category_name",
+          "price"
+        ],
+        "rowCount": 5,
+        "rows": [
+          [
+            1,
+            "Smartwatch",
+            26,
+            "Charlie Brown",
+            77.28
+          ],
+          [
+            2,
+            "Keyboard",
+            21,
+            "Bob Garcia",
+            87.28
+          ],
+          [
+            3,
+            "Camera",
+            29,
+            "Fiona Brown",
+            77.59
+          ],
+          [
+            4,
+            "Mouse",
+            19,
+            "Diana Smith",
+            87.27
+          ],
+          [
+            5,
+            "Monitor",
+            21,
+            "Bob Garcia",
+            136.1
+          ]
+        ],
+        "explanation": "Evaluates the JOIN result with an extra category_id foreign key column."
+      },
+      {
+        "index": 2,
+        "letter": "C",
+        "isCorrect": false,
+        "columns": [
+          "id",
+          "title",
+          "category_name",
+          "stock",
+          "price"
+        ],
+        "rowCount": 5,
+        "rows": [
+          [
+            1,
+            "Smartwatch",
+            "Charlie Brown",
+            73,
+            77.28
+          ],
+          [
+            2,
+            "Keyboard",
+            "Bob Garcia",
+            70,
+            87.28
+          ],
+          [
+            3,
+            "Camera",
+            "Fiona Brown",
+            69,
+            77.59
+          ],
+          [
+            4,
+            "Mouse",
+            "Diana Smith",
+            40,
+            87.27
+          ],
+          [
+            5,
+            "Monitor",
+            "Bob Garcia",
+            27,
+            136.1
+          ]
+        ],
+        "explanation": "Evaluates the JOIN result with an extra stock inventory column."
+      },
+      {
+        "index": 3,
+        "letter": "D",
+        "isCorrect": true,
+        "columns": [
+          "id",
+          "title",
+          "category_name",
+          "price"
+        ],
+        "rowCount": 5,
+        "rows": [
+          [
+            1,
+            "Smartwatch",
+            "Charlie Brown",
+            77.28
+          ],
+          [
+            2,
+            "Keyboard",
+            "Bob Garcia",
+            87.28
+          ],
+          [
+            3,
+            "Camera",
+            "Fiona Brown",
+            77.59
+          ],
+          [
+            4,
+            "Mouse",
+            "Diana Smith",
+            87.27
+          ],
+          [
+            5,
+            "Monitor",
+            "Bob Garcia",
+            136.1
+          ]
+        ],
+        "explanation": "Matches exact query output."
+      }
+    ]
+  },
+  {
+    "qNum": 12,
+    "rawSql": "SELECT orders.id, users.name, orders.amount\nFROM orders\nJOIN users ON orders.user_id = users.id\nWHERE orders.amount > 100\nUNION\nSELECT orders.id, users.name, orders.amount\nFROM orders\nJOIN users ON orders.user_id = users.id\nWHERE orders.status = 'COMPLETED';",
+    "prompt": "Select the correct final table output:",
+    "codeSnippet": "status_codes = [200, 201, 204]\nvalid_count = 0\nfor code in status_codes:\n    valid_count += 1\n\nquery = \"\"\"\nFROM orders\n|> JOIN users ON orders.user_id = users.id\n|> WHERE orders.amount > 100\n|> SELECT orders.id, users.name, orders.amount\n|> UNION DISTINCT (\n  FROM orders\n  |> JOIN users ON orders.user_id = users.id\n  |> WHERE orders.status = 'COMPLETED'\n  |> SELECT orders.id, users.name, orders.amount\n)\n\"\"\"\n\nresult_table = db.execute(query)",
+    "correctIndex": 2,
+    "correctLetter": "C",
+    "options": [
+      {
+        "index": 0,
+        "letter": "A",
+        "isCorrect": false,
+        "columns": [
+          "id",
+          "name",
+          "amount",
+          "status"
+        ],
+        "rowCount": 16,
+        "rows": [
+          [
+            1,
+            "Fiona Garcia",
+            184.21,
+            "PENDING"
+          ],
+          [
+            2,
+            "Alice Rodriguez",
+            176.79,
+            "PENDING"
+          ],
+          [
+            3,
+            "Charlie Martinez",
+            140.06,
+            "SHIPPED"
+          ],
+          [
+            4,
+            "Charlie Brown",
+            192.2,
+            "COMPLETED"
+          ],
+          [
+            5,
+            "Charlie Davis",
+            163.31,
+            "REFUNDED"
+          ],
+          [
+            7,
+            "Hannah Miller",
+            167.39,
+            "SHIPPED"
+          ],
+          [
+            9,
+            "Fiona Martinez",
+            165.36,
+            "PENDING"
+          ],
+          [
+            11,
+            "Diana Miller",
+            200.93,
+            "REFUNDED"
+          ],
+          [
+            12,
+            "George Martinez",
+            202,
+            "PENDING"
+          ],
+          [
+            15,
+            "George Martinez",
+            143.35,
+            "SHIPPED"
+          ],
+          [
+            16,
+            "Fiona Jones",
+            85.33,
+            "COMPLETED"
+          ],
+          [
+            17,
+            "Julia Martinez",
+            107.35,
+            "SHIPPED"
+          ],
+          [
+            18,
+            "Hannah Smith",
+            116.47,
+            "PENDING"
+          ],
+          [
+            20,
+            "Bob Rodriguez",
+            174.38,
+            "SHIPPED"
+          ],
+          [
+            21,
+            "Fiona Garcia",
+            142.28,
+            "PENDING"
+          ],
+          [
+            30,
+            "Fiona Jones",
+            186.83,
+            "COMPLETED"
+          ]
+        ],
+        "explanation": "Evaluates the joined UNION statement with an additional status column included in the projection."
+      },
+      {
+        "index": 1,
+        "letter": "B",
+        "isCorrect": false,
+        "columns": [
+          "id",
+          "name",
+          "amount"
+        ],
+        "rowCount": 3,
+        "rows": [
+          [
+            4,
+            "Charlie Brown",
+            192.2
+          ],
+          [
+            16,
+            "Fiona Jones",
+            85.33
+          ],
+          [
+            30,
+            "Fiona Jones",
+            186.83
+          ]
+        ],
+        "explanation": "Evaluates only the second query in the compound UNION statement (orders with status = 'COMPLETED')."
+      },
+      {
+        "index": 2,
+        "letter": "C",
+        "isCorrect": true,
+        "columns": [
+          "id",
+          "name",
+          "amount"
+        ],
+        "rowCount": 16,
+        "rows": [
+          [
+            1,
+            "Fiona Garcia",
+            184.21
+          ],
+          [
+            2,
+            "Alice Rodriguez",
+            176.79
+          ],
+          [
+            3,
+            "Charlie Martinez",
+            140.06
+          ],
+          [
+            4,
+            "Charlie Brown",
+            192.2
+          ],
+          [
+            5,
+            "Charlie Davis",
+            163.31
+          ],
+          [
+            7,
+            "Hannah Miller",
+            167.39
+          ],
+          [
+            9,
+            "Fiona Martinez",
+            165.36
+          ],
+          [
+            11,
+            "Diana Miller",
+            200.93
+          ],
+          [
+            12,
+            "George Martinez",
+            202
+          ],
+          [
+            15,
+            "George Martinez",
+            143.35
+          ],
+          [
+            16,
+            "Fiona Jones",
+            85.33
+          ],
+          [
+            17,
+            "Julia Martinez",
+            107.35
+          ],
+          [
+            18,
+            "Hannah Smith",
+            116.47
+          ],
+          [
+            20,
+            "Bob Rodriguez",
+            174.38
+          ],
+          [
+            21,
+            "Fiona Garcia",
+            142.28
+          ],
+          [
+            30,
+            "Fiona Jones",
+            186.83
+          ]
+        ],
+        "explanation": "Matches exact query output."
+      },
+      {
+        "index": 3,
+        "letter": "D",
+        "isCorrect": false,
+        "columns": [
+          "id",
+          "name",
+          "amount"
+        ],
+        "rowCount": 15,
+        "rows": [
+          [
+            1,
+            "Fiona Garcia",
+            184.21
+          ],
+          [
+            2,
+            "Alice Rodriguez",
+            176.79
+          ],
+          [
+            3,
+            "Charlie Martinez",
+            140.06
+          ],
+          [
+            4,
+            "Charlie Brown",
+            192.2
+          ],
+          [
+            5,
+            "Charlie Davis",
+            163.31
+          ],
+          [
+            7,
+            "Hannah Miller",
+            167.39
+          ],
+          [
+            9,
+            "Fiona Martinez",
+            165.36
+          ],
+          [
+            11,
+            "Diana Miller",
+            200.93
+          ],
+          [
+            12,
+            "George Martinez",
+            202
+          ],
+          [
+            15,
+            "George Martinez",
+            143.35
+          ],
+          [
+            17,
+            "Julia Martinez",
+            107.35
+          ],
+          [
+            18,
+            "Hannah Smith",
+            116.47
+          ],
+          [
+            20,
+            "Bob Rodriguez",
+            174.38
+          ],
+          [
+            21,
+            "Fiona Garcia",
+            142.28
+          ],
+          [
+            30,
+            "Fiona Jones",
+            186.83
+          ]
+        ],
+        "explanation": "Evaluates only the first query in the compound UNION statement (orders with amount > 100)."
+      }
+    ]
+  },
+  {
+    "qNum": 13,
+    "rawSql": "SELECT products.id, products.title, products.price FROM products WHERE products.id <= 3 ORDER BY products.id ASC;",
+    "prompt": "Select the correct final table output:",
+    "codeSnippet": "query = \"\"\"\nFROM orders\n|> WHERE amount > 15\n|> AGGREGATE SUM(amount) AS sum_amt, AVG(amount) AS avg_amt\n\"\"\"\n\nquery = query.replace(\"orders\", \"users\")\nquery = query.replace(\"amount > 15\", \"id <= 3\")\nquery = query.replace(\"SUM(amount) AS sum_amt, AVG(amount) AS avg_amt\", \"id, name, rating\")\n\nquery = \"\"\"\nFROM products\n|> WHERE products.id <= 3\n|> SELECT products.id, products.title, products.price\n|> ORDER BY id ASC\n\"\"\"\n\nresult_table = db.execute(query)",
+    "correctIndex": 0,
+    "correctLetter": "A",
+    "options": [
+      {
+        "index": 0,
+        "letter": "A",
+        "isCorrect": true,
+        "columns": [
+          "id",
+          "title",
+          "price"
+        ],
+        "rowCount": 3,
+        "rows": [
+          [
+            1,
+            "Tablet",
+            47.84
+          ],
+          [
+            2,
+            "Tablet",
+            39.93
+          ],
+          [
+            3,
+            "Camera",
+            55.64
+          ]
+        ],
+        "explanation": "Matches exact query output."
+      },
+      {
+        "index": 1,
+        "letter": "B",
+        "isCorrect": false,
+        "columns": [
+          "sum_amt",
+          "avg_amt"
+        ],
+        "rowCount": 1,
+        "rows": [
+          [
+            3148.149999999999,
+            116.59814814814811
+          ]
+        ],
+        "explanation": "Assumes the initial aggregation query on orders was executed before it was modified and overridden."
+      },
+      {
+        "index": 2,
+        "letter": "C",
+        "isCorrect": false,
+        "columns": [
+          "id",
+          "title",
+          "price"
+        ],
+        "rowCount": 3,
+        "rows": [
+          [
+            4,
+            "Tablet",
+            157.64
+          ],
+          [
+            5,
+            "Camera",
+            133.63
+          ],
+          [
+            6,
+            "Smartwatch",
+            61
+          ]
+        ],
+        "explanation": "Evaluates an alternative product ID range (IDs 4 to 6 instead of 1 to 3)."
+      },
+      {
+        "index": 3,
+        "letter": "D",
+        "isCorrect": false,
+        "columns": [
+          "id",
+          "name",
+          "rating"
+        ],
+        "rowCount": 3,
+        "rows": [
+          [
+            1,
+            "Diana Smith",
+            3.52
+          ],
+          [
+            2,
+            "Fiona Williams",
+            4.76
+          ],
+          [
+            3,
+            "Diana Miller",
+            4.11
+          ]
+        ],
+        "explanation": "Assumes the host language string manipulation on query was executed instead of the second query."
+      }
+    ]
+  },
+  {
+    "qNum": 14,
+    "rawSql": "SELECT orders.status, ROUND(SUM(orders.amount), 2) AS rounded_total FROM orders WHERE orders.status LIKE 'COMP%' GROUP BY orders.status;",
+    "prompt": "Select the correct final table output:",
+    "codeSnippet": "status_checks = [\"PENDING\", \"COMPLETED\"]\nlike_match = \"status LIKE 'COMP%'\"\nsum_amount = sum([120.45, 80.55])\nround_target = round(sum_amount, 2)\n\nquery = \"\"\"\nFROM orders\n|> WHERE orders.status LIKE 'COMP%'\n|> AGGREGATE ROUND(SUM(orders.amount), 2) AS rounded_total GROUP BY orders.status\n\"\"\"\n\ngroup_status = \"PENDING\"\namount_sum = sum([45.20, 54.80])\nrounded_total = round(amount_sum, 2)\n\nresult_table = db.execute(query)",
+    "correctIndex": 1,
+    "correctLetter": "B",
+    "options": [
+      {
+        "index": 0,
+        "letter": "A",
+        "isCorrect": false,
+        "columns": [
+          "status",
+          "rounded_total"
+        ],
+        "rowCount": 1,
+        "rows": [
+          [
+            "PENDING",
+            533.62
+          ]
+        ],
+        "explanation": "Assumes the host language variable group_status = 'PENDING' or status LIKE 'COMP%' matched 'PENDING'."
+      },
+      {
+        "index": 1,
+        "letter": "B",
+        "isCorrect": true,
+        "columns": [
+          "status",
+          "rounded_total"
+        ],
+        "rowCount": 1,
+        "rows": [
+          [
+            "COMPLETED",
+            440.09
+          ]
+        ],
+        "explanation": "Matches exact query output."
+      },
+      {
+        "index": 2,
+        "letter": "C",
+        "isCorrect": false,
+        "columns": [
+          "user_id",
+          "rounded_total"
+        ],
+        "rowCount": 1,
+        "rows": [
+          [
+            7,
+            200.14
+          ]
+        ],
+        "explanation": "Projects user_id instead of the grouped status column."
+      },
+      {
+        "index": 3,
+        "letter": "D",
+        "isCorrect": false,
+        "columns": [
+          "status",
+          "avg_amount"
+        ],
+        "rowCount": 1,
+        "rows": [
+          [
+            "COMPLETED",
+            88.02
+          ]
+        ],
+        "explanation": "Computes the average (AVG) per order instead of the total rounded sum (SUM)."
+      }
+    ]
+  },
+  {
+    "qNum": 15,
+    "rawSql": "SELECT status, COUNT(*) AS order_count FROM orders GROUP BY status ORDER BY order_count DESC, status DESC;",
+    "prompt": "Select the correct final table output:",
+    "codeSnippet": "query = \"\"\"\nFROM orders\n|> WHERE amount > 50\n|> SELECT id, amount, status\n\"\"\"\n\ndb.execute(query)\n\nfilters = [\"status = 'COMPLETED'\", \"amount > 20\"]\nquery = query.replace(\"WHERE amount > 50\", \"WHERE \" + \" AND \".join(filters))\nquery = query + \"\\n|> ORDER BY amount DESC\"\n\nquery = \"\"\"\nFROM orders\n|> AGGREGATE COUNT(*) AS order_count GROUP BY status\n|> ORDER BY order_count DESC, status DESC\n\"\"\"\n\nresult_table = db.execute(query)",
+    "correctIndex": 0,
+    "correctLetter": "A",
+    "options": [
+      {
+        "index": 0,
+        "letter": "A",
+        "isCorrect": true,
+        "columns": [
+          "status",
+          "order_count"
+        ],
+        "rowCount": 5,
+        "rows": [
+          [
+            "REFUNDED",
+            9
+          ],
+          [
+            "CANCELLED",
+            8
+          ],
+          [
+            "COMPLETED",
+            5
+          ],
+          [
+            "SHIPPED",
+            4
+          ],
+          [
+            "PENDING",
+            4
+          ]
+        ],
+        "explanation": "Matches exact query output."
+      },
+      {
+        "index": 1,
+        "letter": "B",
+        "isCorrect": false,
+        "columns": [
+          "status",
+          "order_count"
+        ],
+        "rowCount": 5,
+        "rows": [
+          [
+            "REFUNDED",
+            979.2
+          ],
+          [
+            "CANCELLED",
+            792.5
+          ],
+          [
+            "PENDING",
+            533.6
+          ],
+          [
+            "COMPLETED",
+            440.1
+          ],
+          [
+            "SHIPPED",
+            429.3
+          ]
+        ],
+        "explanation": "Evaluates SUM(amount) instead of COUNT(*)."
+      },
+      {
+        "index": 2,
+        "letter": "C",
+        "isCorrect": false,
+        "columns": [
+          "status",
+          "order_count"
+        ],
+        "rowCount": 23,
+        "rows": [
+          [
+            1,
+            114.38,
+            "CANCELLED"
+          ],
+          [
+            2,
+            99.02,
+            "CANCELLED"
+          ],
+          [
+            4,
+            144.42,
+            "REFUNDED"
+          ],
+          [
+            6,
+            59.42,
+            "COMPLETED"
+          ],
+          [
+            7,
+            199,
+            "CANCELLED"
+          ],
+          [
+            8,
+            153.03,
+            "PENDING"
+          ],
+          [
+            9,
+            130.44,
+            "REFUNDED"
+          ],
+          [
+            10,
+            71.68,
+            "REFUNDED"
+          ],
+          [
+            11,
+            202.98,
+            "SHIPPED"
+          ],
+          [
+            12,
+            140.49,
+            "REFUNDED"
+          ],
+          [
+            13,
+            82.45,
+            "CANCELLED"
+          ],
+          [
+            14,
+            185.55,
+            "PENDING"
+          ],
+          [
+            15,
+            138.91,
+            "COMPLETED"
+          ],
+          [
+            19,
+            93.44,
+            "COMPLETED"
+          ],
+          [
+            20,
+            67.05,
+            "PENDING"
+          ],
+          [
+            22,
+            185.28,
+            "REFUNDED"
+          ],
+          [
+            23,
+            102.01,
+            "CANCELLED"
+          ],
+          [
+            24,
+            148.16,
+            "CANCELLED"
+          ],
+          [
+            26,
+            140.72,
+            "COMPLETED"
+          ],
+          [
+            27,
+            69.64,
+            "REFUNDED"
+          ],
+          [
+            28,
+            164.24,
+            "REFUNDED"
+          ],
+          [
+            29,
+            176.18,
+            "SHIPPED"
+          ],
+          [
+            30,
+            127.99,
+            "PENDING"
+          ]
+        ],
+        "explanation": "Evaluates the first query before modification."
+      },
+      {
+        "index": 3,
+        "letter": "D",
+        "isCorrect": false,
+        "columns": [
+          "status",
+          "order_count"
+        ],
+        "rowCount": 5,
+        "rows": [
+          [
+            "PENDING",
+            4
+          ],
+          [
+            "SHIPPED",
+            4
+          ],
+          [
+            "COMPLETED",
+            5
+          ],
+          [
+            "CANCELLED",
+            8
+          ],
+          [
+            "REFUNDED",
+            9
+          ]
+        ],
+        "explanation": "Inverted sort order for the executed query (ASC instead of DESC)."
+      }
+    ]
+  },
+  {
+    "qNum": 16,
+    "rawSql": "SELECT users.name, users.age, users.is_active, SUM(orders.amount) AS total_spent, COUNT(reviews.id) AS review_count FROM users JOIN orders ON orders.user_id = users.id JOIN reviews ON reviews.order_id = orders.id GROUP BY users.name, users.age, users.is_active ORDER BY users.name ASC LIMIT 3;",
+    "prompt": "Select the correct final table output:",
+    "codeSnippet": "def append_order_quantity(q):\n    return q.replace(\"review_count\", \"review_count, SUM(orders.quantity) AS total_quantity\")\n\nquery = \"\"\"\nFROM users\n|> JOIN orders ON orders.user_id = users.id\n|> JOIN reviews ON reviews.order_id = orders.id\n|> AGGREGATE SUM(orders.amount) AS total_spent, COUNT(reviews.id) AS review_count GROUP BY users.name, users.age, users.is_active\n|> ORDER BY name ASC\n|> LIMIT 3\n\"\"\"\n\naudit_trail = [\"orders_joined\", \"reviews_joined\"]\nverified_joins = len(audit_trail)\n\nresult_table = db.execute(query)",
+    "correctIndex": 1,
+    "correctLetter": "B",
+    "options": [
+      {
+        "index": 0,
+        "letter": "A",
+        "isCorrect": false,
+        "columns": [
+          "name",
+          "age",
+          "is_active",
+          "total_spent",
+          "review_count",
+          "total_quantity"
+        ],
+        "rowCount": 3,
+        "rows": [
+          [
+            "Charlie Davis",
+            62,
+            0,
+            457.52,
+            4,
+            180
+          ],
+          [
+            "Diana Johnson",
+            19,
+            1,
+            1030.26,
+            6,
+            564
+          ],
+          [
+            "Diana Martinez",
+            19,
+            0,
+            594.12,
+            6,
+            516
+          ]
+        ],
+        "explanation": "Assumes append_order_quantity(q) was executed, adding total_quantity to the output."
+      },
+      {
+        "index": 1,
+        "letter": "B",
+        "isCorrect": true,
+        "columns": [
+          "name",
+          "age",
+          "is_active",
+          "total_spent",
+          "review_count"
+        ],
+        "rowCount": 3,
+        "rows": [
+          [
+            "Charlie Davis",
+            62,
+            0,
+            457.52,
+            4
+          ],
+          [
+            "Diana Johnson",
+            19,
+            1,
+            1030.26,
+            6
+          ],
+          [
+            "Diana Martinez",
+            19,
+            0,
+            594.12,
+            6
+          ]
+        ],
+        "explanation": "Matches exact query output."
+      },
+      {
+        "index": 2,
+        "letter": "C",
+        "isCorrect": false,
+        "columns": [
+          "name",
+          "age",
+          "is_active",
+          "avg_spent",
+          "review_count"
+        ],
+        "rowCount": 3,
+        "rows": [
+          [
+            "Charlie Davis",
+            62,
+            0,
+            114.38,
+            4
+          ],
+          [
+            "Diana Johnson",
+            19,
+            1,
+            171.71,
+            6
+          ],
+          [
+            "Diana Martinez",
+            19,
+            0,
+            99.02,
+            6
+          ]
+        ],
+        "explanation": "Computes the average order amount (avg_spent) instead of the total spent (total_spent)."
+      },
+      {
+        "index": 3,
+        "letter": "D",
+        "isCorrect": false,
+        "columns": [
+          "name",
+          "age",
+          "is_active",
+          "total_spent"
+        ],
+        "rowCount": 3,
+        "rows": [
+          [
+            "Alice Garcia",
+            34,
+            1,
+            82.45
+          ],
+          [
+            "Charlie Davis",
+            62,
+            0,
+            114.38
+          ],
+          [
+            "Charlie Smith",
+            52,
+            1,
+            202.98
+          ]
+        ],
+        "explanation": "Omits the reviews table join and review_count aggregate column."
+      }
+    ]
+  },
+  {
+    "qNum": 17,
+    "rawSql": "SELECT order_count, COUNT(*) AS user_count FROM (SELECT orders.user_id, COUNT(*) AS order_count FROM orders GROUP BY orders.user_id) sub GROUP BY order_count ORDER BY order_count ASC;",
+    "prompt": "Select the correct final table output:",
+    "codeSnippet": "query = \"\"\"\nFROM orders\n|> AGGREGATE COUNT(*) AS order_count GROUP BY orders.user_id\n\"\"\"\n\ngroup_passes = query.count(\"GROUP BY\")\nrequires_nested_agg = \"subquery\" in query or \"sub\" in query\n\nquery = \"\"\"\nFROM orders\n|> AGGREGATE COUNT(*) AS order_count GROUP BY orders.user_id\n|> AGGREGATE COUNT(*) AS user_count GROUP BY order_count\n|> ORDER BY order_count ASC\n\"\"\"\n\nresult_table = db.execute(query)",
+    "correctIndex": 2,
+    "correctLetter": "C",
+    "options": [
+      {
+        "index": 0,
+        "letter": "A",
+        "isCorrect": false,
+        "columns": [
+          "user_id",
+          "user_count"
+        ],
+        "rowCount": 4,
+        "rows": [
+          [
+            1,
+            12
+          ],
+          [
+            2,
+            5
+          ],
+          [
+            3,
+            1
+          ],
+          [
+            4,
+            1
+          ]
+        ],
+        "explanation": "Projects user_id instead of the outer group column order_count with user_count."
+      },
+      {
+        "index": 1,
+        "letter": "B",
+        "isCorrect": false,
+        "columns": [
+          "order_count",
+          "total_orders"
+        ],
+        "rowCount": 4,
+        "rows": [
+          [
+            1,
+            12
+          ],
+          [
+            2,
+            10
+          ],
+          [
+            3,
+            3
+          ],
+          [
+            5,
+            5
+          ]
+        ],
+        "explanation": "Sums the order counts (SUM(order_count)) rather than counting distinct users having each order count."
+      },
+      {
+        "index": 2,
+        "letter": "C",
+        "isCorrect": true,
+        "columns": [
+          "order_count",
+          "user_count"
+        ],
+        "rowCount": 4,
+        "rows": [
+          [
+            1,
+            12
+          ],
+          [
+            2,
+            5
+          ],
+          [
+            3,
+            1
+          ],
+          [
+            5,
+            1
+          ]
+        ],
+        "explanation": "Matches exact query output."
+      },
+      {
+        "index": 3,
+        "letter": "D",
+        "isCorrect": false,
+        "columns": [
+          "user_id",
+          "order_count"
+        ],
+        "rowCount": 4,
+        "rows": [
+          [
+            7,
+            5
+          ],
+          [
+            20,
+            3
+          ],
+          [
+            24,
+            2
+          ],
+          [
+            22,
+            2
+          ]
+        ],
+        "explanation": "Evaluates the first query before it was overwritten, grouping orders by user_id instead of the nested aggregation."
+      }
+    ]
+  },
+  {
+    "qNum": 18,
+    "rawSql": "SELECT user_id, COUNT(*) AS order_count, ROUND(SUM(amount), 2) AS total_spent, ROUND(AVG(amount), 2) AS avg_amount, MAX(amount) AS max_order FROM orders WHERE amount >= 25 AND status != 'CANCELLED' GROUP BY user_id ORDER BY total_spent DESC LIMIT 3;",
+    "prompt": "Select the correct final table output:",
+    "codeSnippet": "query = \"\"\"\nFROM products\n|> AGGREGATE MAX(price) AS price, SUM(stock) AS stock GROUP BY title\n|> ORDER BY title ASC\n|> LIMIT 3\n\"\"\"\n\nif \"price\" in query:\n    query.replace(\"price\", \"category_id\")\n    query_audit = query + \" -- verified filter\"\n\nqueryy = \"\"\"\nFROM orders\n|> WHERE amount >= 25 AND status != 'CANCELLED'\n|> AGGREGATE COUNT(*) AS order_count, ROUND(SUM(amount), 2) AS total_spent, ROUND(AVG(amount), 2) AS avg_amount, MAX(amount) AS max_order GROUP BY user_id\n|> ORDER BY total_spent DESC\n|> LIMIT 3\n\"\"\"\n\nresult_table = db.execute(queryy)",
+    "correctIndex": 3,
+    "correctLetter": "D",
+    "options": [
+      {
+        "index": 0,
+        "letter": "A",
+        "isCorrect": false,
+        "columns": [
+          "user_id",
+          "order_count",
+          "total_spent",
+          "avg_amount",
+          "max_order"
+        ],
+        "rowCount": 3,
+        "rows": [
+          [
+            12,
+            1,
+            28.52,
+            28.52,
+            28.52
+          ],
+          [
+            15,
+            1,
+            42.83,
+            42.83,
+            42.83
+          ],
+          [
+            22,
+            1,
+            67.05,
+            67.05,
+            67.05
+          ]
+        ],
+        "explanation": "Assumes ascending sort order (ORDER BY total_spent ASC) instead of descending (DESC), returning the lowest spenders first."
+      },
+      {
+        "index": 1,
+        "letter": "B",
+        "isCorrect": false,
+        "columns": [
+          "title",
+          "price",
+          "stock"
+        ],
+        "rowCount": 3,
+        "rows": [
+          [
+            "Camera",
+            133.63,
+            355
+          ],
+          [
+            "Headphones",
+            163.12,
+            99
+          ],
+          [
+            "Keyboard",
+            193.9,
+            6
+          ]
+        ],
+        "explanation": "Assumes query was executed instead of queryy, producing the aggregated price and stock grouped by title."
+      },
+      {
+        "index": 2,
+        "letter": "C",
+        "isCorrect": false,
+        "columns": [
+          "title",
+          "category_id",
+          "stock"
+        ],
+        "rowCount": 3,
+        "rows": [
+          [
+            "Camera",
+            18,
+            355
+          ],
+          [
+            "Headphones",
+            5,
+            99
+          ],
+          [
+            "Keyboard",
+            12,
+            6
+          ]
+        ],
+        "explanation": "Assumes the string replacement query.replace(\"price\", \"category_id\") mutated query in-place."
+      },
+      {
+        "index": 3,
+        "letter": "D",
+        "isCorrect": true,
+        "columns": [
+          "user_id",
+          "order_count",
+          "total_spent",
+          "avg_amount",
+          "max_order"
+        ],
+        "rowCount": 3,
+        "rows": [
+          [
+            7,
+            5,
+            499.82,
+            99.96,
+            185.55
+          ],
+          [
+            20,
+            3,
+            488.43,
+            162.81,
+            185.28
+          ],
+          [
+            10,
+            1,
+            202.98,
+            202.98,
+            202.98
+          ]
+        ],
+        "explanation": "Matches exact query output."
+      }
+    ]
+  },
+  {
+    "qNum": 19,
+    "rawSql": "SELECT category_id, stock, COUNT(*) AS count_items, ROUND(AVG(price), 2) AS avg_price FROM products WHERE price > 15 AND stock > 20 GROUP BY category_id, stock ORDER BY avg_price DESC;",
+    "prompt": "Select the correct final table output:",
+    "codeSnippet": "query = \"\"\"\nFROM products\n|> WHERE price > 15\n|> AGGREGATE COUNT(*) AS count_items, ROUND(AVG(price), 2) AS avg_price GROUP BY category_id, stock\n|> ORDER BY avg_price DESC\n\"\"\"\n\nextra_filter = \"stock > 20\"\n\nif \"WHERE\" in query:\n    query = query.replace(\"price > 15\", f\"price > 15 AND {extra_filter}\")\nelse:\n    query = query.replace(\"|> AGGREGATE\", f\"|> WHERE {extra_filter}\\n|> AGGREGATE\")\n\nresult_table = db.execute(query)",
+    "correctIndex": 3,
+    "correctLetter": "D",
+    "options": [
+      {
+        "index": 0,
+        "letter": "A",
+        "isCorrect": false,
+        "columns": [
+          "category_id",
+          "stock",
+          "count_items",
+          "avg_price"
+        ],
+        "rowCount": 25,
+        "rows": [
+          [
+            10,
+            97,
+            1,
+            92.19
+          ],
+          [
+            15,
+            97,
+            1,
+            80.76
+          ],
+          [
+            17,
+            88,
+            1,
+            141.93
+          ],
+          [
+            14,
+            86,
+            1,
+            34.24
+          ],
+          [
+            9,
+            78,
+            1,
+            35.13
+          ],
+          [
+            14,
+            76,
+            1,
+            81.05
+          ],
+          [
+            6,
+            73,
+            1,
+            101.5
+          ],
+          [
+            28,
+            73,
+            1,
+            127.91
+          ],
+          [
+            28,
+            71,
+            1,
+            176.69
+          ],
+          [
+            15,
+            59,
+            1,
+            195.18
+          ],
+          [
+            14,
+            56,
+            1,
+            162.33
+          ],
+          [
+            26,
+            56,
+            1,
+            24.67
+          ],
+          [
+            13,
+            55,
+            1,
+            73.93
+          ],
+          [
+            1,
+            47,
+            1,
+            71.8
+          ],
+          [
+            7,
+            47,
+            1,
+            199.45
+          ],
+          [
+            16,
+            42,
+            1,
+            169.45
+          ],
+          [
+            12,
+            41,
+            1,
+            130.03
+          ],
+          [
+            7,
+            36,
+            1,
+            112.41
+          ],
+          [
+            15,
+            34,
+            1,
+            153.89
+          ],
+          [
+            12,
+            27,
+            1,
+            144.68
+          ],
+          [
+            16,
+            27,
+            1,
+            201.69
+          ],
+          [
+            12,
+            23,
+            1,
+            143.29
+          ],
+          [
+            23,
+            23,
+            1,
+            159.85
+          ],
+          [
+            6,
+            22,
+            1,
+            102.02
+          ],
+          [
+            23,
+            21,
+            1,
+            38.81
+          ]
+        ],
+        "explanation": "Orders rows by stock descending (ORDER BY stock DESC) instead of average price descending."
+      },
+      {
+        "index": 1,
+        "letter": "B",
+        "isCorrect": false,
+        "columns": [
+          "category_id",
+          "count_items",
+          "avg_price"
+        ],
+        "rowCount": 15,
+        "rows": [
+          [
+            16,
+            2,
+            185.57
+          ],
+          [
+            7,
+            2,
+            155.93
+          ],
+          [
+            28,
+            2,
+            152.3
+          ],
+          [
+            25,
+            1,
+            148.75
+          ],
+          [
+            15,
+            3,
+            143.28
+          ],
+          [
+            17,
+            1,
+            141.93
+          ],
+          [
+            12,
+            4,
+            135.95
+          ],
+          [
+            6,
+            2,
+            101.76
+          ],
+          [
+            23,
+            2,
+            99.33
+          ],
+          [
+            14,
+            3,
+            92.54
+          ],
+          [
+            10,
+            1,
+            92.19
+          ],
+          [
+            13,
+            1,
+            73.93
+          ],
+          [
+            1,
+            1,
+            71.8
+          ],
+          [
+            9,
+            1,
+            35.13
+          ],
+          [
+            26,
+            1,
+            24.67
+          ]
+        ],
+        "explanation": "Evaluates the initial query grouped by category_id (ordered by avg_price DESC), omitting the stock column and assuming the host language filter injection was not applied."
+      },
+      {
+        "index": 2,
+        "letter": "C",
+        "isCorrect": false,
+        "columns": [
+          "category_id",
+          "stock",
+          "count_items",
+          "avg_price"
+        ],
+        "rowCount": 25,
+        "rows": [
+          [
+            26,
+            56,
+            1,
+            24.67
+          ],
+          [
+            14,
+            86,
+            1,
+            34.24
+          ],
+          [
+            9,
+            78,
+            1,
+            35.13
+          ],
+          [
+            23,
+            21,
+            1,
+            38.81
+          ],
+          [
+            1,
+            47,
+            1,
+            71.8
+          ],
+          [
+            13,
+            55,
+            1,
+            73.93
+          ],
+          [
+            15,
+            97,
+            1,
+            80.76
+          ],
+          [
+            14,
+            76,
+            1,
+            81.05
+          ],
+          [
+            10,
+            97,
+            1,
+            92.19
+          ],
+          [
+            6,
+            73,
+            1,
+            101.5
+          ],
+          [
+            6,
+            22,
+            1,
+            102.02
+          ],
+          [
+            7,
+            36,
+            1,
+            112.41
+          ],
+          [
+            28,
+            73,
+            1,
+            127.91
+          ],
+          [
+            12,
+            41,
+            1,
+            130.03
+          ],
+          [
+            17,
+            88,
+            1,
+            141.93
+          ],
+          [
+            12,
+            23,
+            1,
+            143.29
+          ],
+          [
+            12,
+            27,
+            1,
+            144.68
+          ],
+          [
+            15,
+            34,
+            1,
+            153.89
+          ],
+          [
+            23,
+            23,
+            1,
+            159.85
+          ],
+          [
+            14,
+            56,
+            1,
+            162.33
+          ],
+          [
+            16,
+            42,
+            1,
+            169.45
+          ],
+          [
+            28,
+            71,
+            1,
+            176.69
+          ],
+          [
+            15,
+            59,
+            1,
+            195.18
+          ],
+          [
+            7,
+            47,
+            1,
+            199.45
+          ],
+          [
+            16,
+            27,
+            1,
+            201.69
+          ]
+        ],
+        "explanation": "Orders category groups in ascending order (ORDER BY avg_price ASC) instead of descending order."
+      },
+      {
+        "index": 3,
+        "letter": "D",
+        "isCorrect": true,
+        "columns": [
+          "category_id",
+          "stock",
+          "count_items",
+          "avg_price"
+        ],
+        "rowCount": 25,
+        "rows": [
+          [
+            16,
+            27,
+            1,
+            201.69
+          ],
+          [
+            7,
+            47,
+            1,
+            199.45
+          ],
+          [
+            15,
+            59,
+            1,
+            195.18
+          ],
+          [
+            28,
+            71,
+            1,
+            176.69
+          ],
+          [
+            16,
+            42,
+            1,
+            169.45
+          ],
+          [
+            14,
+            56,
+            1,
+            162.33
+          ],
+          [
+            23,
+            23,
+            1,
+            159.85
+          ],
+          [
+            15,
+            34,
+            1,
+            153.89
+          ],
+          [
+            12,
+            27,
+            1,
+            144.68
+          ],
+          [
+            12,
+            23,
+            1,
+            143.29
+          ],
+          [
+            17,
+            88,
+            1,
+            141.93
+          ],
+          [
+            12,
+            41,
+            1,
+            130.03
+          ],
+          [
+            28,
+            73,
+            1,
+            127.91
+          ],
+          [
+            7,
+            36,
+            1,
+            112.41
+          ],
+          [
+            6,
+            22,
+            1,
+            102.02
+          ],
+          [
+            6,
+            73,
+            1,
+            101.5
+          ],
+          [
+            10,
+            97,
+            1,
+            92.19
+          ],
+          [
+            14,
+            76,
+            1,
+            81.05
+          ],
+          [
+            15,
+            97,
+            1,
+            80.76
+          ],
+          [
+            13,
+            55,
+            1,
+            73.93
+          ],
+          [
+            1,
+            47,
+            1,
+            71.8
+          ],
+          [
+            23,
+            21,
+            1,
+            38.81
+          ],
+          [
+            9,
+            78,
+            1,
+            35.13
+          ],
+          [
+            14,
+            86,
+            1,
+            34.24
+          ],
+          [
+            26,
+            56,
+            1,
+            24.67
+          ]
+        ],
+        "explanation": "Matches exact query output."
+      }
+    ]
+  },
+  {
+    "qNum": 20,
+    "rawSql": "SELECT user_id, COUNT(*) AS order_count, ROUND(SUM(amount), 2) AS total_spent FROM orders WHERE amount >= 180 GROUP BY user_id ORDER BY total_spent DESC LIMIT 4;",
+    "prompt": "Select the correct final table output:",
+    "codeSnippet": "min_amount = 180\n\nquery = f\"\"\"\nFROM orders\n|> WHERE amount >= {min_amount}\n|> AGGREGATE COUNT(*) AS order_count, ROUND(SUM(amount), 2) AS total_spent GROUP BY user_id\n|> ORDER BY total_spent DESC\n|> LIMIT 4\n\"\"\"\n\nresult_table = db.execute(query)",
+    "correctIndex": 0,
+    "correctLetter": "A",
+    "options": [
+      {
+        "index": 0,
+        "letter": "A",
+        "isCorrect": true,
+        "columns": [
+          "user_id",
+          "order_count",
+          "total_spent"
+        ],
+        "rowCount": 2,
+        "rows": [
+          [
+            29,
+            1,
+            193.65
+          ],
+          [
+            19,
+            1,
+            186.25
+          ]
+        ],
+        "explanation": "Matches exact query output."
+      },
+      {
+        "index": 1,
+        "letter": "B",
+        "isCorrect": false,
+        "columns": [
+          "user_id",
+          "order_count",
+          "total_spent"
+        ],
+        "rowCount": 4,
+        "rows": [
+          [
+            9,
+            1,
+            19.35
+          ],
+          [
+            14,
+            1,
+            54.03
+          ],
+          [
+            10,
+            1,
+            78.59
+          ],
+          [
+            20,
+            1,
+            93.11
+          ]
+        ],
+        "explanation": "Orders results by total_spent ascending (ORDER BY total_spent ASC) instead of descending."
+      },
+      {
+        "index": 2,
+        "letter": "C",
+        "isCorrect": false,
+        "columns": [
+          "status",
+          "order_count",
+          "total_spent"
+        ],
+        "rowCount": 4,
+        "rows": [
+          [
+            "REFUNDED",
+            11,
+            1542.12
+          ],
+          [
+            "CANCELLED",
+            6,
+            536.55
+          ],
+          [
+            "COMPLETED",
+            5,
+            526.26
+          ],
+          [
+            "PENDING",
+            5,
+            525.63
+          ]
+        ],
+        "explanation": "Groups results by order status (GROUP BY status) instead of user_id."
+      },
+      {
+        "index": 3,
+        "letter": "D",
+        "isCorrect": false,
+        "columns": [
+          "user_id",
+          "total_spent"
+        ],
+        "rowCount": 4,
+        "rows": [
+          [
+            16,
+            406.9
+          ],
+          [
+            12,
+            295.45
+          ],
+          [
+            18,
+            273.99
+          ],
+          [
+            28,
+            273.09
+          ]
+        ],
+        "explanation": "Calculates total spent across all orders without applying the threshold filter (WHERE amount >= 180), and omits the order_count column."
+      }
+    ]
+  }
+]

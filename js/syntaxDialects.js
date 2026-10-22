@@ -282,7 +282,63 @@ class SyntaxDialectManager {
       pipeLines.push(`|> WHERE ${rawWhere}`);
     }
 
-    // 3. Process AGGREGATE & GROUP BY or SELECT
+    // 3. Process AGGREGATE & GROUP BY or SELECT / ORDER BY
+    const hasAggregateFunc = /\b(AVG|SUM|MIN|MAX|COUNT)\s*\(/i.test(rawSelect);
+
+    // Analyze ORDER BY to handle scoping, aliases, and table qualifiers
+    let cleanOrder = rawOrder;
+    let orderBeforeSelect = false;
+
+    if (rawOrder) {
+      if (rawSelect) {
+        const selectItems = this.splitCsvClause(rawSelect);
+        const aliasMap = {};
+        const selectedCols = [];
+
+        selectItems.forEach(item => {
+          const aliasMatch = item.trim().match(/^([a-zA-Z0-9._]+)\s+AS\s+([a-zA-Z0-9_]+)$/i);
+          if (aliasMatch) {
+            aliasMap[aliasMatch[1].toLowerCase()] = aliasMatch[2];
+            aliasMap[aliasMatch[1].replace(/^[a-zA-Z0-9_]+\./, '').toLowerCase()] = aliasMatch[2];
+            selectedCols.push(aliasMatch[2].toLowerCase());
+            selectedCols.push(aliasMatch[1].toLowerCase());
+            selectedCols.push(aliasMatch[1].replace(/^[a-zA-Z0-9_]+\./, '').toLowerCase());
+          } else {
+            const rawCol = item.trim();
+            selectedCols.push(rawCol.toLowerCase());
+            selectedCols.push(rawCol.replace(/^[a-zA-Z0-9_]+\./, '').toLowerCase());
+          }
+        });
+
+        // Check if any order column references a column dropped by SELECT
+        const orderTerms = this.splitCsvClause(rawOrder);
+        const orderCols = orderTerms.map(t => t.trim().split(/\s+/)[0]);
+
+        const hasDroppedCol = orderCols.some(c => {
+          const bare = c.replace(/^[a-zA-Z0-9_]+\./, '').toLowerCase();
+          return !selectedCols.includes(c.toLowerCase()) && !selectedCols.includes(bare);
+        });
+
+        if (hasDroppedCol && !rawGroup) {
+          orderBeforeSelect = true;
+        }
+
+        // Apply alias replacements (e.g. orders.id -> order_id)
+        Object.keys(aliasMap).forEach(expr => {
+          const alias = aliasMap[expr];
+          const escExpr = expr.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+          cleanOrder = cleanOrder.replace(new RegExp(`\\b${escExpr}\\b`, 'gi'), alias);
+        });
+      }
+
+      // Strip table qualifiers (e.g. products.id -> id, users.name -> name)
+      cleanOrder = cleanOrder.replace(/\b[a-zA-Z0-9_]+\.([a-zA-Z0-9_]+)\b/g, '$1');
+    }
+
+    if (orderBeforeSelect && cleanOrder) {
+      pipeLines.push(`|> ORDER BY ${cleanOrder}`);
+    }
+
     if (rawGroup) {
       const selectItems = this.splitCsvClause(rawSelect);
       const groupCols = this.splitCsvClause(rawGroup);
@@ -301,7 +357,11 @@ class SyntaxDialectManager {
         pipeLines.push(`|> AGGREGATE GROUP BY ${rawGroup}`);
       }
     } else if (rawSelect && rawSelect !== '*') {
-      pipeLines.push(`|> SELECT ${rawSelect}`);
+      if (hasAggregateFunc) {
+        pipeLines.push(`|> AGGREGATE ${rawSelect}`);
+      } else {
+        pipeLines.push(`|> SELECT ${rawSelect}`);
+      }
     }
 
     // 4. Process HAVING -> Converted to post-aggregate WHERE in Pipe SQL
@@ -309,9 +369,9 @@ class SyntaxDialectManager {
       pipeLines.push(`|> WHERE ${rawHaving}`);
     }
 
-    // 5. Process ORDER BY
-    if (rawOrder) {
-      pipeLines.push(`|> ORDER BY ${rawOrder}`);
+    // 5. Process ORDER BY (if not already placed before SELECT)
+    if (!orderBeforeSelect && cleanOrder) {
+      pipeLines.push(`|> ORDER BY ${cleanOrder}`);
     }
 
     // 6. Process LIMIT

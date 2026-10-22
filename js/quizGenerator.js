@@ -66,9 +66,12 @@ class QuizGenerator {
           ? 'Relational Join Transformation'
           : 'Filter & Projection Transformation');
 
+    const maxQConfig = (typeof window !== 'undefined' && window.studyConfig && typeof window.studyConfig.getMaxQuestions === 'function') ? window.studyConfig.getMaxQuestions() : 20;
+    const totalQDisplay = (qNum && parseInt(qNum, 10) > maxQConfig) ? 30 : maxQConfig;
+
     return {
       type: questionType,
-      title: isStudy2to30 ? `Embedded Query (Study Question ${qNum} / ${(typeof window !== 'undefined' && window.studyConfig && typeof window.studyConfig.getMaxQuestions === 'function') ? window.studyConfig.getMaxQuestions() : 20})` : 'Embedded Query Execution Question',
+      title: isStudy2to30 ? `Embedded Query (Study Question ${qNum} / ${totalQDisplay})` : 'Embedded Query Execution Question',
       prompt: 'Select the correct final table output:',
       codeSnippet: codeSnippet,
       jsCode: codeSnippet, // For backward compatibility with existing views
@@ -424,8 +427,22 @@ class QuizGenerator {
     const structureType = spec.structureType || 1;
     const blocks = [];
 
-    // Study Question 2 & 21 (Structure 2): Simple query, use python/javascript to delete it, new query, execute
-    if (spec.manipulation === 'delete_query' || spec.qNum === 2 || spec.qNum === 21) {
+    // Study Question 21 (Structure 1: loop counter, counterpart to Q1)
+    if (spec.manipulation === 'q21_step_loop' || spec.qNum === 21) {
+      if (isPython) {
+        blocks.push(`step_count = 0\nfor i in range(4):\n    step_count += 1`);
+        blocks.push(`query = """\n${finalDialectSql}\n"""`);
+        blocks.push(`result_table = db.execute(query)`);
+      } else {
+        blocks.push(`let stepCount = 0;\nfor (let i = 0; i < 4; i++) {\n  stepCount++;\n}`);
+        blocks.push(`const query = \`\n${finalDialectSql}\n\`;`);
+        blocks.push(`const resultTable = db.execute(query);`);
+      }
+      return blocks.join('\n\n');
+    }
+
+    // Study Question 2 & 22 (Structure 2): Simple query, use python/javascript to delete it, new query, execute
+    if (spec.manipulation === 'delete_query' || spec.qNum === 2 || spec.qNum === 22) {
       if (isPython) {
         blocks.push(`query = """\n${initialDialectSql}\n"""`);
         blocks.push(`del query`);
@@ -440,8 +457,8 @@ class QuizGenerator {
       return blocks.join('\n\n');
     }
 
-    // Study Question 8 & 25 (Structure 3): Function related to appending to query that doesn't affect query, query, call function saved to variable, execute
-    if (spec.manipulation === 'append_function' || spec.qNum === 8 || spec.qNum === 25) {
+    // Study Question 8 (Structure 3): Function related to appending to query that doesn't affect query, query, call function saved to variable, execute
+    if (spec.manipulation === 'append_function' || spec.qNum === 8) {
       if (isPython) {
         blocks.push(`def append_to_query(clause):\n    log_buffer = ["audit_marker"]\n    log_buffer.append(clause)\n    return len(log_buffer)`);
         blocks.push(`query = """\n${finalDialectSql}\n"""`);
@@ -456,22 +473,24 @@ class QuizGenerator {
       return blocks.join('\n\n');
     }
 
-    // Study Question 4: [Query], conduct a string operation on the query that looks like it makes a change but doesn't, [Execute]
-    if (spec.manipulation === 'noop_replace' || spec.qNum === 4) {
+    // Study Question 4 & 24: [Query], conduct a string operation on the query that looks like it makes a change but doesn't, [Execute]
+    if (spec.manipulation === 'noop_replace' || spec.qNum === 4 || spec.qNum === 24) {
+      const fromStr = (spec.qNum === 24) ? "P%" : "A%";
+      const toStr = (spec.qNum === 24) ? "S%" : "B%";
       if (isPython) {
         blocks.push(`query = """\n${finalDialectSql}\n"""`);
-        blocks.push(`query.replace("A%", "B%")`);
+        blocks.push(`query.replace("${fromStr}", "${toStr}")`);
         blocks.push(`result_table = db.execute(query)`);
       } else {
         blocks.push(`const query = \`\n${finalDialectSql}\n\`;`);
-        blocks.push(`query.replace("A%", "B%");`);
+        blocks.push(`query.replace("${fromStr}", "${toStr}");`);
         blocks.push(`const resultTable = db.execute(query);`);
       }
       return blocks.join('\n\n');
     }
 
-    // Study Question 9 & 22 (Structure 4: [Query], [HostLang], [Execute]): Initial query conducts aggregate, HLL rewrites order to DESC
-    if (spec.manipulation === 'rewrite_order_desc' || spec.qNum === 9 || spec.qNum === 22) {
+    // Study Question 9 (Structure 4: [Query], [HostLang], [Execute]): Initial query conducts aggregate, HLL rewrites order to DESC
+    if (spec.manipulation === 'rewrite_order_desc' || spec.qNum === 9) {
       if (isPython) {
         blocks.push(`query = """\n${initialDialectSql}\n"""`);
         blocks.push(`query = query.replace("ASC", "DESC")`);
@@ -484,9 +503,9 @@ class QuizGenerator {
       return blocks.join('\n\n');
     }
 
-    // Study Question 10 & 24 (Structure 1: [HostLang], [Query], [Execute]):
+    // Study Question 10 (Structure 1: [HostLang], [Query], [Execute]):
     // Host language counts and compares arrays, and conditionally assigns query
-    if (spec.manipulation === 'compare_counts_select_output' || spec.manipulation === 'compare_counts_join_avg' || spec.qNum === 10 || spec.qNum === 24) {
+    if (spec.manipulation === 'compare_counts_select_output' || spec.manipulation === 'compare_counts_join_avg' || spec.qNum === 10) {
       const pTable = (schema && schema.tables) ? (schema.tables.find(t => t.name === 'products') || schema.tables[1]) : null;
       const pTableName = pTable ? pTable.name : 'products';
       const altSql = spec.initialSql || `SELECT ${pTableName}.title AS product_name FROM ${pTableName} ORDER BY ${pTableName}.id ASC;`;
@@ -557,26 +576,28 @@ class QuizGenerator {
       return blocks.join('\n\n');
     }
 
-    // Study Question 15: First execution of undefined variable, complex string manipulation on query 1, query 2 overwrites query, execute query 2
+    // Study Question 15: Execute query 1, string manipulation on query 1, query 2 overwrites query, execute query 2
     if (spec.manipulation === 'overwrite_query' || spec.qNum === 15) {
+      const isPipe = (dialectId === 'pipe');
+      const orderAppend = isPipe ? "\\n|> ORDER BY amount DESC" : " ORDER BY amount DESC";
       if (isPython) {
         blocks.push(`query = """\n${initialDialectSql}\n"""`);
-        blocks.push(`db.execute(pending_query)`);
-        blocks.push(`filters = ["status = 'COMPLETED'", "amount > 20"]\nquery = query.replace("WHERE amount > 50", "WHERE " + " AND ".join(filters))\nquery = query + " ORDER BY amount DESC"`);
+        blocks.push(`db.execute(query)`);
+        blocks.push(`filters = ["status = 'COMPLETED'", "amount > 20"]\nquery = query.replace("WHERE amount > 50", "WHERE " + " AND ".join(filters))\nquery = query + "${orderAppend}"`);
         blocks.push(`query = """\n${finalDialectSql}\n"""`);
         blocks.push(`result_table = db.execute(query)`);
       } else {
         blocks.push(`let query = \`\n${initialDialectSql}\n\`;`);
-        blocks.push(`db.execute(pendingQuery);`);
-        blocks.push(`let filters = ["status = 'COMPLETED'", "amount > 20"];\nquery = query.replace("WHERE amount > 50", "WHERE " + filters.join(" AND "));\nquery = query + " ORDER BY amount DESC";`);
+        blocks.push(`db.execute(query);`);
+        blocks.push(`let filters = ["status = 'COMPLETED'", "amount > 20"];\nquery = query.replace("WHERE amount > 50", "WHERE " + filters.join(" AND "));\nquery = query + "${orderAppend}";`);
         blocks.push(`query = \`\n${finalDialectSql}\n\`;`);
         blocks.push(`const resultTable = db.execute(query);`);
       }
       return blocks.join('\n\n');
     }
 
-    // Study Question 6 & 23 (Structure 5): Query 1, Execute Query 1, HostLang, Query 2, Delete Query 2
-    if (spec.manipulation === 'delete_second_query' || spec.qNum === 6 || spec.qNum === 23) {
+    // Study Question 6 (Structure 5): Query 1, Execute Query 1, HostLang, Query 2, Delete Query 2
+    if (spec.manipulation === 'delete_second_query' || spec.qNum === 6) {
       if (isPython) {
         blocks.push(`query = """\n${initialDialectSql}\n"""`);
         blocks.push(`result_table = db.execute(query)`);
@@ -609,34 +630,64 @@ class QuizGenerator {
       return blocks.join('\n\n');
     }
 
-    // Study Question 3 (Structure 3): String manipulation on undefined query, query AVG(amount) on orders, irrelevant math expression, execute
+    // Study Question 3 (Structure 3): Query AVG(amount) on orders, string manipulation, irrelevant math expression, execute
     if (spec.manipulation === 'undefined_query_string' || spec.qNum === 3) {
       if (isPython) {
-        blocks.push(`formatted_sql = query.replace("WHERE", "").strip()`);
         blocks.push(`query = """\n${finalDialectSql}\n"""`);
+        blocks.push(`formatted_sql = query.replace("WHERE", "").strip()`);
         blocks.push(`total_score = (100 * 2) + 50`);
         blocks.push(`result_table = db.execute(query)`);
       } else {
-        blocks.push(`let formattedSql = query.replace("WHERE", "").trim();`);
         blocks.push(`const query = \`\n${finalDialectSql}\n\`;`);
+        blocks.push(`let formattedSql = query.replace("WHERE", "").trim();`);
         blocks.push(`let totalScore = (100 * 2) + 50;`);
         blocks.push(`const resultTable = db.execute(query);`);
       }
       return blocks.join('\n\n');
     }
 
-    // Study Question 5 (Structure 5): Query 1 AVG on orders, omit execute 1, HLL string concatenation, Query 2 MIN on reviews, execute 2
-    if (spec.manipulation === 'omit_first_execute' || spec.qNum === 5) {
+    // Study Question 23 (Structure 3: Template string replacement, arithmetic calculation, execute query)
+    if (spec.manipulation === 'q23_template_string_math' || spec.qNum === 23) {
       if (isPython) {
-        blocks.push(`query = """\n${initialDialectSql}\n"""`);
-        blocks.push(`str1 = "Review"\nstr2 = "Score"\ncombined_text = str1 + str2`);
+        blocks.push(`template_sql = "SELECT * FROM products WHERE price > 0"\nformatted_sql = template_sql.replace("WHERE price > 0", "").strip()`);
         blocks.push(`query = """\n${finalDialectSql}\n"""`);
+        blocks.push(`computed_limit = (40 * 3) + 15`);
         blocks.push(`result_table = db.execute(query)`);
       } else {
-        blocks.push(`let query = \`\n${initialDialectSql}\n\`;`);
-        blocks.push(`let str1 = "Review";\nlet str2 = "Score";\nlet combinedText = str1 + str2;`);
-        blocks.push(`query = \`\n${finalDialectSql}\n\`;`);
+        blocks.push(`let templateSql = "SELECT * FROM products WHERE price > 0";\nlet formattedSql = templateSql.replace("WHERE price > 0", "").trim();`);
+        blocks.push(`const query = \`\n${finalDialectSql}\n\`;`);
+        blocks.push(`let computedLimit = (40 * 3) + 15;`);
         blocks.push(`const resultTable = db.execute(query);`);
+      }
+      return blocks.join('\n\n');
+    }
+
+    // Study Question 5 & 25 (Structure 5): Query 1, omit execute 1, HLL string concatenation, Query 2, execute 2
+    if (spec.manipulation === 'omit_first_execute' || spec.qNum === 5 || spec.qNum === 25) {
+      if (spec.qNum === 25) {
+        if (isPython) {
+          blocks.push(`query = """\n${initialDialectSql}\n"""`);
+          blocks.push(`prefix = "Max"\nsuffix = "Rating"\nmetric_label = prefix + suffix`);
+          blocks.push(`query = """\n${finalDialectSql}\n"""`);
+          blocks.push(`result_table = db.execute(query)`);
+        } else {
+          blocks.push(`let query = \`\n${initialDialectSql}\n\`;`);
+          blocks.push(`let prefix = "Max";\nlet suffix = "Rating";\nlet metricLabel = prefix + suffix;`);
+          blocks.push(`query = \`\n${finalDialectSql}\n\`;`);
+          blocks.push(`const resultTable = db.execute(query);`);
+        }
+      } else {
+        if (isPython) {
+          blocks.push(`query = """\n${initialDialectSql}\n"""`);
+          blocks.push(`str1 = "Review"\nstr2 = "Score"\ncombined_text = str1 + str2`);
+          blocks.push(`query = """\n${finalDialectSql}\n"""`);
+          blocks.push(`result_table = db.execute(query)`);
+        } else {
+          blocks.push(`let query = \`\n${initialDialectSql}\n\`;`);
+          blocks.push(`let str1 = "Review";\nlet str2 = "Score";\nlet combinedText = str1 + str2;`);
+          blocks.push(`query = \`\n${finalDialectSql}\n\`;`);
+          blocks.push(`const resultTable = db.execute(query);`);
+        }
       }
       return blocks.join('\n\n');
     }
@@ -666,10 +717,13 @@ class QuizGenerator {
     // Host language checks if WHERE exists and injects extra filter stock > 20 (single rewrite in IF, single in ELSE).
     if (spec.manipulation === 'q19_filter_sort_hll' || spec.qNum === 19) {
       const isQuorum = (dialectId === 'quorum');
+      const isPipe = (dialectId === 'pipe');
       if (isPython) {
         blocks.push(`query = """\n${initialDialectSql}\n"""`);
         if (isQuorum) {
           blocks.push(`extra_filter = "stock > 20"\n\nif "Filter" in query:\n    query = query.replace('"price > 15"', f'"price > 15 and {extra_filter}"')\nelse:\n    query = query + f'\\nquery:Filter("{extra_filter}")'`);
+        } else if (isPipe) {
+          blocks.push(`extra_filter = "stock > 20"\n\nif "WHERE" in query:\n    query = query.replace("price > 15", f"price > 15 AND {extra_filter}")\nelse:\n    query = query.replace("|> AGGREGATE", f"|> WHERE {extra_filter}\\n|> AGGREGATE")`);
         } else {
           blocks.push(`extra_filter = "stock > 20"\n\nif "WHERE" in query:\n    query = query.replace("price > 15", f"price > 15 AND {extra_filter}")\nelse:\n    query = query.replace("GROUP BY", f"WHERE {extra_filter} GROUP BY")`);
         }
@@ -678,6 +732,8 @@ class QuizGenerator {
         blocks.push(`let query = \`\n${initialDialectSql}\n\`;`);
         if (isQuorum) {
           blocks.push(`let extraFilter = "stock > 20";\n\nif (query.includes("Filter")) {\n  query = query.replace('"price > 15"', \`"price > 15 and \${extraFilter}"\`);\n} else {\n  query = query + \`\\nquery:Filter("\${extraFilter}")\`;\n}`);
+        } else if (isPipe) {
+          blocks.push(`let extraFilter = "stock > 20";\n\nif (query.includes("WHERE")) {\n  query = query.replace("price > 15", \`price > 15 AND \${extraFilter}\`);\n} else {\n  query = query.replace("|> AGGREGATE", \`|> WHERE \${extraFilter}\\n|> AGGREGATE\`);\n}`);
         } else {
           blocks.push(`let extraFilter = "stock > 20";\n\nif (query.includes("WHERE")) {\n  query = query.replace("price > 15", \`price > 15 AND \${extraFilter}\`);\n} else {\n  query = query.replace("GROUP BY", \`WHERE \${extraFilter} GROUP BY\`);\n}`);
         }
@@ -1116,11 +1172,13 @@ class QuizGenerator {
       const uTable = (schema && schema.tables) ? (schema.tables.find(t => t.name === 'users') || schema.tables[0]) : null;
       const pTable = (schema && schema.tables) ? (schema.tables.find(t => t.name === 'products') || schema.tables[1]) : null;
       const oTable = (schema && schema.tables) ? (schema.tables.find(t => t.name === 'orders') || schema.tables[2]) : null;
+      const cTable = (schema && schema.tables) ? (schema.tables.find(t => t.name === 'categories') || schema.tables[3]) : null;
       const rTable = (schema && schema.tables) ? (schema.tables.find(t => t.name === 'reviews') || schema.tables[4]) : null;
 
       const uName = uTable ? uTable.name : 'users';
       const pName = pTable ? pTable.name : 'products';
       const oName = oTable ? oTable.name : 'orders';
+      const cName = cTable ? cTable.name : 'categories';
       const rName = rTable ? rTable.name : 'reviews';
 
       const addOption = (cols, rows, explanation) => {
@@ -1134,80 +1192,71 @@ class QuizGenerator {
       };
 
       if (qNum === 21) {
-        // Distractor 1: Evaluates deleted Query 1 (price < 40 ORDER BY price ASC)
-        const d1Sql = `SELECT id, title, price, stock FROM ${pName} WHERE price < 40 ORDER BY price ASC LIMIT 4;`;
+        // Distractor 1 (Option A in prompt): Assumes rows are sorted by products.price in descending order.
+        const d1Sql = `SELECT ${pName}.id, ${pName}.price FROM ${pName} JOIN ${cName} ON ${pName}.category_id = ${cName}.id WHERE ${pName}.id <= 6 ORDER BY ${pName}.price DESC;`;
         const d1Res = runSqlWithMeta(d1Sql);
-        if (d1Res) addOption(d1Res.columns, d1Res.rows, 'Evaluates the first query (price < 40) before it was deleted.');
+        if (d1Res) addOption(d1Res.columns, d1Res.rows, 'Assumes rows are sorted by products.price in descending order.');
 
-        // Distractor 2: Evaluates Query 2 sorted ASC instead of DESC
-        const d2Sql = `SELECT id, title, price, stock FROM ${pName} WHERE price >= 40 AND stock > 10 ORDER BY price ASC LIMIT 4;`;
+        // Distractor 2 (Option C in prompt): Unfiltered data (WHERE clause conditions were not applied).
+        const d2Sql = `SELECT ${pName}.id, ${pName}.price FROM ${pName} JOIN ${cName} ON ${pName}.category_id = ${cName}.id ORDER BY ${pName}.id ASC;`;
         const d2Res = runSqlWithMeta(d2Sql);
-        if (d2Res) addOption(d2Res.columns, d2Res.rows, 'Evaluates query 2 sorted in ascending order (ORDER BY price ASC) instead of descending order.');
+        if (d2Res) addOption(d2Res.columns, d2Res.rows, 'Unfiltered data (WHERE clause conditions were not applied).');
 
-        // Distractor 3: Evaluates stock <= 20
-        const d3Sql = `SELECT id, title, price, stock FROM ${pName} WHERE stock <= 20 ORDER BY price ASC LIMIT 4;`;
+        // Distractor 3 (Option D in prompt): Assumes rows are sorted by products.id in descending order.
+        const d3Sql = `SELECT ${pName}.id, ${pName}.price FROM ${pName} JOIN ${cName} ON ${pName}.category_id = ${cName}.id WHERE ${pName}.id <= 6 ORDER BY ${pName}.id DESC;`;
         const d3Res = runSqlWithMeta(d3Sql);
-        if (d3Res) addOption(d3Res.columns, d3Res.rows, 'Applies an alternate filter condition (stock <= 20).');
+        if (d3Res) addOption(d3Res.columns, d3Res.rows, 'Assumes rows are sorted by products.id in descending order.');
       } else if (qNum === 22) {
-        // Distractor 1: Initial query before string replacement (ordered ASC)
-        const d1Sql = `SELECT user_id, COUNT(*) AS order_count, ROUND(AVG(amount), 2) AS avg_spent FROM ${oName} GROUP BY user_id ORDER BY avg_spent ASC LIMIT 4;`;
+        // Distractor 1 (Option A in prompt): Unfiltered data (WHERE clause conditions were not applied).
+        const d1Sql = `SELECT id, title FROM ${pName} ORDER BY id ASC;`;
         const d1Res = runSqlWithMeta(d1Sql);
-        if (d1Res) addOption(d1Res.columns, d1Res.rows, 'Assumes the string replacement ASC to DESC was not applied.');
+        if (d1Res) addOption(d1Res.columns, d1Res.rows, 'Unfiltered data (WHERE clause conditions were not applied).');
 
-        // Distractor 2: Evaluates with ORDER BY order_count ASC
-        const d2Sql = `SELECT user_id, COUNT(*) AS order_count, ROUND(AVG(amount), 2) AS avg_spent FROM ${oName} GROUP BY user_id ORDER BY order_count ASC LIMIT 4;`;
+        // Distractor 2 (Option B in prompt): Inverted sort order.
+        const d2Sql = `SELECT id, title FROM ${pName} WHERE id > 3 ORDER BY id DESC;`;
         const d2Res = runSqlWithMeta(d2Sql);
-        if (d2Res) addOption(d2Res.columns, d2Res.rows, 'Orders by order count ascending (ORDER BY order_count ASC) instead of average spent.');
+        if (d2Res) addOption(d2Res.columns, d2Res.rows, 'Inverted sort order.');
 
-        // Distractor 3: Total amount spent (SUM) instead of average (AVG)
-        const d3Sql = `SELECT user_id, COUNT(*) AS order_count, ROUND(SUM(amount), 2) AS avg_spent FROM ${oName} GROUP BY user_id ORDER BY avg_spent DESC LIMIT 4;`;
+        // Distractor 3 (Option D in prompt): Evaluates the first query which was deleted prior to execution.
+        const d3Sql = `SELECT id, title FROM ${pName} WHERE id <= 4 ORDER BY id ASC;`;
         const d3Res = runSqlWithMeta(d3Sql);
-        if (d3Res) addOption(d3Res.columns, d3Res.rows, 'Computes total spent (SUM) instead of average spent (AVG).');
+        if (d3Res) addOption(d3Res.columns, d3Res.rows, 'Evaluates the first query which was deleted prior to execution.');
       } else if (qNum === 23) {
-        // Distractor 1: Assumes Query 2 was executed instead of Query 1
-        const d1Sql = `SELECT id, name, age, rating FROM ${uName} WHERE age < 35 ORDER BY age DESC LIMIT 4;`;
-        const d1Res = runSqlWithMeta(d1Sql);
-        if (d1Res) addOption(d1Res.columns, d1Res.rows, 'Assumes the second query was executed instead of the first query.');
+        // Distractor 1 (Option B in prompt): Assumes the host-language arithmetic calculation ((40 * 3) + 15 = 135) is returned.
+        const mathRows = [[135]];
+        addOption(['avg_price'], mathRows, 'Assumes the host-language arithmetic calculation ((40 * 3) + 15 = 135) is returned.');
 
-        // Distractor 2: Inverted active flag (is_active = 0)
-        const d2Sql = `SELECT id, name, age, is_active FROM ${uName} WHERE age >= 25 AND is_active = 0 ORDER BY age ASC LIMIT 4;`;
-        const d2Res = runSqlWithMeta(d2Sql);
-        if (d2Res) addOption(d2Res.columns, d2Res.rows, 'Assumes inactive users (is_active = 0) were selected.');
+        // Distractor 2 (Option C in prompt): Assumes the unexecuted SQL query string is returned as text output.
+        const queryText = (questionSpec && questionSpec.finalSql) ? questionSpec.finalSql : `SELECT AVG(price) AS avg_price FROM ${pName};`;
+        addOption(['query'], [[queryText]], 'Assumes the unexecuted SQL query string is returned as text output.');
 
-        // Distractor 3: Sorted age DESC instead of ASC
-        const d3Sql = `SELECT id, name, age, is_active FROM ${uName} WHERE age >= 25 AND is_active = 1 ORDER BY age DESC LIMIT 4;`;
-        const d3Res = runSqlWithMeta(d3Sql);
-        if (d3Res) addOption(d3Res.columns, d3Res.rows, 'Sorts users by age descending (ORDER BY age DESC) instead of ascending.');
+        // Distractor 3 (Option D in prompt): Assumes the modified string variable formatted_sql on line 2 is returned as text output.
+        addOption(['formatted_sql'], [['SELECT * FROM products']], 'Assumes the modified string variable formatted_sql on line 2 is returned as text output.');
       } else if (qNum === 24) {
-        // Distractor 1: Assumes else branch was executed (score <= 2)
-        const d1Sql = `SELECT id, score, rating, title FROM ${rName} WHERE score <= 2 ORDER BY id ASC LIMIT 4;`;
+        // Distractor 1 (Option A in prompt): Unfiltered table rows without applying the LIKE filter.
+        const d1Sql = `SELECT id, status FROM ${oName} ORDER BY id ASC;`;
         const d1Res = runSqlWithMeta(d1Sql);
-        if (d1Res) addOption(d1Res.columns, d1Res.rows, 'Assumes the else branch query (score <= 2) was executed.');
+        if (d1Res) addOption(d1Res.columns, d1Res.rows, 'Unfiltered table rows without applying the LIKE filter.');
 
-        // Distractor 2: Evaluates with score = 3
-        const d2Sql = `SELECT id, score, rating, title FROM ${rName} WHERE score = 3 ORDER BY id ASC LIMIT 4;`;
+        // Distractor 2 (Option C in prompt): Assumes query.replace("P%", "S%") mutated the query in-place.
+        const d2Sql = `SELECT id, status FROM ${oName} WHERE status LIKE 'S%' ORDER BY id ASC;`;
         const d2Res = runSqlWithMeta(d2Sql);
-        if (d2Res) addOption(d2Res.columns, d2Res.rows, 'Selects moderate review scores (score = 3) instead of high scores.');
+        if (d2Res) addOption(d2Res.columns, d2Res.rows, 'Assumes query.replace("P%", "S%") mutated the query in-place.');
 
-        // Distractor 3: Evaluates Query with ORDER BY id DESC LIMIT 4
-        const d3Sql = `SELECT id, score, rating, title FROM ${rName} WHERE score >= 4 ORDER BY id DESC LIMIT 4;`;
+        // Distractor 3 (Option D in prompt): Evaluates an alternative LIKE pattern (statuses starting with C).
+        const d3Sql = `SELECT id, status FROM ${oName} WHERE status LIKE 'C%' ORDER BY id ASC;`;
         const d3Res = runSqlWithMeta(d3Sql);
-        if (d3Res) addOption(d3Res.columns, d3Res.rows, 'Sorts reviews by id descending (ORDER BY id DESC) instead of ascending.');
+        if (d3Res) addOption(d3Res.columns, d3Res.rows, 'Evaluates an alternative LIKE pattern (statuses starting with C).');
       } else if (qNum === 25) {
-        // Distractor 1: Assumes append function modified query to ORDER BY id DESC
-        const d1Sql = `SELECT id, title, price, stock FROM ${pName} WHERE stock > 15 ORDER BY id DESC LIMIT 4;`;
-        const d1Res = runSqlWithMeta(d1Sql);
-        if (d1Res) addOption(d1Res.columns, d1Res.rows, 'Assumes the append function call modified the query to sort by id DESC.');
+        // Distractor 1 (Option B in prompt): Assumes the aggregate expression string "MAX(score)" is returned instead of the evaluated maximum numeric score.
+        addOption(['max_score'], [['MAX(score)']], 'Assumes the aggregate expression string "MAX(score)" is returned instead of the evaluated maximum numeric score.');
 
-        // Distractor 2: Evaluates with ORDER BY price DESC
-        const d2Sql = `SELECT id, title, price, stock FROM ${pName} WHERE stock > 15 ORDER BY price DESC LIMIT 4;`;
-        const d2Res = runSqlWithMeta(d2Sql);
-        if (d2Res) addOption(d2Res.columns, d2Res.rows, 'Sorts products by price descending (ORDER BY price DESC) instead of ascending.');
+        // Distractor 2 (Option C in prompt): Assumes the first unexecuted SQL query string is returned as text output.
+        const initQueryText = (questionSpec && questionSpec.initialSql) ? questionSpec.initialSql : `SELECT AVG(price) AS avg_price FROM ${pName};`;
+        addOption(['query'], [[initQueryText]], 'Assumes the first unexecuted SQL query string is returned as text output.');
 
-        // Distractor 3: High price filter (price >= 60)
-        const d3Sql = `SELECT id, title, price, stock FROM ${pName} WHERE price >= 60 AND stock > 15 ORDER BY price ASC LIMIT 4;`;
-        const d3Res = runSqlWithMeta(d3Sql);
-        if (d3Res) addOption(d3Res.columns, d3Res.rows, 'Applies an additional price filter (price >= 60).');
+        // Distractor 3 (Option D in prompt): Assumes the host-language string concatenation ("MaxRating") is returned as the table output.
+        addOption(['metric_label'], [['MaxRating']], 'Assumes the host-language string concatenation ("MaxRating") is returned as the table output.');
       } else if (qNum === 26) {
         // Distractor 1: Evaluates only the High tier branch
         const d1Sql = `SELECT id, title, price, 'High' AS tier FROM ${pName} WHERE price >= 120;`;
@@ -1619,10 +1668,11 @@ class QuizGenerator {
       }
     }
 
-    // Question 1 specific distractors (tests sorting expectation vs natural order after removing ORDER BY)
+    // Question 1 specific distractors (tests sorting expectation)
     const isQ1 = (qNum === 1 || (rawSql && rawSql.includes('FROM orders JOIN users ON orders.user_id = users.id')));
     if (isQ1) {
-      const descSql = rawSql.replace(/;?\s*$/, '') + ' ORDER BY orders.id DESC;';
+      const baseSql = rawSql.replace(/ORDER BY\s+orders\.id\s+ASC;?/i, '').replace(/;?\s*$/, '');
+      const descSql = baseSql + ' ORDER BY orders.id DESC;';
       const descRows = runSql(descSql);
       if (descRows && descRows.length > 0 && !areRowsEqual(descRows, correctRows)) {
         distractorCandidates.push({
@@ -1632,7 +1682,7 @@ class QuizGenerator {
           explanation: 'Assumes rows are sorted by orders.id in descending order.'
         });
       }
-      const amountDescSql = rawSql.replace(/;?\s*$/, '') + ' ORDER BY orders.amount DESC;';
+      const amountDescSql = baseSql + ' ORDER BY orders.amount DESC;';
       const amountDescRows = runSql(amountDescSql);
       if (amountDescRows && amountDescRows.length > 0 && !areRowsEqual(amountDescRows, correctRows)) {
         distractorCandidates.push({
@@ -2195,8 +2245,8 @@ class QuizGenerator {
       const oTable = (schema && schema.tables) ? (schema.tables.find(t => t.name === 'orders') || schema.tables[0]) : null;
       const oTableName = oTable ? oTable.name : 'orders';
 
-      // Distractor 1: Inverted sort order of query 2 (ORDER BY order_count ASC)
-      const invSortSql = `SELECT status, COUNT(*) AS order_count FROM ${oTableName} GROUP BY status ORDER BY order_count ASC;`;
+      // Distractor 1: Inverted sort order of query 2 (ORDER BY order_count ASC, status ASC)
+      const invSortSql = `SELECT status, COUNT(*) AS order_count FROM ${oTableName} GROUP BY status ORDER BY order_count ASC, status ASC;`;
       let invSortRows = runSql(invSortSql);
       if (invSortRows && invSortRows.length > 0 && !areRowsEqual(invSortRows, correctRows)) {
         distractorCandidates.push({
@@ -2208,7 +2258,7 @@ class QuizGenerator {
       }
 
       // Distractor 2: Evaluates the query using SUM(amount) instead of COUNT(*)
-      const sumSql = `SELECT status, ROUND(SUM(amount), 1) AS order_count FROM ${oTableName} GROUP BY status ORDER BY order_count DESC;`;
+      const sumSql = `SELECT status, ROUND(SUM(amount), 1) AS order_count FROM ${oTableName} GROUP BY status ORDER BY order_count DESC, status DESC;`;
       let sumRows = runSql(sumSql);
       if (sumRows && sumRows.length > 0 && !areRowsEqual(sumRows, correctRows)) {
         distractorCandidates.push({
@@ -2472,17 +2522,14 @@ class QuizGenerator {
         });
       }
 
-      // Distractor 2 (Text-based): Runtime error from referencing undefined query on line 1
-      const errorMsg = isPython
-        ? "NameError: name 'query' is not defined"
-        : "ReferenceError: query is not defined";
-      const errorRows = [[errorMsg]];
-      if (!areRowsEqual(errorRows, correctRows)) {
+      // Distractor 2 (Text-based): Aggregate function name literal string
+      const aggRows = [['AVG(amount)']];
+      if (!areRowsEqual(aggRows, correctRows)) {
         distractorCandidates.push({
-          columns: ['error'],
-          rows: errorRows,
+          columns: ['avg_amount'],
+          rows: aggRows,
           isCorrect: false,
-          explanation: 'Assumes referencing the undefined variable "query" on line 1 causes a runtime error.'
+          explanation: 'Assumes the aggregate expression string "AVG(amount)" is returned instead of being calculated.'
         });
       }
 
@@ -2495,17 +2542,6 @@ class QuizGenerator {
           rows: queryRows,
           isCorrect: false,
           explanation: 'Assumes the unexecuted SQL query string is returned as text output.'
-        });
-      }
-
-      // Distractor 4 (Text-based fallback): Aggregate function name literal string
-      const aggRows = [['AVG(amount)']];
-      if (!areRowsEqual(aggRows, correctRows)) {
-        distractorCandidates.push({
-          columns: ['avg_amount'],
-          rows: aggRows,
-          isCorrect: false,
-          explanation: 'Assumes the aggregate expression string "AVG(amount)" is returned instead of being calculated.'
         });
       }
 
