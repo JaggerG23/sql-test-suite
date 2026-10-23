@@ -1108,10 +1108,13 @@ class QueryExperimentApp {
     const select = document.getElementById('question-jump-select');
     if (select) select.value = qNum;
 
-    const qIndex = qNum - 1; // 0 to 24
-    const blockIndex = Math.floor(qIndex / 6);
+    const origQNum = (typeof QueryGenerator !== 'undefined' && typeof QueryGenerator.getOriginalQuestionNumber === 'function')
+      ? QueryGenerator.getOriginalQuestionNumber(qNum)
+      : qNum;
+    const origQIndex = origQNum - 1; // 0 to 24
+    const blockIndex = Math.floor(origQIndex / 6);
     const blockSeed = this.seed + blockIndex * 137;
-    const variationIndex = qIndex % 6;
+    const variationIndex = origQIndex % 6;
     const blockKey = `study_${blockIndex}`;
 
     if (!this.currentSchema || this.lastBlockKey !== blockKey) {
@@ -1131,12 +1134,8 @@ class QueryExperimentApp {
       return;
     }
 
-    if (qNum === 1) {
-      this.currentQuery = 'SELECT orders.id, orders.amount FROM orders JOIN users ON orders.user_id = users.id WHERE orders.id <= 6 ORDER BY orders.id ASC;';
-    } else {
-      this.queryGenerator = new QueryGenerator(blockSeed);
-      this.currentQuery = this.queryGenerator.generateIncrementalQuery(this.currentSchema, 'medium', true, variationIndex, qNum);
-    }
+    this.queryGenerator = new QueryGenerator(blockSeed);
+    this.currentQuery = this.queryGenerator.generateIncrementalQuery(this.currentSchema, 'medium', true, variationIndex, qNum);
 
     const editor = document.getElementById('sql-editor');
     if (editor) editor.value = this.currentQuery;

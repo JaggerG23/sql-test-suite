@@ -23,6 +23,14 @@ server {
         return 404;
     }
 
+    location = /admin {
+        try_files /index.html =404;
+    }
+
+    location = /admin/ {
+        try_files /index.html =404;
+    }
+
     location / {
         try_files $uri $uri/ =404;
     }

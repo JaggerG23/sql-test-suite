@@ -326,7 +326,7 @@ class HumanResolver {
           </p>
 
           <p style="margin: 0;">
-            This study includes the minimal risks of eye strain and/or hand cramps. The study will take 20 minutes of your time. You will be compensated for your time via 2% extra credit for your completion of this study in the course you received this recruitment from. NOTICE: Your involvement in the study only counts if you complete all twenty-five (25) questions in the study. Completing less than 25 questions will not count as participation in the study.
+            This study includes the minimal risks of eye strain and/or hand cramps. The study will take 40 minutes of your time. You will be compensated for your time via 2% extra credit for your completion of this study in the course you received this recruitment from. NOTICE: Your involvement in the study only counts if you complete all twenty-five (25) questions in the study. Completing less than 25 questions will not count as participation in the study.
           </p>
 
           <p style="margin: 0;">

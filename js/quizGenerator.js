@@ -29,30 +29,27 @@ class QuizGenerator {
 
     const dialectSql = dialectManager ? dialectManager.formatQueryToDialect(rawSql, currentDialect.id) : rawSql;
 
-    const isQuestion1 = (qNum === 1 || (rawSql && rawSql.includes('FROM orders JOIN users ON orders.user_id = users.id')));
-    const isStudy2to25 = (!isQuestion1 && qNum !== null && qNum !== undefined && parseInt(qNum, 10) >= 2 && parseInt(qNum, 10) <= 25);
+    const parsedQ = (qNum !== null && qNum !== undefined) ? parseInt(qNum, 10) : null;
+    const isStudy1to25 = (parsedQ !== null && !isNaN(parsedQ) && parsedQ >= 1 && parsedQ <= 25);
 
     let codeSnippet;
     let shuffled;
     let questionSpec = null;
 
-    if (isQuestion1) {
-      const isPython = (hostLanguage === 'python');
-      codeSnippet = isPython
-        ? `counter = 0\nfor i in range(6):\n    counter += 1\n\nquery = """\n${dialectSql}\n"""\n\nresult_table = db.execute(query)`
-        : `let counter = 0;\nfor (let i = 0; i < 6; i++) {\n  counter++;\n}\n\nconst query = \`\n${dialectSql}\n\`;\n\nconst resultTable = db.execute(query);`;
-
-      const options = this.generateTableOptions(groundTruthResult, schema, rawSql, null, 1, hostLanguage);
-      shuffled = this.shuffleAndAssignKeys(options, (this.seed || 42) + 97);
-    } else if (isStudy2to25) {
+    if (isStudy1to25) {
       const qGenerator = (typeof window !== 'undefined' && window.app && window.app.queryGenerator)
         ? window.app.queryGenerator
         : new QueryGenerator();
-      questionSpec = qGenerator.getStudyQuestionSpec(schema, parseInt(qNum, 10));
+      questionSpec = qGenerator.getStudyQuestionSpec(schema, parsedQ);
 
       codeSnippet = this.generateStudyCodeSnippet(questionSpec, schema, dialectManager, currentDialect, hostLanguage);
-      const options = this.generateTableOptions(groundTruthResult, schema, rawSql, questionSpec, parseInt(qNum, 10), hostLanguage);
-      shuffled = this.shuffleAndAssignKeys(options, (this.seed || 42) + (parseInt(qNum, 10) || 2) * 97);
+      const options = this.generateTableOptions(groundTruthResult, schema, rawSql, questionSpec, parsedQ, hostLanguage);
+      const origQ = (questionSpec && questionSpec.origQNum)
+        ? questionSpec.origQNum
+        : ((typeof QueryGenerator !== 'undefined' && typeof QueryGenerator.getOriginalQuestionNumber === 'function')
+          ? QueryGenerator.getOriginalQuestionNumber(parsedQ)
+          : parsedQ);
+      shuffled = this.shuffleAndAssignKeys(options, (this.seed || 42) + origQ * 97);
     } else {
       codeSnippet = this.generateCodeSnippet(rawSql, schema, dialectSql, hostLanguage, qNum, dialectManager, currentDialect);
       const options = this.generateTableOptions(groundTruthResult, schema, rawSql, null, qNum, hostLanguage);
@@ -72,7 +69,7 @@ class QuizGenerator {
 
     return {
       type: questionType,
-      title: isStudy2to25 ? `Embedded Query (Study Question ${qNum} / ${totalQDisplay})` : 'Embedded Query Execution Question',
+      title: isStudy1to25 ? `Embedded Query (Study Question ${qNum} / ${totalQDisplay})` : 'Embedded Query Execution Question',
       prompt: 'Select the correct final table output:',
       codeSnippet: codeSnippet,
       jsCode: codeSnippet, // For backward compatibility with existing views
@@ -112,8 +109,8 @@ class QuizGenerator {
     if (trainingQNum === 1) {
       // Training Question 1: Interface Orientation (Not a query)
       const codeSnippet = isPython
-        ? `# Please click the answer choice that says WRONG below.\n#\n# NOTE: You will not receive feedback for any of your answers throughout the study.`
-        : `// Please click the answer choice that says WRONG below.\n//\n// NOTE: You will not receive feedback for any of your answers throughout the study.`;
+        ? `# Please click the answer choice that says WRONG below.`
+        : `// Please click the answer choice that says WRONG below.`;
 
       const rawOptions = [
         {
@@ -381,18 +378,18 @@ class QuizGenerator {
    * Routes code generation to Python or JavaScript based on hostLanguage and structure.
    */
   generateCodeSnippet(sql, schema, dialectSql, hostLanguage = 'javascript', qNum = null, dialectManager = null, dialect = null) {
-    if (qNum === 1 || (sql && sql.includes('FROM orders JOIN users ON orders.user_id = users.id'))) {
-      return (hostLanguage === 'python')
-        ? `counter = 0\nfor i in range(6):\n    counter += 1\n\nquery = """\n${dialectSql}\n"""\n\nresult_table = db.execute(query)`
-        : `let counter = 0;\nfor (let i = 0; i < 6; i++) {\n  counter++;\n}\n\nconst query = \`\n${dialectSql}\n\`;\n\nconst resultTable = db.execute(query);`;
-    }
-
-    if (qNum !== null && qNum !== undefined && parseInt(qNum, 10) >= 2 && parseInt(qNum, 10) <= 25) {
+    if (qNum !== null && qNum !== undefined && parseInt(qNum, 10) >= 1 && parseInt(qNum, 10) <= 25) {
       const qGenerator = (typeof window !== 'undefined' && window.app && window.app.queryGenerator)
         ? window.app.queryGenerator
         : new QueryGenerator();
       const spec = qGenerator.getStudyQuestionSpec(schema, parseInt(qNum, 10));
       return this.generateStudyCodeSnippet(spec, schema, dialectManager, dialect, hostLanguage);
+    }
+
+    if (sql && sql.includes('FROM orders JOIN users ON orders.user_id = users.id')) {
+      return (hostLanguage === 'python')
+        ? `counter = 0\nfor i in range(6):\n    counter += 1\n\nquery = """\n${dialectSql}\n"""\n\nresult_table = db.execute(query)`
+        : `let counter = 0;\nfor (let i = 0; i < 6; i++) {\n  counter++;\n}\n\nconst query = \`\n${dialectSql}\n\`;\n\nconst resultTable = db.execute(query);`;
     }
 
     if (hostLanguage === 'python') {
@@ -426,10 +423,29 @@ class QuizGenerator {
       : (spec.setupSql || '');
 
     const structureType = spec.structureType || 1;
+    const origQ = (spec && spec.origQNum)
+      ? spec.origQNum
+      : ((typeof QueryGenerator !== 'undefined' && typeof QueryGenerator.getOriginalQuestionNumber === 'function' && spec && spec.qNum)
+        ? QueryGenerator.getOriginalQuestionNumber(spec.qNum)
+        : (spec ? spec.qNum : null));
     const blocks = [];
 
-    // Study Question 21 (Structure 1: loop counter, counterpart to Q1)
-    if (spec.manipulation === 'q21_step_loop' || spec.qNum === 21) {
+    // Study Question 5 (Original Q1, Structure 1: loop counter, JOIN orders and users)
+    if (spec.manipulation === 'q5_counter_loop' || origQ === 1) {
+      if (isPython) {
+        blocks.push(`counter = 0\nfor i in range(6):\n    counter += 1`);
+        blocks.push(`query = """\n${finalDialectSql}\n"""`);
+        blocks.push(`result_table = db.execute(query)`);
+      } else {
+        blocks.push(`let counter = 0;\nfor (let i = 0; i < 6; i++) {\n  counter++;\n}`);
+        blocks.push(`const query = \`\n${finalDialectSql}\n\`;`);
+        blocks.push(`const resultTable = db.execute(query);`);
+      }
+      return blocks.join('\n\n');
+    }
+
+    // Study Question 9 (Original Q21, Structure 1: loop counter, counterpart to Q5)
+    if (spec.manipulation === 'q21_step_loop' || origQ === 21) {
       if (isPython) {
         blocks.push(`step_count = 0\nfor i in range(4):\n    step_count += 1`);
         blocks.push(`query = """\n${finalDialectSql}\n"""`);
@@ -442,8 +458,8 @@ class QuizGenerator {
       return blocks.join('\n\n');
     }
 
-    // Study Question 2 & 22 (Structure 2): Simple query, clear query variable (del in Python / null in JS), new query, execute
-    if (spec.manipulation === 'delete_query' || spec.qNum === 2 || spec.qNum === 22) {
+    // Study Question 1 & 6 (Original Q2 & Q22, Structure 2): Simple query, clear query variable (del in Python / null in JS), new query, execute
+    if (spec.manipulation === 'delete_query' || origQ === 2 || origQ === 22) {
       if (isPython) {
         blocks.push(`query = """\n${initialDialectSql}\n"""`);
         blocks.push(`del query`);
@@ -458,8 +474,8 @@ class QuizGenerator {
       return blocks.join('\n\n');
     }
 
-    // Study Question 8 (Structure 3): Function related to appending to query that doesn't affect query, query, call function saved to variable, execute
-    if (spec.manipulation === 'append_function' || spec.qNum === 8) {
+    // Study Question 13 (Original Q8, Structure 3): Function related to appending to query that doesn't affect query, query, call function saved to variable, execute
+    if (spec.manipulation === 'append_function' || origQ === 8) {
       if (isPython) {
         blocks.push(`def append_to_query(clause):\n    log_buffer = ["audit_marker"]\n    log_buffer.append(clause)\n    return len(log_buffer)`);
         blocks.push(`query = """\n${finalDialectSql}\n"""`);
@@ -474,10 +490,10 @@ class QuizGenerator {
       return blocks.join('\n\n');
     }
 
-    // Study Question 4 & 24: [Query], conduct a string operation on the query that looks like it makes a change but doesn't, [Execute]
-    if (spec.manipulation === 'noop_replace' || spec.qNum === 4 || spec.qNum === 24) {
-      const fromStr = (spec.qNum === 24) ? "P%" : "A%";
-      const toStr = (spec.qNum === 24) ? "S%" : "B%";
+    // Study Question 3 & 7 (Original Q4 & Q24): [Query], conduct a string operation on the query that looks like it makes a change but doesn't, [Execute]
+    if (spec.manipulation === 'noop_replace' || origQ === 4 || origQ === 24) {
+      const fromStr = (origQ === 24) ? "P%" : "A%";
+      const toStr = (origQ === 24) ? "S%" : "B%";
       if (isPython) {
         blocks.push(`query = """\n${finalDialectSql}\n"""`);
         blocks.push(`query.replace("${fromStr}", "${toStr}")`);
@@ -490,23 +506,23 @@ class QuizGenerator {
       return blocks.join('\n\n');
     }
 
-    // Study Question 9 (Structure 4: [Query], [HostLang], [Execute]): Initial query conducts aggregate, HLL rewrites order to DESC
-    if (spec.manipulation === 'rewrite_order_desc' || spec.qNum === 9) {
+    // Study Question 14 (Original Q9, Structure 4: [Query], [HostLang], [Execute]): Query conducts aggregate ordered by order_id DESC, HLL non-mutating replace
+    if (spec.manipulation === 'rewrite_order_desc' || origQ === 9) {
       if (isPython) {
         blocks.push(`query = """\n${initialDialectSql}\n"""`);
-        blocks.push(`query = query.replace("ASC", "DESC")`);
+        blocks.push(`query.replace("DESC", "ASC")`);
         blocks.push(`result_table = db.execute(query)`);
       } else {
         blocks.push(`let query = \`\n${initialDialectSql}\n\`;`);
-        blocks.push(`query = query.replace("ASC", "DESC");`);
+        blocks.push(`query.replace("DESC", "ASC");`);
         blocks.push(`const resultTable = db.execute(query);`);
       }
       return blocks.join('\n\n');
     }
 
-    // Study Question 10 (Structure 1: [HostLang], [Query], [Execute]):
+    // Study Question 15 (Original Q10, Structure 1: [HostLang], [Query], [Execute]):
     // Host language counts and compares arrays, and conditionally assigns query
-    if (spec.manipulation === 'compare_counts_select_output' || spec.manipulation === 'compare_counts_join_avg' || spec.qNum === 10) {
+    if (spec.manipulation === 'compare_counts_select_output' || spec.manipulation === 'compare_counts_join_avg' || origQ === 10) {
       const pTable = (schema && schema.tables) ? (schema.tables.find(t => t.name === 'products') || schema.tables[1]) : null;
       const pTableName = pTable ? pTable.name : 'products';
       const altSql = spec.initialSql || `SELECT ${pTableName}.title AS product_name FROM ${pTableName} ORDER BY ${pTableName}.id ASC;`;
@@ -524,8 +540,8 @@ class QuizGenerator {
       return blocks.join('\n\n');
     }
 
-    // Study Question 11 (Structure 4: [Query], [HostLang], [Execute]): JOIN query, HLL defines 4 strings
-    if (spec.manipulation === 'unused_column_strings' || spec.qNum === 11) {
+    // Study Question 16 (Original Q11, Structure 4: [Query], [HostLang], [Execute]): JOIN query, HLL defines 4 strings
+    if (spec.manipulation === 'unused_column_strings' || origQ === 11) {
       if (isPython) {
         blocks.push(`query = """\n${finalDialectSql}\n"""`);
         blocks.push(`col_title = "title"\ncol_category = "category_name"\ncol_status = "status"\ncol_notes = "notes"`);
@@ -538,10 +554,10 @@ class QuizGenerator {
       return blocks.join('\n\n');
     }
 
-    // Study Question 13 (Structure 2: [Query], [HostLang], [Query], [Execute]):
+    // Study Question 18 (Original Q13, Structure 2: [Query], [HostLang], [Query], [Execute]):
     // Initial query; HLL string manipulation modifies query;
     // but Query 2 completely overwrites query, and is executed.
-    if (spec.manipulation === 'severe_query_override' || spec.qNum === 13) {
+    if (spec.manipulation === 'severe_query_override' || origQ === 13) {
       const isQuorum = (dialectId === 'quorum');
       if (isPython) {
         blocks.push(`query = """\n${initialDialectSql}\n"""`);
@@ -565,19 +581,19 @@ class QuizGenerator {
       return blocks.join('\n\n');
     }
 
-    // Study Question 15: Execute query 1, string manipulation on query 1, query 2 overwrites query, execute query 2
-    if (spec.manipulation === 'overwrite_query' || spec.qNum === 15) {
+    // Study Question 20 (Original Q15): First execute tries to run non-existent query variable, string manipulation on query 1, query 2 overwrites query, execute query 2
+    if (spec.manipulation === 'overwrite_query' || origQ === 15) {
       const isPipe = (dialectId === 'pipe');
       const orderAppend = isPipe ? "\\n|> ORDER BY amount DESC" : " ORDER BY amount DESC";
       if (isPython) {
         blocks.push(`query = """\n${initialDialectSql}\n"""`);
-        blocks.push(`db.execute(query)`);
+        blocks.push(`db.execute(initial_query)`);
         blocks.push(`filters = ["status = 'COMPLETED'", "amount > 20"]\nquery = query.replace("WHERE amount > 50", "WHERE " + " AND ".join(filters))\nquery = query + "${orderAppend}"`);
         blocks.push(`query = """\n${finalDialectSql}\n"""`);
         blocks.push(`result_table = db.execute(query)`);
       } else {
         blocks.push(`let query = \`\n${initialDialectSql}\n\`;`);
-        blocks.push(`db.execute(query);`);
+        blocks.push(`db.execute(initialQuery);`);
         blocks.push(`let filters = ["status = 'COMPLETED'", "amount > 20"];\nquery = query.replace("WHERE amount > 50", "WHERE " + filters.join(" AND "));\nquery = query + "${orderAppend}";`);
         blocks.push(`query = \`\n${finalDialectSql}\n\`;`);
         blocks.push(`const resultTable = db.execute(query);`);
@@ -585,8 +601,8 @@ class QuizGenerator {
       return blocks.join('\n\n');
     }
 
-    // Study Question 6 (Structure 5): Query 1, Execute Query 1, HostLang loop, Query 2, clear Query 2 (del in Python / null in JS)
-    if (spec.manipulation === 'delete_second_query' || spec.qNum === 6) {
+    // Study Question 11 (Original Q6, Structure 5): Query 1, Execute Query 1, HostLang loop, Query 2, clear Query 2 (del in Python / null in JS)
+    if (spec.manipulation === 'delete_second_query' || origQ === 6) {
       if (isPython) {
         blocks.push(`query = """\n${initialDialectSql}\n"""`);
         blocks.push(`result_table = db.execute(query)`);
@@ -603,24 +619,24 @@ class QuizGenerator {
       return blocks.join('\n\n');
     }
 
-    // Study Question 7 (Structure 5): Query 1 (SUM(price) by category_id), Execute Query 1, HostLang clause check, Query 2 without second execute
-    if (spec.manipulation === 'delete_second_execute' || spec.qNum === 7) {
+    // Study Question 12 (Original Q7, Structure 2): Query 1 (COUNT(*) by category_id), HostLang clause check, Query 2 (SUM(price) by category_id), Execute Query 2
+    if (spec.manipulation === 'delete_second_execute' || origQ === 7) {
       if (isPython) {
         blocks.push(`query = """\n${initialDialectSql}\n"""`);
-        blocks.push(`result_table = db.execute(query)`);
         blocks.push(`query_clauses = ["SELECT", "WHERE", "GROUP BY"]\nactive_clauses = [c for c in query_clauses if c in query]`);
         blocks.push(`query = """\n${finalDialectSql}\n"""`);
+        blocks.push(`result_table = db.execute(query)`);
       } else {
         blocks.push(`let query = \`\n${initialDialectSql}\n\`;`);
-        blocks.push(`const resultTable = db.execute(query);`);
         blocks.push(`let queryClauses = ["SELECT", "WHERE", "GROUP BY"];\nlet activeClauses = queryClauses.filter(c => query.includes(c));`);
         blocks.push(`query = \`\n${finalDialectSql}\n\`;`);
+        blocks.push(`const resultTable = db.execute(query);`);
       }
       return blocks.join('\n\n');
     }
 
-    // Study Question 3 (Structure 3): Query AVG(amount) on orders, string manipulation, irrelevant math expression, execute
-    if (spec.manipulation === 'undefined_query_string' || spec.qNum === 3) {
+    // Study Question 2 (Original Q3, Structure 3): Query AVG(amount) on orders, string manipulation, irrelevant math expression, execute
+    if (spec.manipulation === 'undefined_query_string' || origQ === 3) {
       if (isPython) {
         blocks.push(`query = """\n${finalDialectSql}\n"""`);
         blocks.push(`formatted_sql = query.replace("WHERE", "").strip()`);
@@ -635,8 +651,8 @@ class QuizGenerator {
       return blocks.join('\n\n');
     }
 
-    // Study Question 23 (Structure 3: Template string replacement, arithmetic calculation, execute query)
-    if (spec.manipulation === 'q23_template_string_math' || spec.qNum === 23) {
+    // Study Question 10 (Original Q23, Structure 3: Template string replacement, arithmetic calculation, execute query)
+    if (spec.manipulation === 'q23_template_string_math' || origQ === 23) {
       if (isPython) {
         blocks.push(`template_sql = "SELECT * FROM products WHERE price > 0"\nformatted_sql = template_sql.replace("WHERE price > 0", "").strip()`);
         blocks.push(`query = """\n${finalDialectSql}\n"""`);
@@ -651,9 +667,9 @@ class QuizGenerator {
       return blocks.join('\n\n');
     }
 
-    // Study Question 5 & 25 (Structure 5): Query 1, omit execute 1, HLL string concatenation, Query 2, execute 2
-    if (spec.manipulation === 'omit_first_execute' || spec.qNum === 5 || spec.qNum === 25) {
-      if (spec.qNum === 25) {
+    // Study Question 4 & 8 (Original Q5 & Q25, Structure 5): Query 1, omit execute 1, HLL string concatenation, Query 2, execute 2
+    if (spec.manipulation === 'omit_first_execute' || origQ === 5 || origQ === 25) {
+      if (origQ === 25) {
         if (isPython) {
           blocks.push(`query = """\n${initialDialectSql}\n"""`);
           blocks.push(`prefix = "Max"\nsuffix = "Rating"\nmetric_label = prefix + suffix`);
@@ -681,19 +697,22 @@ class QuizGenerator {
       return blocks.join('\n\n');
     }
 
-    // Study Question 18 (Structure 2: [Query], [HostLang], [Query], [Execute]):
+    // Study Question 23 (Original Q18, Structure 5: [Query], [Execute], [HostLang], [Query], [Execute]):
     // Query 1 (named query) outputs product title, price, stock (aggregate on products).
+    // First execute attempts to run queryy before it is defined.
     // HLL does something that looks like it's applying to query 1, but isn't.
     // Query 2 (named queryy) outputs user_id, order_count, total_spent, avg_amount, max_order (complex filter & aggregate on orders).
-    // Result table executes queryy: result_table = db.execute(queryy).
-    if (spec.manipulation === 'q18_typo_queryy' || spec.qNum === 18) {
+    // Second execute runs queryy: result_table = db.execute(queryy).
+    if (spec.manipulation === 'q18_typo_queryy' || origQ === 18) {
       if (isPython) {
         blocks.push(`query = """\n${initialDialectSql}\n"""`);
+        blocks.push(`db.execute(queryy)`);
         blocks.push(`if "price" in query:\n    query.replace("price", "category_id")\n    query_audit = query + " -- verified filter"`);
         blocks.push(`queryy = """\n${finalDialectSql}\n"""`);
         blocks.push(`result_table = db.execute(queryy)`);
       } else {
         blocks.push(`let query = \`\n${initialDialectSql}\n\`;`);
+        blocks.push(`db.execute(queryy);`);
         blocks.push(`if (query.includes("price")) {\n  query.replace("price", "category_id");\n  let queryAudit = query + " -- verified filter";\n}`);
         blocks.push(`let queryy = \`\n${finalDialectSql}\n\`;`);
         blocks.push(`const resultTable = db.execute(queryy);`);
@@ -701,10 +720,10 @@ class QuizGenerator {
       return blocks.join('\n\n');
     }
 
-    // Study Question 19 (Structure 4: [Query], [HostLang], [Execute]):
+    // Study Question 24 (Original Q19, Structure 4: [Query], [HostLang], [Execute]):
     // Initial query on products grouped by category_id.
     // Host language checks if WHERE exists and injects extra filter stock > 20 (single rewrite in IF, single in ELSE).
-    if (spec.manipulation === 'q19_filter_sort_hll' || spec.qNum === 19) {
+    if (spec.manipulation === 'q19_filter_sort_hll' || origQ === 19) {
       const isQuorum = (dialectId === 'quorum');
       const isPipe = (dialectId === 'pipe');
       if (isPython) {
@@ -731,9 +750,9 @@ class QuizGenerator {
       return blocks.join('\n\n');
     }
 
-    // Study Question 20 (Structure 1: [HostLang], [Query], [Execute]):
+    // Study Question 25 (Original Q20, Structure 1: [HostLang], [Query], [Execute]):
     // Host language defines threshold min_amount = 180 interpolated into single query.
-    if (spec.manipulation === 'q20_compute_threshold_hll' || spec.qNum === 20) {
+    if (spec.manipulation === 'q20_compute_threshold_hll' || origQ === 20) {
       const isQuorum = (dialectId === 'quorum');
       if (isPython) {
         const queryWithVar = isQuorum
@@ -753,9 +772,9 @@ class QuizGenerator {
       return blocks.join('\n\n');
     }
 
-    // Study Question 14 (Structure 3: [HostLang], [Query], [HostLang], [Execute]):
+    // Study Question 19 (Original Q14, Structure 3: [HostLang], [Query], [HostLang], [Execute]):
     // Uses keywords from the query in the surrounding HLL code
-    if (spec.manipulation === 'keywords_hll_confuse' || spec.qNum === 14) {
+    if (spec.manipulation === 'keywords_hll_confuse' || origQ === 14) {
       if (isPython) {
         blocks.push(`status_checks = ["PENDING", "COMPLETED"]\nlike_match = "status LIKE 'COMP%'"\nsum_amount = sum([120.45, 80.55])\nround_target = round(sum_amount, 2)`);
         blocks.push(`query = """\n${finalDialectSql}\n"""`);
@@ -770,10 +789,10 @@ class QuizGenerator {
       return blocks.join('\n\n');
     }
 
-    // Study Question 16 (Structure 3: [HostLang], [Query], [HostLang], [Execute]):
+    // Study Question 21 (Original Q16, Structure 3: [HostLang], [Query], [HostLang], [Execute]):
     // Users name, age, is_active joined with SUM of orders amount and COUNT of reviews.
     // Host language creates a function that takes the string query and appends order quantity to it, but is never called.
-    if (spec.manipulation === 'unused_append_quantity' || spec.qNum === 16) {
+    if (spec.manipulation === 'unused_append_quantity' || origQ === 16) {
       const isQuorum = (dialectId === 'quorum');
       if (isPython) {
         if (isQuorum) {
@@ -797,18 +816,18 @@ class QuizGenerator {
       return blocks.join('\n\n');
     }
 
-    // Study Question 17 (Structure 2: [Query], [HostLang], [Query], [Execute]):
-    // Initial query groups orders by user_id. Host language checks query properties.
-    // Query 2 defines nested query grouping by order_count to aggregate user_count, and is executed.
-    if (spec.manipulation === 'nested_group_by' || spec.qNum === 17) {
+    // Study Question 22 (Original Q17, Structure 2: [Query], [HostLang], [Query], [Execute]):
+    // Initial query groups orders by status DESC. Host language checks query properties.
+    // Query 2 groups orders by user_id ordered by order_count ASC, and is executed.
+    if (spec.manipulation === 'nested_group_by' || origQ === 17) {
       if (isPython) {
         blocks.push(`query = """\n${initialDialectSql}\n"""`);
-        blocks.push(`group_passes = query.count("GROUP BY")\nrequires_nested_agg = "subquery" in query or "sub" in query`);
+        blocks.push(`group_passes = query.count("GROUP BY")\nhas_sorting = "ORDER BY" in query or "Sort" in query`);
         blocks.push(`query = """\n${finalDialectSql}\n"""`);
         blocks.push(`result_table = db.execute(query)`);
       } else {
         blocks.push(`let query = \`\n${initialDialectSql}\n\`;`);
-        blocks.push(`let groupPasses = (query.match(/GROUP BY/g) || []).length;\nlet requiresNestedAgg = query.includes("subquery") || query.includes("sub");`);
+        blocks.push(`let groupPasses = (query.match(/GROUP BY/g) || []).length;\nlet hasSorting = query.includes("ORDER BY") || query.includes("Sort");`);
         blocks.push(`query = \`\n${finalDialectSql}\n\`;`);
         blocks.push(`const resultTable = db.execute(query);`);
       }
@@ -1140,8 +1159,15 @@ class QuizGenerator {
       return null;
     };
 
-    // Questions 21-25 specific distractors (Structures: 21->1, 22->2, 23->3, 24->4, 25->5)
-    if (qNum >= 21 && qNum <= 25) {
+    const parsedQNum = (qNum !== null && qNum !== undefined) ? parseInt(qNum, 10) : null;
+    const origQ = (questionSpec && questionSpec.origQNum)
+      ? questionSpec.origQNum
+      : ((parsedQNum && parsedQNum >= 1 && parsedQNum <= 25 && typeof QueryGenerator !== 'undefined' && typeof QueryGenerator.getOriginalQuestionNumber === 'function')
+        ? QueryGenerator.getOriginalQuestionNumber(parsedQNum)
+        : parsedQNum);
+
+    // Original Questions 21-25 (New Q6-Q10) specific distractors (Structures: 21->1, 22->2, 23->3, 24->4, 25->5)
+    if (origQ >= 21 && origQ <= 25) {
       const qDistractors = [];
 
       const uTable = (schema && schema.tables) ? (schema.tables.find(t => t.name === 'users') || schema.tables[0]) : null;
@@ -1166,7 +1192,7 @@ class QuizGenerator {
         return true;
       };
 
-      if (qNum === 21) {
+      if (origQ === 21) {
         // Distractor 1: Assumes rows are sorted by products.price in descending order.
         const d1Sql = `SELECT ${pName}.id, ${pName}.price FROM ${pName} JOIN ${cName} ON ${pName}.category_id = ${cName}.id WHERE ${pName}.id <= 6 ORDER BY ${pName}.price DESC;`;
         const d1Res = runSqlWithMeta(d1Sql);
@@ -1181,7 +1207,7 @@ class QuizGenerator {
         const d3Sql = `SELECT ${pName}.id, ${pName}.price FROM ${pName} JOIN ${cName} ON ${pName}.category_id = ${cName}.id WHERE ${pName}.id <= 6 ORDER BY ${pName}.id DESC;`;
         const d3Res = runSqlWithMeta(d3Sql);
         if (d3Res) addOption(d3Res.columns, d3Res.rows, 'Assumes rows are sorted by products.id in descending order.');
-      } else if (qNum === 22) {
+      } else if (origQ === 22) {
         // Distractor 1: Unfiltered data (WHERE clause conditions were not applied).
         const d1Sql = `SELECT id, title FROM ${pName} ORDER BY id ASC;`;
         const d1Res = runSqlWithMeta(d1Sql);
@@ -1196,10 +1222,10 @@ class QuizGenerator {
         const d3Sql = `SELECT id, title FROM ${pName} WHERE id <= 4 ORDER BY id ASC;`;
         const d3Res = runSqlWithMeta(d3Sql);
         if (d3Res) addOption(d3Res.columns, d3Res.rows, 'Evaluates the first query which was cleared prior to execution.');
-      } else if (qNum === 23) {
+      } else if (origQ === 23) {
         // Distractor 1: Assumes the host-language arithmetic calculation ((40 * 3) + 15 = 135) is returned.
         const mathRows = [[135]];
-        addOption(['avg_price'], mathRows, 'Assumes the host-language arithmetic calculation ((40 * 3) + 15 = 135) is returned.');
+        addOption(['computed_limit'], mathRows, 'Assumes the host-language arithmetic calculation ((40 * 3) + 15 = 135) is returned.');
 
         // Distractor 2: Assumes the unexecuted SQL query string is returned as text output.
         const queryText = (questionSpec && questionSpec.finalSql) ? questionSpec.finalSql : `SELECT AVG(price) AS avg_price FROM ${pName};`;
@@ -1207,7 +1233,7 @@ class QuizGenerator {
 
         // Distractor 3: Assumes the modified string variable formatted_sql is returned as text output.
         addOption(['formatted_sql'], [['SELECT * FROM products']], 'Assumes the modified string variable formatted_sql is returned as text output.');
-      } else if (qNum === 24) {
+      } else if (origQ === 24) {
         // Distractor 1: Unfiltered table rows without applying the LIKE filter.
         const d1Sql = `SELECT id, status FROM ${oName} ORDER BY id ASC;`;
         const d1Res = runSqlWithMeta(d1Sql);
@@ -1222,7 +1248,7 @@ class QuizGenerator {
         const d3Sql = `SELECT id, status FROM ${oName} WHERE status LIKE 'C%' ORDER BY id ASC;`;
         const d3Res = runSqlWithMeta(d3Sql);
         if (d3Res) addOption(d3Res.columns, d3Res.rows, 'Evaluates an alternative LIKE pattern (statuses starting with C).');
-      } else if (qNum === 25) {
+      } else if (origQ === 25) {
         // Distractor 1: Assumes the aggregate expression string "MAX(score)" is returned instead of the evaluated maximum numeric score.
         addOption(['max_score'], [['MAX(score)']], 'Assumes the aggregate expression string "MAX(score)" is returned instead of the evaluated maximum numeric score.');
 
@@ -1250,24 +1276,22 @@ class QuizGenerator {
       return options;
     }
 
-    // Question 19 specific distractors (tests Structure 4 with HLL filter injection)
-    if (qNum === 19 || (questionSpec && (questionSpec.qNum === 19 || questionSpec.manipulation === 'q19_filter_sort_hll'))) {
+    // Original Question 19 (New Q24) specific distractors (tests Structure 4 with HLL filter injection)
+    if (origQ === 19 || (questionSpec && questionSpec.manipulation === 'q19_filter_sort_hll')) {
       const q19Distractors = [];
 
       const pTable = (schema && schema.tables) ? (schema.tables.find(t => t.name === 'products') || schema.tables[0]) : null;
       const pName = pTable ? pTable.name : 'products';
 
-      // Distractor 1 (Initial query trap: ignored HLL filter injection): Evaluates initialSql before HLL manipulation
-      const d1Sql = (questionSpec && questionSpec.initialSql)
-        ? questionSpec.initialSql
-        : `SELECT category_id, stock, COUNT(*) AS count_items, ROUND(AVG(price), 2) AS avg_price FROM ${pName} WHERE price > 15 GROUP BY category_id, stock ORDER BY avg_price DESC;`;
+      // Distractor 1 (Wrong column names trap): Uses wrong column names (price, total_stock, sum_price) instead of (stock, count_items, avg_price)
+      const d1Sql = `SELECT category_id, price, SUM(stock) AS total_stock, ROUND(SUM(price), 2) AS sum_price FROM ${pName} WHERE price > 15 GROUP BY category_id, price ORDER BY sum_price DESC;`;
       let d1Res = runSqlWithMeta(d1Sql);
       if (d1Res && d1Res.rows && d1Res.rows.length > 0 && !areRowsEqual(d1Res.rows, correctRows)) {
         q19Distractors.push({
-          columns: d1Res.columns,
+          columns: ['category_id', 'price', 'total_stock', 'sum_price'],
           rows: d1Res.rows,
           isCorrect: false,
-          explanation: 'Evaluates the initial query before the host language filter (stock > 20) was injected.'
+          explanation: 'Projects incorrect column names (price, total_stock, sum_price) instead of stock, count_items, and avg_price.'
         });
       }
 
@@ -1311,8 +1335,8 @@ class QuizGenerator {
       return options;
     }
 
-    // Question 20 specific distractors (tests Structure 1 with HLL threshold filter)
-    if (qNum === 20 || (questionSpec && (questionSpec.qNum === 20 || questionSpec.manipulation === 'q20_compute_threshold_hll'))) {
+    // Original Question 20 (New Q25) specific distractors (tests Structure 1 with HLL threshold filter)
+    if (origQ === 20 || (questionSpec && questionSpec.manipulation === 'q20_compute_threshold_hll')) {
       const q20Distractors = [];
 
       const oTable = (schema && schema.tables) ? (schema.tables.find(t => t.name === 'orders') || schema.tables[0]) : null;
@@ -1385,8 +1409,8 @@ class QuizGenerator {
       return options;
     }
 
-    // Question 18 specific distractors (tests Structure 2 with Query 1 aggregate vs Query 2 typo variable queryy)
-    if (qNum === 18 || (questionSpec && (questionSpec.qNum === 18 || questionSpec.manipulation === 'q18_typo_queryy' || questionSpec.manipulation === 'typo_second_query' || questionSpec.manipulation === 'execute_second_query'))) {
+    // Original Question 18 (New Q23) specific distractors (tests Structure 2 with Query 1 aggregate vs Query 2 typo variable queryy)
+    if (origQ === 18 || (questionSpec && (questionSpec.manipulation === 'q18_typo_queryy' || questionSpec.manipulation === 'typo_second_query' || questionSpec.manipulation === 'execute_second_query'))) {
       const q18Distractors = [];
 
       const pTable = (schema && schema.tables) ? (schema.tables.find(t => t.name === 'products') || schema.tables[0]) : null;
@@ -1438,56 +1462,58 @@ class QuizGenerator {
       return options;
     }
 
-    // Question 17 specific distractors (tests Structure 2 with nested subquery containing two distinct GROUP BYs and ORDER BY)
-    if (qNum === 17 || (questionSpec && (questionSpec.qNum === 17 || questionSpec.manipulation === 'nested_group_by'))) {
+    // Original Question 17 (New Q22) specific distractors (tests Structure 2 with Query 1 status_count DESC vs Query 2 user_id and order_count ASC)
+    if (origQ === 17 || (questionSpec && questionSpec.manipulation === 'nested_group_by')) {
       const q17Distractors = [];
       const oTable = (schema && schema.tables) ? (schema.tables.find(t => t.name === 'orders') || schema.tables[0]) : null;
       const oName = oTable ? oTable.name : 'orders';
 
-      // Distractor 1 (Query 1 / Inner query trap): Evaluates the first query (orders per user) before override
-      const d1Sql = `SELECT ${oName}.user_id, COUNT(*) AS order_count FROM ${oName} GROUP BY ${oName}.user_id ORDER BY order_count DESC LIMIT 4;`;
+      // Distractor 1 (Query 1 trap): Evaluates the first query (orders grouped by status) before it was overwritten by Query 2
+      const d1Sql = `SELECT status, COUNT(*) AS status_count FROM ${oName} GROUP BY status ORDER BY status_count DESC;`;
       let d1Res = runSqlWithMeta(d1Sql);
-      let d1Cols = (d1Res && d1Res.columns) ? d1Res.columns : ['user_id', 'order_count'];
-      let d1Rows = (d1Res && d1Res.rows) ? d1Res.rows.slice(0, 4) : [[7, 5], [20, 3], [24, 2], [22, 2]];
+      let d1Cols = (d1Res && d1Res.columns) ? d1Res.columns : ['status', 'status_count'];
+      let d1Rows = (d1Res && d1Res.rows) ? d1Res.rows : [['REFUNDED', 9], ['CANCELLED', 8], ['COMPLETED', 5], ['PENDING', 4], ['SHIPPED', 4]];
       if (d1Rows && d1Rows.length > 0 && !areRowsEqual(d1Rows, correctRows)) {
         q17Distractors.push({
           columns: d1Cols,
           rows: d1Rows,
           isCorrect: false,
-          explanation: 'Evaluates the first query before it was overwritten, grouping orders by user_id instead of the nested aggregation.'
+          explanation: 'Evaluates the first query (grouped by status) before it was overwritten by the second query.'
         });
       }
 
-      // Distractor 2 (Aggregation trap: SUM instead of COUNT): Sums the order counts instead of counting users
-      const d2Sql = `SELECT order_count, SUM(order_count) AS total_orders FROM (SELECT ${oName}.user_id, COUNT(*) AS order_count FROM ${oName} GROUP BY ${oName}.user_id) sub GROUP BY order_count ORDER BY order_count ASC;`;
+      // Distractor 2 (Sort direction trap: ORDER BY order_count DESC instead of ASC)
+      const d2Sql = `SELECT user_id, COUNT(*) AS order_count FROM ${oName} WHERE user_id <= 10 GROUP BY user_id ORDER BY order_count DESC;`;
       let d2Res = runSqlWithMeta(d2Sql);
-      let d2Cols = (d2Res && d2Res.columns) ? d2Res.columns : ['order_count', 'total_orders'];
-      let d2Rows = (d2Res && d2Res.rows) ? d2Res.rows : [[1, 12], [2, 10], [3, 3], [5, 5]];
+      let d2Cols = (d2Res && d2Res.columns) ? d2Res.columns : ['user_id', 'order_count'];
+      let d2Rows = (d2Res && d2Res.rows) ? d2Res.rows : [[7, 5], [3, 2], [4, 2], [8, 2], [2, 1], [6, 1], [9, 1], [10, 1]];
       if (d2Rows && d2Rows.length > 0 && !areRowsEqual(d2Rows, correctRows)) {
         q17Distractors.push({
           columns: d2Cols,
           rows: d2Rows,
           isCorrect: false,
-          explanation: 'Sums the order counts (SUM(order_count)) rather than counting distinct users having each order count.'
+          explanation: 'Orders results by order_count descending (DESC) instead of ascending (ASC).'
         });
       }
 
-      // Distractor 3 (Column projection trap): Projects user_id with user_count instead of outer group column order_count
-      const d3Cols = ['user_id', 'user_count'];
-      const d3Rows = [[1, 12], [2, 5], [3, 1], [4, 1]];
+      // Distractor 3 (Aggregate & column name trap: SUM(amount) AS total_amount instead of COUNT(*) AS order_count)
+      const d3Sql = `SELECT user_id, ROUND(SUM(amount), 2) AS total_amount FROM ${oName} WHERE user_id <= 10 GROUP BY user_id ORDER BY total_amount ASC;`;
+      let d3Res = runSqlWithMeta(d3Sql);
+      let d3Cols = (d3Res && d3Res.columns) ? d3Res.columns : ['user_id', 'total_amount'];
+      let d3Rows = (d3Res && d3Res.rows) ? d3Res.rows : [[6, 35.83], [9, 99.02], [2, 140.49], [10, 202.98], [3, 255.04], [4, 276.15], [8, 343.42], [7, 499.82]];
       q17Distractors.push({
         columns: d3Cols,
         rows: d3Rows,
         isCorrect: false,
-        explanation: 'Projects user_id instead of the outer group column order_count with user_count.'
+        explanation: 'Computes SUM(amount) AS total_amount instead of COUNT(*) AS order_count.'
       });
 
       options.push(...q17Distractors.slice(0, 3));
       return options;
     }
 
-    // Question 16 specific distractors (tests Structure 3 with unused append_order_quantity function)
-    if (qNum === 16 || (questionSpec && (questionSpec.qNum === 16 || questionSpec.manipulation === 'unused_append_quantity'))) {
+    // Original Question 16 (New Q21) specific distractors (tests Structure 3 with unused append_order_quantity function)
+    if (origQ === 16 || (questionSpec && questionSpec.manipulation === 'unused_append_quantity')) {
       const q16Distractors = [];
       const isPython = (hostLanguage === 'python');
 
@@ -1556,7 +1582,7 @@ class QuizGenerator {
     }
 
     // Candidate 1: Result of initialSql (Structure 2 / manipulation distractor)
-    if (questionSpec && questionSpec.initialSql && questionSpec.initialSql !== questionSpec.finalSql && qNum !== 5 && questionSpec.qNum !== 5 && questionSpec.manipulation !== 'omit_first_execute') {
+    if (questionSpec && questionSpec.initialSql && questionSpec.initialSql !== questionSpec.finalSql && origQ !== 5 && questionSpec.manipulation !== 'omit_first_execute') {
       const initRes = runSqlWithMeta(questionSpec.initialSql);
       if (initRes && initRes.rows && initRes.rows.length > 0 && !areRowsEqual(initRes.rows, correctRows)) {
         distractorCandidates.push({
@@ -1570,9 +1596,9 @@ class QuizGenerator {
       }
     }
 
-    // Question 1 specific distractors (tests sorting expectation)
-    const isQ1 = (qNum === 1 || (rawSql && rawSql.includes('FROM orders JOIN users ON orders.user_id = users.id')));
-    if (isQ1) {
+    // Original Question 1 (New Q5) specific distractors (tests sorting expectation)
+    const isQ5 = (origQ === 1 || (questionSpec && questionSpec.manipulation === 'q5_counter_loop') || (rawSql && rawSql.includes('FROM orders JOIN users ON orders.user_id = users.id')));
+    if (isQ5) {
       const baseSql = rawSql.replace(/ORDER BY\s+orders\.id\s+ASC;?/i, '').replace(/;?\s*$/, '');
       const descSql = baseSql + ' ORDER BY orders.id DESC;';
       const descRows = runSql(descSql);
@@ -1596,8 +1622,8 @@ class QuizGenerator {
       }
     }
 
-    // Question 8 specific distractors (distinct, non-overlapping options)
-    if (qNum === 8 || (questionSpec && (questionSpec.manipulation === 'append_function' || questionSpec.qNum === 8))) {
+    // Original Question 8 (New Q13) specific distractors (distinct, non-overlapping options)
+    if (origQ === 8 || (questionSpec && questionSpec.manipulation === 'append_function')) {
       const uTable = (schema && schema.tables) ? (schema.tables.find(t => t.name === 'users') || schema.tables[0]) : null;
       const uTableName = uTable ? uTable.name : 'users';
 
@@ -1647,8 +1673,8 @@ class QuizGenerator {
       }
     }
 
-    // Question 4 specific distractors (tests misconception that query.replace mutated the string)
-    if (qNum === 4 || (questionSpec && (questionSpec.manipulation === 'noop_replace' || questionSpec.qNum === 4))) {
+    // Original Question 4 (New Q3) specific distractors (tests misconception that query.replace mutated the string)
+    if (origQ === 4 || (questionSpec && questionSpec.manipulation === 'noop_replace')) {
       const uTable = (schema && schema.tables) ? (schema.tables.find(t => t.name === 'users') || schema.tables[0]) : null;
       const uTableName = uTable ? uTable.name : 'users';
 
@@ -1696,8 +1722,8 @@ class QuizGenerator {
       }
     }
 
-    // Question 9 specific distractors (tests aggregate with SUM and AVG rewritten by HLL to order by order_id DESC)
-    if (qNum === 9 || (questionSpec && (questionSpec.manipulation === 'rewrite_order_desc' || questionSpec.qNum === 9))) {
+    // Original Question 9 (New Q14) specific distractors (tests aggregate with SUM and AVG rewritten by HLL to order by order_id DESC)
+    if (origQ === 9 || (questionSpec && questionSpec.manipulation === 'rewrite_order_desc')) {
       const rTable = (schema && schema.tables) ? (schema.tables.find(t => t.name === 'reviews') || schema.tables[0]) : null;
       const rTableName = rTable ? rTable.name : 'reviews';
       const q9Distractors = [];
@@ -1798,8 +1824,8 @@ class QuizGenerator {
       }
     }
 
-    // Question 10 specific distractors (tests comparing orders quantity count vs products ID count)
-    if (qNum === 10 || (questionSpec && (questionSpec.manipulation === 'compare_counts_select_output' || questionSpec.manipulation === 'compare_counts_join_avg' || questionSpec.qNum === 10))) {
+    // Original Question 10 (New Q15) specific distractors (tests comparing orders quantity count vs products ID count)
+    if (origQ === 10 || (questionSpec && (questionSpec.manipulation === 'compare_counts_select_output' || questionSpec.manipulation === 'compare_counts_join_avg'))) {
       const oTable = (schema && schema.tables) ? (schema.tables.find(t => t.name === 'orders') || schema.tables[0]) : null;
       const pTable = (schema && schema.tables) ? (schema.tables.find(t => t.name === 'products') || schema.tables[1]) : null;
       const oTableName = oTable ? oTable.name : 'orders';
@@ -1863,8 +1889,8 @@ class QuizGenerator {
       }
     }
 
-    // Question 11 specific distractors (tests JOIN on products & categories with wrong column projections)
-    if (qNum === 11 || (questionSpec && (questionSpec.qNum === 11 || questionSpec.manipulation === 'unused_column_strings' || (questionSpec.operators && questionSpec.operators.includes('JOIN') && questionSpec.structure === 4)))) {
+    // Original Question 11 (New Q16) specific distractors (tests JOIN on products & categories with wrong column projections)
+    if (origQ === 11 || (questionSpec && (questionSpec.manipulation === 'unused_column_strings' || (questionSpec.operators && questionSpec.operators.includes('JOIN') && questionSpec.structure === 4)))) {
       const pTable = (schema && schema.tables) ? (schema.tables.find(t => t.name === 'products') || schema.tables[0]) : null;
       const cTable = (schema && schema.tables) ? (schema.tables.find(t => t.name === 'categories') || schema.tables[1]) : null;
       const pTableName = pTable ? pTable.name : 'products';
@@ -1945,25 +1971,25 @@ class QuizGenerator {
       }
     }
 
-    // Question 12 specific distractors (tests JOIN + UNION across orders and users)
-    if (qNum === 12 || (questionSpec && (questionSpec.qNum === 12 || questionSpec.manipulation === 'join_union'))) {
+    // Original Question 12 (New Q17) specific distractors (tests JOIN + UNION across orders and users)
+    if (origQ === 12 || (questionSpec && questionSpec.manipulation === 'join_union')) {
       const oTable = (schema && schema.tables) ? (schema.tables.find(t => t.name === 'orders') || schema.tables[0]) : null;
       const uTable = (schema && schema.tables) ? (schema.tables.find(t => t.name === 'users') || schema.tables[1]) : null;
       const oTableName = oTable ? oTable.name : 'orders';
       const uTableName = uTable ? uTable.name : 'users';
       const q12Distractors = [];
 
-      // Distractor 1: Evaluates only the first branch of the UNION (amount > 100)
-      const b1Sql = `SELECT ${oTableName}.id, ${uTableName}.name, ${oTableName}.amount FROM ${oTableName} JOIN ${uTableName} ON ${oTableName}.user_id = ${uTableName}.id WHERE ${oTableName}.amount > 100;`;
+      // Distractor 1: Evaluates only the first branch of the UNION (amount > 100) and projects user_id instead of joined users.name
+      const b1Sql = `SELECT ${oTableName}.id, ${oTableName}.user_id, ${oTableName}.amount FROM ${oTableName} JOIN ${uTableName} ON ${oTableName}.user_id = ${uTableName}.id WHERE ${oTableName}.amount > 100;`;
       let b1Res = runSqlWithMeta(b1Sql);
-      let b1Cols = (b1Res && b1Res.columns) ? b1Res.columns : correctColumns;
+      let b1Cols = (b1Res && b1Res.columns) ? b1Res.columns : ['id', 'user_id', 'amount'];
       let b1Rows = b1Res ? b1Res.rows : null;
       if (b1Rows && b1Rows.length > 0 && !areRowsEqual(b1Rows, correctRows)) {
         q12Distractors.push({
           columns: b1Cols,
           rows: b1Rows,
           isCorrect: false,
-          explanation: 'Evaluates only the first query in the compound UNION statement (orders with amount > 100).'
+          explanation: 'Projects user_id instead of the joined users.name column and evaluates only the first query in the UNION.'
         });
       }
 
@@ -2001,8 +2027,8 @@ class QuizGenerator {
       }
     }
 
-    // Question 13 specific distractors (tests Structure 2 override: Query 1 vs HLL modified query vs Query 2 products)
-    if (qNum === 13 || (questionSpec && (questionSpec.manipulation === 'severe_query_override' || questionSpec.qNum === 13))) {
+    // Original Question 13 (New Q18) specific distractors (tests Structure 2 override: Query 1 vs HLL modified query vs Query 2 products)
+    if (origQ === 13 || (questionSpec && questionSpec.manipulation === 'severe_query_override')) {
       const oTable = (schema && schema.tables) ? (schema.tables.find(t => t.name === 'orders') || schema.tables[0]) : null;
       const uTable = (schema && schema.tables) ? (schema.tables.find(t => t.name === 'users') || schema.tables[1]) : null;
       const pTable = (schema && schema.tables) ? (schema.tables.find(t => t.name === 'products') || schema.tables[2] || schema.tables[0]) : null;
@@ -2071,8 +2097,8 @@ class QuizGenerator {
       }
     }
 
-    // Question 14 specific distractors (tests LIKE, ROUND, and SUM on orders)
-    if (qNum === 14 || (questionSpec && (questionSpec.qNum === 14 || questionSpec.manipulation === 'keywords_hll_confuse' || (questionSpec.operators && questionSpec.operators.includes('ROUND'))))) {
+    // Original Question 14 (New Q19) specific distractors (tests LIKE, ROUND, and SUM on orders)
+    if (origQ === 14 || (questionSpec && questionSpec.manipulation === 'keywords_hll_confuse')) {
       const q14Distractors = [];
 
       // Distractor 1 (Incorrect LIKE match): Assumes LIKE 'COMP%' matched non-matching status 'PENDING'
@@ -2142,8 +2168,8 @@ class QuizGenerator {
       return options;
     }
 
-    // Question 15 specific distractors (tests tracking the modified query 1 instead of overwritten query 2)
-    if (qNum === 15 || (questionSpec && (questionSpec.manipulation === 'overwrite_query' || questionSpec.qNum === 15))) {
+    // Original Question 15 (New Q20) specific distractors (tests tracking the modified query 1 instead of overwritten query 2)
+    if (origQ === 15 || (questionSpec && questionSpec.manipulation === 'overwrite_query')) {
       const oTable = (schema && schema.tables) ? (schema.tables.find(t => t.name === 'orders') || schema.tables[0]) : null;
       const oTableName = oTable ? oTable.name : 'orders';
 
@@ -2184,9 +2210,9 @@ class QuizGenerator {
       }
     }
 
-    // Question 6 specific distractors (tests if participant assumed query 2 was executed instead of deleted)
+    // Original Question 6 (New Q11) specific distractors (tests if participant assumed query 2 was executed instead of deleted)
     // Wrong solutions include extra columns (4-5 columns) and shuffled sort orders to easily distinguish them from correct answer
-    if (qNum === 6 || (questionSpec && (questionSpec.manipulation === 'delete_second_query' || questionSpec.qNum === 6))) {
+    if (origQ === 6 || (questionSpec && questionSpec.manipulation === 'delete_second_query')) {
       const pTable = (schema && schema.tables) ? (schema.tables.find(t => t.name === 'products') || schema.tables[0]) : null;
       const pTableName = pTable ? pTable.name : 'products';
 
@@ -2304,8 +2330,8 @@ class QuizGenerator {
       return options;
     }
 
-    // Question 7 specific distractors
-    if (qNum === 7 || (questionSpec && (questionSpec.manipulation === 'delete_second_execute' || questionSpec.qNum === 7))) {
+    // Original Question 7 (New Q12) specific distractors
+    if (origQ === 7 || (questionSpec && questionSpec.manipulation === 'delete_second_execute')) {
       const pTable = (schema && schema.tables) ? (schema.tables.find(t => t.name === 'products') || schema.tables[0]) : null;
       const pTableName = pTable ? pTable.name : 'products';
 
@@ -2405,8 +2431,8 @@ class QuizGenerator {
       return options;
     }
 
-    // Question 3 specific distractors (only 1 numerical choice for average, 1 choice for 250, 2 text-based solutions)
-    if (qNum === 3 || (questionSpec && (questionSpec.manipulation === 'undefined_query_string' || questionSpec.qNum === 3))) {
+    // Original Question 3 (New Q2) specific distractors (only 1 numerical choice for average, 1 choice for 250, 2 text-based solutions)
+    if (origQ === 3 || (questionSpec && questionSpec.manipulation === 'undefined_query_string')) {
       const oTable = (schema && schema.tables) ? (schema.tables.find(t => t.name === 'orders') || schema.tables[0]) : null;
       const oTableName = oTable ? oTable.name : 'orders';
       const assignedGrp = (typeof window !== 'undefined' && window.app && window.app.analytics && typeof window.app.analytics.getAssignedGroup === 'function') ? window.app.analytics.getAssignedGroup() : null;
@@ -2417,7 +2443,7 @@ class QuizGenerator {
       const mathRows = [[mathVal]];
       if (!areRowsEqual(mathRows, correctRows)) {
         distractorCandidates.push({
-          columns: ['avg_amount'],
+          columns: ['total_score'],
           rows: mathRows,
           isCorrect: false,
           explanation: 'Assumes the second host-language arithmetic calculation ((100 * 2) + 50 = 250) is returned.'
@@ -2451,8 +2477,8 @@ class QuizGenerator {
       return options;
     }
 
-    // Question 5 specific distractors (tests Structure 5: only correct answer is numeric, all distractors are text)
-    if (qNum === 5 || (questionSpec && (questionSpec.manipulation === 'omit_first_execute' || questionSpec.qNum === 5))) {
+    // Original Question 5 (New Q4) specific distractors (tests Structure 5: only correct answer is numeric, all distractors are text)
+    if (origQ === 5 || (questionSpec && questionSpec.manipulation === 'omit_first_execute')) {
       const oTable = (schema && schema.tables) ? (schema.tables.find(t => t.name === 'orders') || schema.tables[0]) : null;
       const oTableName = oTable ? oTable.name : 'orders';
       const q5Distractors = [];

@@ -493,8 +493,17 @@ class AdminAuthManager {
     const passInput = modal.querySelector('#admin-pass-input');
     const errBadge = modal.querySelector('#admin-login-error');
     if (openingView && loginView) {
-      openingView.style.display = 'block';
-      loginView.style.display = 'none';
+      const isDirectAdminUrl = typeof window !== 'undefined' && window.location && (
+        window.location.pathname.toLowerCase().includes('/admin') ||
+        window.location.search.toLowerCase().includes('admin=1')
+      );
+      if (isDirectAdminUrl) {
+        openingView.style.display = 'none';
+        loginView.style.display = 'block';
+      } else {
+        openingView.style.display = 'block';
+        loginView.style.display = 'none';
+      }
       if (passInput) passInput.value = '';
       if (errBadge) errBadge.style.display = 'none';
     }

@@ -930,7 +930,6 @@ kbd {
 .quiz-option-card:hover:not(.opt-disabled):not(.opt-correct):not(.opt-incorrect) {
   border-color: var(--color-primary);
   background: rgba(99, 102, 241, 0.1);
-  transform: translateY(-2px);
   box-shadow: 0 4px 16px rgba(99, 102, 241, 0.2);
 }
 
@@ -1068,7 +1067,6 @@ kbd {
 .table-option-card:hover {
   border-color: var(--color-primary) !important;
   box-shadow: 0 4px 20px rgba(99, 102, 241, 0.25) !important;
-  transform: translateY(-2px);
 }
 
 .opt-disabled {
