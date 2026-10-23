@@ -211,12 +211,11 @@ def migrate_legacy_txt_emails():
 CSV_HEADERS = [
     'response_id', 'participant_id', 'session_id', 'timestamp_iso',
     'question_number', 'trial_block', 'question_category',
-    'assigned_group', 'assigned_group_id', 'host_language',
-    'syntax_dialect_id', 'syntax_dialect_name',
+    'assigned_group', 'host_language', 'syntax_dialect_id',
     'is_correct', 'response_time_ms', 'response_time_s', 'log_response_time',
     'tab_focus_lost', 'valid_trial', 'tab_switch_count', 'focus_lost_duration_ms',
     'answer_change_count',
-    'selected_key', 'selected_option', 'correct_option',
+    'selected_key', 'correct_option',
     'age', 'gender', 'gender_label', 'gender_male', 'gender_female',
     'education', 'education_label', 'has_college_degree',
     'coding_exp_years', 'has_coding_exp',
@@ -226,8 +225,46 @@ CSV_HEADERS = [
     'disability_status', 'has_disability',
     'likert_clarity', 'likert_difficulty', 'likert_interface', 'likert_experience',
     'duration_expectation',
-    'final_thoughts', 'raw_query', 'dialect_sql', 'code_snippet'
+    'final_thoughts'
 ]
+
+def resolve_correct_key(r):
+    if not isinstance(r, dict):
+        return ''
+    ck = r.get('correctKey')
+    if ck is not None and str(ck).strip() != '':
+        try:
+            k = int(ck)
+            if 1 <= k <= 4:
+                return k
+        except Exception:
+            pass
+    raw_opt = str(r.get('correctOptionText') or r.get('correct_option') or '').strip()
+    if raw_opt in ('1', '2', '3', '4'):
+        return int(raw_opt)
+    m = re.search(r'Option\s+([A-D])', raw_opt, re.IGNORECASE) or re.match(r'^([A-D])$', raw_opt, re.IGNORECASE)
+    if m:
+        return ord(m.group(1).upper()) - 64
+    if to_binary(r.get('isCorrect')) == 1 and r.get('selectedKey') is not None:
+        try:
+            sk = int(r.get('selectedKey'))
+            if 1 <= sk <= 4:
+                return sk
+        except Exception:
+            pass
+    return ''
+
+def resolve_likert_val(thought_obj, short_key):
+    if not isinstance(thought_obj, dict):
+        return ''
+    full_key = f'likert_{short_key}'
+    lr = thought_obj.get('likertRatings') or {}
+    if not isinstance(lr, dict):
+        lr = {}
+    for candidate in (thought_obj.get(full_key), thought_obj.get(short_key), lr.get(full_key), lr.get(short_key)):
+        if candidate is not None and str(candidate).strip() != '':
+            return candidate
+    return ''
 
 def parse_num(val, default=0.0):
     if val is None or val == '':
@@ -441,14 +478,6 @@ def export_csv(db_data):
 
             # Group and Dialect
             assigned_group = r.get('assignedGroupName', r.get('assignedGroup', demo.get('assignedGroupName', demo.get('assignedGroup', ''))))
-            assigned_group_id = r.get('assignedGroupId', demo.get('assignedGroupId', ''))
-            if not assigned_group_id and assigned_group:
-                ag_lower = str(assigned_group).lower()
-                if 'group a' in ag_lower: assigned_group_id = 'group_a'
-                elif 'group b' in ag_lower: assigned_group_id = 'group_b'
-                elif 'group c' in ag_lower: assigned_group_id = 'group_c'
-                elif 'group d' in ag_lower: assigned_group_id = 'group_d'
-                else: assigned_group_id = re.sub(r'[^a-z0-9]+', '_', ag_lower).strip('_')
 
             # Demographics parsing (numeric, ordinal & 1s/0s)
             raw_age = demo.get('age', '')
@@ -471,10 +500,8 @@ def export_csv(db_data):
                 trial_block,
                 r.get('questionCategory', ''),
                 assigned_group,
-                assigned_group_id,
                 r.get('hostLanguage', demo.get('hostLanguage', '')),
                 r.get('activeDialect', ''),
-                r.get('activeDialectName', ''),
                 is_correct_val,
                 rt_ms,
                 rt_s,
@@ -485,8 +512,7 @@ def export_csv(db_data):
                 r.get('focusLostDurationMs', 0),
                 ans_change_cnt,
                 r.get('selectedKey', ''),
-                r.get('selectedOptionText', ''),
-                r.get('correctOptionText', ''),
+                resolve_correct_key(r),
                 age_val,
                 gender_info['code'],
                 gender_info['label'],
@@ -505,15 +531,12 @@ def export_csv(db_data):
                 country_info['is_us'],
                 dis_info['disability'],
                 dis_info['has_disability'],
-                thought_obj.get('likert_clarity', (thought_obj.get('likertRatings') or {}).get('clarity', '')),
-                thought_obj.get('likert_difficulty', (thought_obj.get('likertRatings') or {}).get('difficulty', '')),
-                thought_obj.get('likert_interface', (thought_obj.get('likertRatings') or {}).get('interface', '')),
-                thought_obj.get('likert_experience', (thought_obj.get('likertRatings') or {}).get('experience', '')),
+                resolve_likert_val(thought_obj, 'clarity'),
+                resolve_likert_val(thought_obj, 'difficulty'),
+                resolve_likert_val(thought_obj, 'interface'),
+                resolve_likert_val(thought_obj, 'experience'),
                 thought_obj.get('durationExpectation', thought_obj.get('duration_expectation', '')),
-                thought_obj.get('thoughts', ''),
-                r.get('rawQuery', ''),
-                r.get('dialectSql', r.get('rawQuery', '')),
-                r.get('codeSnippet', r.get('jsCode', r.get('incompleteQuery', '')))
+                thought_obj.get('thoughts', '')
             ])
         temp_name = f.name
     os.replace(temp_name, CSV_FILE)

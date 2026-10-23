@@ -727,6 +727,7 @@ class ParticipantAnalytics {
       codeSnippet: entry.codeSnippet || entry.jsCode || entry.incompleteQuery || '',
       jsCode: entry.codeSnippet || entry.jsCode || entry.incompleteQuery || '',
       selectedKey: entry.selectedKey || null,
+      correctKey: entry.correctKey || this.resolveCorrectKey(entry) || null,
       selectedOptionText: entry.selectedOptionText || '',
       correctOptionText: entry.correctOptionText || '',
       isCorrect: entry.isCorrect ? 1 : 0,
@@ -805,6 +806,12 @@ class ParticipantAnalytics {
     }
 
     const lr = likertRatings || {};
+    const pickLikert = (shortKey, fullKey) => {
+      for (const candidate of [lr[fullKey], lr[shortKey], thoughtsData && thoughtsData[fullKey], thoughtsData && thoughtsData[shortKey]]) {
+        if (candidate !== undefined && candidate !== null && candidate !== '') return candidate;
+      }
+      return '';
+    };
     const record = {
       participantId: pid,
       assignedGroup: assignedGroup ? assignedGroup.name : '',
@@ -812,10 +819,10 @@ class ParticipantAnalytics {
       assignedGroupName: assignedGroup ? assignedGroup.name : '',
       thoughts: thoughtsText,
       likertRatings: likertRatings,
-      likert_clarity: lr.clarity ?? (thoughtsData && thoughtsData.likert_clarity) ?? '',
-      likert_difficulty: lr.difficulty ?? (thoughtsData && thoughtsData.likert_difficulty) ?? '',
-      likert_interface: lr.interface ?? (thoughtsData && thoughtsData.likert_interface) ?? '',
-      likert_experience: lr.experience ?? (thoughtsData && thoughtsData.likert_experience) ?? '',
+      likert_clarity: pickLikert('clarity', 'likert_clarity'),
+      likert_difficulty: pickLikert('difficulty', 'likert_difficulty'),
+      likert_interface: pickLikert('interface', 'likert_interface'),
+      likert_experience: pickLikert('experience', 'likert_experience'),
       durationExpectation: durationExpectation,
       timestamp: new Date().toISOString(),
       timestampPST: pst.dateTimePST,
@@ -1225,11 +1232,26 @@ class ParticipantAnalytics {
         const hostLangVal = getVal(row, ['host_language', 'Host Language', 'hostLanguage'], undefined);
         const codeVal = getVal(row, ['code_snippet', 'Code Snippet', 'codeSnippet', 'JS Code Snippet', 'jsCode'], undefined);
 
-        const rawCorrect = getVal(row, ['is_correct', 'Is Correct', 'isCorrect'], 12);
+        const rawCorrect = getVal(row, ['is_correct', 'Is Correct', 'isCorrect'], undefined);
         const isCorrectParsed = (rawCorrect === 1 || rawCorrect === '1' || String(rawCorrect).trim().toUpperCase() === 'TRUE');
 
-        const rawFocus = getVal(row, ['tab_focus_lost', 'Tab Focus Lost', 'tabFocusLost'], 16);
+        const rawFocus = getVal(row, ['tab_focus_lost', 'Tab Focus Lost', 'tabFocusLost'], undefined);
         const focusLostParsed = (rawFocus === 1 || rawFocus === '1' || String(rawFocus).trim().toUpperCase() === 'TRUE');
+
+        const activeDialectVal = getVal(row, ['syntax_dialect_id', 'Syntax Dialect ID', 'activeDialect'], undefined) || 'pipe';
+        const activeDialectNameVal = getVal(row, ['syntax_dialect_name', 'Syntax Dialect Name', 'activeDialectName'], undefined)
+          || (activeDialectVal === 'quorum' ? 'Quorum Syntax' : 'Google SQL (Pipe Syntax)');
+
+        const rawSelectedKey = getVal(row, ['selected_key', 'Selected Key (1-4)', 'selectedKey'], undefined);
+        const parsedSelectedKey = rawSelectedKey ? parseInt(rawSelectedKey, 10) : null;
+        const rawSelectedOpt = getVal(row, ['selected_option', 'Selected Option', 'selectedOptionText'], undefined);
+        const selectedOptionTextVal = rawSelectedOpt || (parsedSelectedKey >= 1 && parsedSelectedKey <= 4 ? `Option ${String.fromCharCode(64 + parsedSelectedKey)}` : '');
+
+        const rawCorrectOpt = getVal(row, ['correct_option', 'Correct Option', 'correctOptionText', 'correct_key', 'correctKey'], undefined);
+        const parsedCorrectKey = this.resolveCorrectKey({ correctKey: rawCorrectOpt, correctOptionText: rawCorrectOpt });
+        const correctOptionTextVal = (rawCorrectOpt && isNaN(Number(rawCorrectOpt)))
+          ? rawCorrectOpt
+          : (parsedCorrectKey >= 1 && parsedCorrectKey <= 4 ? `Option ${String.fromCharCode(64 + Number(parsedCorrectKey))}` : '');
 
         const resp = {
           id: getVal(row, ['response_id', 'Response ID', 'id'], 0) || ('resp_' + Date.now() + '_' + Math.random().toString(36).substring(2, 7)),
@@ -1242,17 +1264,18 @@ class ParticipantAnalytics {
           assignedGroupId: assignedGroupIdVal || '',
           assignedGroupName: assignedGroupVal || '',
           hostLanguage: hostLangVal || '',
-          activeDialect: getVal(row, ['syntax_dialect_id', 'Syntax Dialect ID', 'activeDialect'], 10) || 'pipe',
-          activeDialectName: getVal(row, ['syntax_dialect_name', 'Syntax Dialect Name', 'activeDialectName'], 11) || 'Google SQL (Pipe Syntax)',
-          selectedKey: getVal(row, ['selected_key', 'Selected Key (1-4)', 'selectedKey'], 21) ? parseInt(getVal(row, ['selected_key', 'Selected Key (1-4)', 'selectedKey'], 21), 10) : null,
-          selectedOptionText: getVal(row, ['selected_option', 'Selected Option', 'selectedOptionText'], 22) || '',
-          correctOptionText: getVal(row, ['correct_option', 'Correct Option', 'correctOptionText'], 23) || '',
+          activeDialect: activeDialectVal,
+          activeDialectName: activeDialectNameVal,
+          selectedKey: parsedSelectedKey,
+          correctKey: parsedCorrectKey || null,
+          selectedOptionText: selectedOptionTextVal,
+          correctOptionText: correctOptionTextVal,
           isCorrect: isCorrectParsed ? 1 : 0,
-          responseTimeMs: parseInt(getVal(row, ['response_time_ms', 'Response Time (ms)', 'responseTimeMs'], 13), 10) || 0,
+          responseTimeMs: parseInt(getVal(row, ['response_time_ms', 'Response Time (ms)', 'responseTimeMs'], undefined), 10) || 0,
           tabFocusLost: focusLostParsed ? 1 : 0,
-          tabSwitchCount: parseInt(getVal(row, ['tab_switch_count', 'Tab Switch Count', 'tabSwitchCount'], 18), 10) || 0,
-          focusLostDurationMs: parseInt(getVal(row, ['focus_lost_duration_ms', 'Focus Lost Duration (ms)', 'focusLostDurationMs'], 19), 10) || 0,
-          answerChangeCount: parseInt(getVal(row, ['answer_change_count', 'Answer Change Count', 'Answer Changes', 'answerChangeCount'], 20), 10) || 0,
+          tabSwitchCount: parseInt(getVal(row, ['tab_switch_count', 'Tab Switch Count', 'tabSwitchCount'], undefined), 10) || 0,
+          focusLostDurationMs: parseInt(getVal(row, ['focus_lost_duration_ms', 'Focus Lost Duration (ms)', 'focusLostDurationMs'], undefined), 10) || 0,
+          answerChangeCount: parseInt(getVal(row, ['answer_change_count', 'Answer Change Count', 'Answer Changes', 'answerChangeCount'], undefined), 10) || 0,
           rawQuery: getVal(row, ['raw_query', 'Raw SQL Query', 'rawQuery'], undefined) || '',
           dialectSql: getVal(row, ['dialect_sql', 'Dialect SQL Query', 'dialectSql'], undefined) || '',
           codeSnippet: codeVal || '',
@@ -1501,6 +1524,37 @@ class ParticipantAnalytics {
 
   // --- Export Routines ---
 
+  resolveCorrectKey(r) {
+    if (!r) return '';
+    if (r.correctKey !== undefined && r.correctKey !== null && r.correctKey !== '') {
+      const k = parseInt(r.correctKey, 10);
+      if (!isNaN(k) && k >= 1 && k <= 4) return k;
+    }
+    const rawOpt = String(r.correctOptionText ?? r.correct_option ?? '').trim();
+    if (/^[1-4]$/.test(rawOpt)) {
+      return parseInt(rawOpt, 10);
+    }
+    const letterMatch = rawOpt.match(/Option\s+([A-D])/i) || rawOpt.match(/^([A-D])$/i);
+    if (letterMatch) {
+      return letterMatch[1].toUpperCase().charCodeAt(0) - 64;
+    }
+    if (r.isCorrect && r.selectedKey !== undefined && r.selectedKey !== null && r.selectedKey !== '') {
+      const sk = parseInt(r.selectedKey, 10);
+      if (!isNaN(sk) && sk >= 1 && sk <= 4) return sk;
+    }
+    return '';
+  }
+
+  resolveLikertVal(thoughtsObj, shortKey) {
+    if (!thoughtsObj) return '';
+    const fullKey = `likert_${shortKey}`;
+    const lr = thoughtsObj.likertRatings || {};
+    for (const candidate of [thoughtsObj[fullKey], thoughtsObj[shortKey], lr[fullKey], lr[shortKey]]) {
+      if (candidate !== undefined && candidate !== null && candidate !== '') return candidate;
+    }
+    return '';
+  }
+
   getCSVHeaders() {
     return [
       'response_id',
@@ -1511,10 +1565,8 @@ class ParticipantAnalytics {
       'trial_block',
       'question_category',
       'assigned_group',
-      'assigned_group_id',
       'host_language',
       'syntax_dialect_id',
-      'syntax_dialect_name',
       'is_correct',
       'response_time_ms',
       'response_time_s',
@@ -1525,7 +1577,6 @@ class ParticipantAnalytics {
       'focus_lost_duration_ms',
       'answer_change_count',
       'selected_key',
-      'selected_option',
       'correct_option',
       'age',
       'gender',
@@ -1550,10 +1601,7 @@ class ParticipantAnalytics {
       'likert_interface',
       'likert_experience',
       'duration_expectation',
-      'final_thoughts',
-      'raw_query',
-      'dialect_sql',
-      'code_snippet'
+      'final_thoughts'
     ];
   }
 
@@ -1572,15 +1620,6 @@ class ParticipantAnalytics {
     const trialBlock = this.getTrialBlock(qNum);
 
     const assignedGroupName = r.assignedGroupName || r.assignedGroup || (assigned ? assigned.name : (demo.assignedGroupName || demo.assignedGroup || ''));
-    let assignedGroupId = r.assignedGroupId || (assigned ? assigned.id : (demo.assignedGroupId || ''));
-    if (!assignedGroupId && assignedGroupName) {
-      const agLower = String(assignedGroupName).toLowerCase();
-      if (agLower.includes('group a')) assignedGroupId = 'group_a';
-      else if (agLower.includes('group b')) assignedGroupId = 'group_b';
-      else if (agLower.includes('group c')) assignedGroupId = 'group_c';
-      else if (agLower.includes('group d')) assignedGroupId = 'group_d';
-      else assignedGroupId = agLower.replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, '');
-    }
 
     const ageVal = this.parseAge(demo.age);
     const genderInfo = this.parseGenderInfo(demo.gender);
@@ -1606,10 +1645,8 @@ class ParticipantAnalytics {
       trialBlock,
       r.questionCategory || '',
       assignedGroupName,
-      assignedGroupId,
       r.hostLanguage || (assigned ? assigned.hostLanguage : (demo.hostLanguage || '')),
       r.activeDialect || '',
-      r.activeDialectName || '',
       isCorrectVal,
       rtMs,
       rtS,
@@ -1620,8 +1657,7 @@ class ParticipantAnalytics {
       r.focusLostDurationMs || 0,
       r.answerChangeCount || 0,
       r.selectedKey !== null && r.selectedKey !== undefined ? r.selectedKey : '',
-      r.selectedOptionText || '',
-      r.correctOptionText || '',
+      this.resolveCorrectKey(r),
       ageVal,
       genderInfo.code,
       genderInfo.label,
@@ -1640,15 +1676,12 @@ class ParticipantAnalytics {
       countryInfo.is_us,
       disInfo.disability,
       disInfo.has_disability,
-      thoughtsObj.likert_clarity ?? (thoughtsObj.likertRatings && thoughtsObj.likertRatings.clarity) ?? '',
-      thoughtsObj.likert_difficulty ?? (thoughtsObj.likertRatings && thoughtsObj.likertRatings.difficulty) ?? '',
-      thoughtsObj.likert_interface ?? (thoughtsObj.likertRatings && thoughtsObj.likertRatings.interface) ?? '',
-      thoughtsObj.likert_experience ?? (thoughtsObj.likertRatings && thoughtsObj.likertRatings.experience) ?? '',
+      this.resolveLikertVal(thoughtsObj, 'clarity'),
+      this.resolveLikertVal(thoughtsObj, 'difficulty'),
+      this.resolveLikertVal(thoughtsObj, 'interface'),
+      this.resolveLikertVal(thoughtsObj, 'experience'),
       thoughtsObj.durationExpectation || thoughtsObj.duration_expectation || '',
-      thoughtsObj.thoughts || '',
-      r.rawQuery || '',
-      r.dialectSql || r.rawQuery || '',
-      r.codeSnippet || r.jsCode || r.incompleteQuery || ''
+      thoughtsObj.thoughts || ''
     ].map(escapeCsv).join(',');
   }
 

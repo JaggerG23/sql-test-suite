@@ -19,12 +19,11 @@
 const CSV_HEADERS = [
   'response_id', 'participant_id', 'session_id', 'timestamp_iso',
   'question_number', 'trial_block', 'question_category',
-  'assigned_group', 'assigned_group_id', 'host_language',
-  'syntax_dialect_id', 'syntax_dialect_name',
+  'assigned_group', 'host_language', 'syntax_dialect_id',
   'is_correct', 'response_time_ms', 'response_time_s', 'log_response_time',
   'tab_focus_lost', 'valid_trial', 'tab_switch_count', 'focus_lost_duration_ms',
   'answer_change_count',
-  'selected_key', 'selected_option', 'correct_option',
+  'selected_key', 'correct_option',
   'age', 'gender', 'gender_label', 'gender_male', 'gender_female',
   'education', 'education_label', 'has_college_degree',
   'coding_exp_years', 'has_coding_exp',
@@ -34,7 +33,7 @@ const CSV_HEADERS = [
   'disability_status', 'has_disability',
   'likert_clarity', 'likert_difficulty', 'likert_interface', 'likert_experience',
   'duration_expectation',
-  'final_thoughts', 'raw_query', 'dialect_sql', 'code_snippet'
+  'final_thoughts'
 ];
 
 function setupSheet() {
@@ -255,15 +254,36 @@ function doPost(e) {
       const trialBlock = Math.floor((Math.max(1, qNum) - 1) / 5) + 1;
 
       const assignedGroupName = r.assignedGroupName || r.assignedGroup || demo.assignedGroupName || demo.assignedGroup || '';
-      let assignedGroupId = r.assignedGroupId || demo.assignedGroupId || '';
-      if (!assignedGroupId && assignedGroupName) {
-        const agLower = String(assignedGroupName).toLowerCase();
-        if (agLower.indexOf('group a') !== -1) assignedGroupId = 'group_a';
-        else if (agLower.indexOf('group b') !== -1) assignedGroupId = 'group_b';
-        else if (agLower.indexOf('group c') !== -1) assignedGroupId = 'group_c';
-        else if (agLower.indexOf('group d') !== -1) assignedGroupId = 'group_d';
-        else assignedGroupId = agLower.replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, '');
-      }
+
+      const resolveCorrectKey = (respObj) => {
+        if (!respObj) return '';
+        if (respObj.correctKey !== undefined && respObj.correctKey !== null && respObj.correctKey !== '') {
+          const k = parseInt(respObj.correctKey, 10);
+          if (!isNaN(k) && k >= 1 && k <= 4) return k;
+        }
+        const rawOpt = String(respObj.correctOptionText || respObj.correct_option || '').trim();
+        if (/^[1-4]$/.test(rawOpt)) return parseInt(rawOpt, 10);
+        const letterMatch = rawOpt.match(/Option\s+([A-D])/i) || rawOpt.match(/^([A-D])$/i);
+        if (letterMatch) return letterMatch[1].toUpperCase().charCodeAt(0) - 64;
+        if (isCorrectVal === 1 && respObj.selectedKey !== undefined && respObj.selectedKey !== null && respObj.selectedKey !== '') {
+          const sk = parseInt(respObj.selectedKey, 10);
+          if (!isNaN(sk) && sk >= 1 && sk <= 4) return sk;
+        }
+        return '';
+      };
+
+      const resolveLikert = (tObj, shortKey) => {
+        if (!tObj) return '';
+        const fullKey = 'likert_' + shortKey;
+        const ratingsObj = tObj.likertRatings || {};
+        const candidates = [tObj[fullKey], tObj[shortKey], ratingsObj[fullKey], ratingsObj[shortKey]];
+        for (let cIdx = 0; cIdx < candidates.length; cIdx++) {
+          if (candidates[cIdx] !== undefined && candidates[cIdx] !== null && candidates[cIdx] !== '') {
+            return candidates[cIdx];
+          }
+        }
+        return '';
+      };
 
       const genderInfo = parseGender(demo.gender);
       const eduInfo = parseEdu(demo.education || demo.highestEducation || demo.academicStanding);
@@ -285,10 +305,8 @@ function doPost(e) {
         trialBlock,
         r.questionCategory || '',
         assignedGroupName,
-        assignedGroupId,
         r.hostLanguage || demo.hostLanguage || '',
         r.activeDialect || '',
-        r.activeDialectName || '',
         isCorrectVal,
         rtMs,
         rtS,
@@ -299,8 +317,7 @@ function doPost(e) {
         r.focusLostDurationMs !== undefined ? r.focusLostDurationMs : 0,
         r.answerChangeCount !== undefined ? r.answerChangeCount : 0,
         r.selectedKey !== undefined && r.selectedKey !== null ? r.selectedKey : '',
-        r.selectedOptionText || '',
-        r.correctOptionText || '',
+        resolveCorrectKey(r),
         demo.age || '',
         genderInfo.code,
         genderInfo.label,
@@ -319,15 +336,12 @@ function doPost(e) {
         isUs,
         demo.disability || '',
         hasDis,
-        thoughts.likert_clarity !== undefined ? thoughts.likert_clarity : (lr.clarity !== undefined ? lr.clarity : ''),
-        thoughts.likert_difficulty !== undefined ? thoughts.likert_difficulty : (lr.difficulty !== undefined ? lr.difficulty : ''),
-        thoughts.likert_interface !== undefined ? thoughts.likert_interface : (lr.interface !== undefined ? lr.interface : ''),
-        thoughts.likert_experience !== undefined ? thoughts.likert_experience : (lr.experience !== undefined ? lr.experience : ''),
+        resolveLikert(thoughts, 'clarity'),
+        resolveLikert(thoughts, 'difficulty'),
+        resolveLikert(thoughts, 'interface'),
+        resolveLikert(thoughts, 'experience'),
         thoughts.durationExpectation || thoughts.duration_expectation || '',
-        thoughts.thoughts || '',
-        r.rawQuery || '',
-        r.dialectSql || '',
-        r.codeSnippet || r.jsCode || ''
+        thoughts.thoughts || ''
       ];
       sheet.appendRow(row);
       appendedCount++;
@@ -337,21 +351,29 @@ function doPost(e) {
     if (Object.keys(incomingFinalThoughts).length > 0 && sheet.getLastRow() > 1) {
       const totalRows = sheet.getLastRow() - 1;
       const pidCol = sheet.getRange(2, 2, totalRows, 1).getValues();
+      const likertStartCol = CSV_HEADERS.indexOf('likert_clarity') + 1;
       Object.keys(incomingFinalThoughts).forEach(pid => {
         const t = incomingFinalThoughts[pid] || {};
         const lr = t.likertRatings || {};
+        const pickL = (sKey) => {
+          const fKey = 'likert_' + sKey;
+          const cands = [t[fKey], t[sKey], lr[fKey], lr[sKey]];
+          for (let k = 0; k < cands.length; k++) {
+            if (cands[k] !== undefined && cands[k] !== null && cands[k] !== '') return cands[k];
+          }
+          return '';
+        };
         const vals = [
-          t.likert_clarity !== undefined ? t.likert_clarity : (lr.clarity !== undefined ? lr.clarity : ''),
-          t.likert_difficulty !== undefined ? t.likert_difficulty : (lr.difficulty !== undefined ? lr.difficulty : ''),
-          t.likert_interface !== undefined ? t.likert_interface : (lr.interface !== undefined ? lr.interface : ''),
-          t.likert_experience !== undefined ? t.likert_experience : (lr.experience !== undefined ? lr.experience : ''),
+          pickL('clarity'),
+          pickL('difficulty'),
+          pickL('interface'),
+          pickL('experience'),
           t.durationExpectation || t.duration_expectation || '',
           t.thoughts || ''
         ];
         for (let i = 0; i < pidCol.length; i++) {
           if (String(pidCol[i][0]) === String(pid)) {
-            // Columns 43..48 (1-based) are likert_clarity..final_thoughts
-            sheet.getRange(i + 2, 43, 1, 6).setValues([vals]);
+            sheet.getRange(i + 2, likertStartCol, 1, 6).setValues([vals]);
           }
         }
       });
