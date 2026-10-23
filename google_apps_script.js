@@ -19,22 +19,27 @@
 const CSV_HEADERS = [
   'response_id', 'participant_id', 'session_id', 'timestamp_iso',
   'question_number', 'trial_block', 'question_category',
+  'code_structure', 'operator_count',
   'assigned_group', 'host_language', 'syntax_dialect_id',
   'is_correct', 'response_time_ms', 'response_time_s', 'log_response_time',
+  'time_to_first_select_ms', 'decision_confirm_ms', 'input_method',
   'tab_focus_lost', 'valid_trial', 'tab_switch_count', 'focus_lost_duration_ms',
   'answer_change_count',
   'selected_key', 'correct_option',
+  'training_accuracy', 'training_total_time_s',
   'age', 'gender', 'gender_label', 'gender_male', 'gender_female',
   'education', 'education_label', 'has_college_degree',
   'coding_exp_years', 'has_coding_exp',
   'db_exp_years', 'has_db_exp',
   'primary_language', 'is_english_primary',
   'country_of_origin', 'is_country_us',
-  'disability_status', 'has_disability',
   'likert_clarity', 'likert_difficulty', 'likert_interface', 'likert_experience',
   'duration_expectation',
   'final_thoughts'
 ];
+
+const STRUCTURE_BY_QUESTION = [2, 3, 4, 5, 1, 2, 4, 5, 1, 3, 5, 2, 3, 4, 1, 4, 1, 2, 3, 5, 3, 2, 5, 4, 1];
+const OPERATOR_COUNT_BY_QUESTION = [5, 3, 3, 6, 4, 5, 3, 6, 4, 3, 16, 13, 3, 8, 6, 5, 7, 9, 7, 7, 10, 11, 23, 9, 10];
 
 function setupSheet() {
   const ss = SpreadsheetApp.getActiveSpreadsheet();
@@ -252,6 +257,26 @@ function doPost(e) {
       const validTrialVal = tabFocusLostVal === 0 ? 1 : 0;
       const qNum = parseInt(r.questionNumber, 10) || 1;
       const trialBlock = Math.floor((Math.max(1, qNum) - 1) / 5) + 1;
+      const qIdx = qNum - 1;
+      const codeStructure = r.codeStructure || r.code_structure || ((qIdx >= 0 && qIdx < STRUCTURE_BY_QUESTION.length) ? STRUCTURE_BY_QUESTION[qIdx] : '');
+      const operatorCount = (r.operatorCount !== undefined && r.operatorCount !== null && r.operatorCount !== '')
+        ? r.operatorCount
+        : ((r.operator_count !== undefined && r.operator_count !== null && r.operator_count !== '')
+          ? r.operator_count
+          : ((qIdx >= 0 && qIdx < OPERATOR_COUNT_BY_QUESTION.length) ? OPERATOR_COUNT_BY_QUESTION[qIdx] : ''));
+      const firstSelectMs = (r.timeToFirstSelectMs !== undefined && r.timeToFirstSelectMs !== null && r.timeToFirstSelectMs !== '')
+        ? r.timeToFirstSelectMs
+        : (r.time_to_first_select_ms !== undefined && r.time_to_first_select_ms !== null ? r.time_to_first_select_ms : '');
+      const confirmMs = (r.decisionConfirmMs !== undefined && r.decisionConfirmMs !== null && r.decisionConfirmMs !== '')
+        ? r.decisionConfirmMs
+        : (r.decision_confirm_ms !== undefined && r.decision_confirm_ms !== null ? r.decision_confirm_ms : '');
+      const inputMethod = r.inputMethod || r.input_method || '';
+      const trainingAcc = (r.trainingAccuracy !== undefined && r.trainingAccuracy !== null)
+        ? r.trainingAccuracy
+        : (r.training_accuracy !== undefined && r.training_accuracy !== null ? r.training_accuracy : '');
+      const trainingTimeS = (r.trainingTotalTimeS !== undefined && r.trainingTotalTimeS !== null)
+        ? r.trainingTotalTimeS
+        : (r.training_total_time_s !== undefined && r.training_total_time_s !== null ? r.training_total_time_s : '');
 
       const assignedGroupName = r.assignedGroupName || r.assignedGroup || demo.assignedGroupName || demo.assignedGroup || '';
 
@@ -293,8 +318,6 @@ function doPost(e) {
       const isEnglish = langStr.toLowerCase().indexOf('english') !== -1 ? 1 : 0;
       const countryStr = String(demo.countryOfOrigin || '').trim();
       const isUs = (countryStr.toLowerCase().indexOf('united states') !== -1 || countryStr.toLowerCase() === 'usa' || countryStr.toLowerCase() === 'us') ? 1 : 0;
-      const disStr = String(demo.disability || '').trim().toLowerCase();
-      const hasDis = (disStr && disStr.indexOf('none') === -1 && disStr !== 'no' && disStr.indexOf('prefer not') === -1) ? 1 : 0;
 
       const row = [
         rId,
@@ -304,6 +327,8 @@ function doPost(e) {
         qNum,
         trialBlock,
         r.questionCategory || '',
+        codeStructure,
+        operatorCount,
         assignedGroupName,
         r.hostLanguage || demo.hostLanguage || '',
         r.activeDialect || '',
@@ -311,6 +336,9 @@ function doPost(e) {
         rtMs,
         rtS,
         logRt,
+        firstSelectMs,
+        confirmMs,
+        inputMethod,
         tabFocusLostVal,
         validTrialVal,
         r.tabSwitchCount !== undefined ? r.tabSwitchCount : 0,
@@ -318,6 +346,8 @@ function doPost(e) {
         r.answerChangeCount !== undefined ? r.answerChangeCount : 0,
         r.selectedKey !== undefined && r.selectedKey !== null ? r.selectedKey : '',
         resolveCorrectKey(r),
+        trainingAcc,
+        trainingTimeS,
         demo.age || '',
         genderInfo.code,
         genderInfo.label,
@@ -334,8 +364,6 @@ function doPost(e) {
         isEnglish,
         countryStr,
         isUs,
-        demo.disability || '',
-        hasDis,
         resolveLikert(thoughts, 'clarity'),
         resolveLikert(thoughts, 'difficulty'),
         resolveLikert(thoughts, 'interface'),

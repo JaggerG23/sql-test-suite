@@ -211,22 +211,35 @@ def migrate_legacy_txt_emails():
 CSV_HEADERS = [
     'response_id', 'participant_id', 'session_id', 'timestamp_iso',
     'question_number', 'trial_block', 'question_category',
+    'code_structure', 'operator_count',
     'assigned_group', 'host_language', 'syntax_dialect_id',
     'is_correct', 'response_time_ms', 'response_time_s', 'log_response_time',
+    'time_to_first_select_ms', 'decision_confirm_ms', 'input_method',
     'tab_focus_lost', 'valid_trial', 'tab_switch_count', 'focus_lost_duration_ms',
     'answer_change_count',
     'selected_key', 'correct_option',
+    'training_accuracy', 'training_total_time_s',
     'age', 'gender', 'gender_label', 'gender_male', 'gender_female',
     'education', 'education_label', 'has_college_degree',
     'coding_exp_years', 'has_coding_exp',
     'db_exp_years', 'has_db_exp',
     'primary_language', 'is_english_primary',
     'country_of_origin', 'is_country_us',
-    'disability_status', 'has_disability',
     'likert_clarity', 'likert_difficulty', 'likert_interface', 'likert_experience',
     'duration_expectation',
     'final_thoughts'
 ]
+
+STRUCTURE_BY_QUESTION = [2, 3, 4, 5, 1, 2, 4, 5, 1, 3, 5, 2, 3, 4, 1, 4, 1, 2, 3, 5, 3, 2, 5, 4, 1]
+OPERATOR_COUNT_BY_QUESTION = [5, 3, 3, 6, 4, 5, 3, 6, 4, 3, 16, 13, 3, 8, 6, 5, 7, 9, 7, 7, 10, 11, 23, 9, 10]
+
+def get_structure_for_question(q_num):
+    idx = (int(q_num) if q_num else 1) - 1
+    return STRUCTURE_BY_QUESTION[idx] if 0 <= idx < len(STRUCTURE_BY_QUESTION) else ''
+
+def get_operator_count_for_question(q_num):
+    idx = (int(q_num) if q_num else 1) - 1
+    return OPERATOR_COUNT_BY_QUESTION[idx] if 0 <= idx < len(OPERATOR_COUNT_BY_QUESTION) else ''
 
 def resolve_correct_key(r):
     if not isinstance(r, dict):
@@ -439,6 +452,17 @@ def export_csv(db_data):
             except: pass
         return
 
+    # Pre-scan responses for participant-level training summary fallback
+    training_by_pid = {}
+    for r in responses:
+        pid_key = r.get('participantId', '')
+        if not pid_key:
+            continue
+        t_acc = r.get('trainingAccuracy', r.get('training_accuracy', ''))
+        t_time = r.get('trainingTotalTimeS', r.get('training_total_time_s', ''))
+        if t_acc != '' and t_acc is not None:
+            training_by_pid[pid_key] = (t_acc, t_time if t_time is not None else '')
+
     with tempfile.NamedTemporaryFile('w', dir=BASE_DIR, delete=False, newline='', encoding='utf-8') as f:
         writer = csv.writer(f)
         writer.writerow(CSV_HEADERS)
@@ -458,6 +482,12 @@ def export_csv(db_data):
             rt_s = round(rt_ms / 1000.0, 3)
             log_rt = round(math.log(max(rt_ms, 1)), 4)
 
+            raw_first_sel = r.get('timeToFirstSelectMs', r.get('time_to_first_select_ms', ''))
+            first_select_ms = int(raw_first_sel) if (raw_first_sel is not None and str(raw_first_sel).strip() != '') else ''
+            raw_confirm_ms = r.get('decisionConfirmMs', r.get('decision_confirm_ms', ''))
+            decision_confirm_ms = int(raw_confirm_ms) if (raw_confirm_ms is not None and str(raw_confirm_ms).strip() != '') else ''
+            input_method = r.get('inputMethod', r.get('input_method', ''))
+
             # Focus and trial validity (1s and 0s)
             tab_focus_lost_val = to_binary(r.get('tabFocusLost'))
             valid_trial_val = 1 if tab_focus_lost_val == 0 else 0
@@ -475,6 +505,14 @@ def export_csv(db_data):
             except:
                 q_num = 1
             trial_block = ((max(1, q_num) - 1) // 5) + 1
+            code_structure = r.get('codeStructure') or r.get('code_structure') or get_structure_for_question(q_num)
+            raw_op_cnt = r.get('operatorCount', r.get('operator_count', ''))
+            operator_count = raw_op_cnt if (raw_op_cnt is not None and str(raw_op_cnt).strip() != '') else get_operator_count_for_question(q_num)
+
+            t_acc = r.get('trainingAccuracy', r.get('training_accuracy', ''))
+            t_time = r.get('trainingTotalTimeS', r.get('training_total_time_s', ''))
+            if (t_acc == '' or t_acc is None) and pid in training_by_pid:
+                t_acc, t_time = training_by_pid[pid]
 
             # Group and Dialect
             assigned_group = r.get('assignedGroupName', r.get('assignedGroup', demo.get('assignedGroupName', demo.get('assignedGroup', ''))))
@@ -489,7 +527,6 @@ def export_csv(db_data):
             db_years = parse_num(demo.get('dbExp', ''))
             lang_info = parse_language_info(demo.get('primaryLanguage', ''))
             country_info = parse_country_info(demo.get('countryOfOrigin', ''))
-            dis_info = parse_disability_info(demo.get('disability', ''))
 
             writer.writerow([
                 r.get('id', ''),
@@ -499,6 +536,8 @@ def export_csv(db_data):
                 q_num,
                 trial_block,
                 r.get('questionCategory', ''),
+                code_structure,
+                operator_count,
                 assigned_group,
                 r.get('hostLanguage', demo.get('hostLanguage', '')),
                 r.get('activeDialect', ''),
@@ -506,6 +545,9 @@ def export_csv(db_data):
                 rt_ms,
                 rt_s,
                 log_rt,
+                first_select_ms,
+                decision_confirm_ms,
+                input_method,
                 tab_focus_lost_val,
                 valid_trial_val,
                 r.get('tabSwitchCount', 0),
@@ -513,6 +555,8 @@ def export_csv(db_data):
                 ans_change_cnt,
                 r.get('selectedKey', ''),
                 resolve_correct_key(r),
+                t_acc if t_acc is not None else '',
+                t_time if t_time is not None else '',
                 age_val,
                 gender_info['code'],
                 gender_info['label'],
@@ -529,8 +573,6 @@ def export_csv(db_data):
                 lang_info['is_english'],
                 country_info['country'],
                 country_info['is_us'],
-                dis_info['disability'],
-                dis_info['has_disability'],
                 resolve_likert_val(thought_obj, 'clarity'),
                 resolve_likert_val(thought_obj, 'difficulty'),
                 resolve_likert_val(thought_obj, 'interface'),

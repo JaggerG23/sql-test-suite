@@ -706,6 +706,15 @@ class ParticipantAnalytics {
       ? rawQ
       : Math.min(maxQ, existingResponses.length + 1);
 
+    const trainingSummary = this.getTrainingSummary(this.participantId, entry);
+    const rtMsVal = Math.max(0, Math.round(entry.responseTimeMs || 0));
+    const firstSelectMsVal = (entry.timeToFirstSelectMs !== undefined && entry.timeToFirstSelectMs !== null && entry.timeToFirstSelectMs !== '')
+      ? Math.max(0, Math.round(Number(entry.timeToFirstSelectMs)))
+      : rtMsVal;
+    const confirmMsVal = (entry.decisionConfirmMs !== undefined && entry.decisionConfirmMs !== null && entry.decisionConfirmMs !== '')
+      ? Math.max(0, Math.round(Number(entry.decisionConfirmMs)))
+      : Math.max(0, rtMsVal - firstSelectMsVal);
+
     const record = {
       id: 'resp_' + Date.now() + '_' + Math.random().toString(36).substring(2, 7),
       participantId: this.participantId,
@@ -720,6 +729,10 @@ class ParticipantAnalytics {
       hostLanguage: hostLang,
       questionNumber: resolvedQNum,
       questionCategory: entry.questionCategory || 'General',
+      codeStructure: entry.codeStructure || this.getStructureForQuestion(resolvedQNum),
+      operatorCount: (entry.operatorCount !== undefined && entry.operatorCount !== null && entry.operatorCount !== '')
+        ? Number(entry.operatorCount)
+        : this.getOperatorCountForQuestion(resolvedQNum),
       activeDialect: activeDialectKey,
       activeDialectName: activeDialectLabel,
       rawQuery: entry.rawQuery || '',
@@ -731,11 +744,16 @@ class ParticipantAnalytics {
       selectedOptionText: entry.selectedOptionText || '',
       correctOptionText: entry.correctOptionText || '',
       isCorrect: entry.isCorrect ? 1 : 0,
-      responseTimeMs: Math.max(0, Math.round(entry.responseTimeMs || 0)),
+      responseTimeMs: rtMsVal,
+      timeToFirstSelectMs: firstSelectMsVal,
+      decisionConfirmMs: confirmMsVal,
+      inputMethod: entry.inputMethod || 'mouse',
       tabFocusLost: entry.tabFocusLost ? 1 : 0,
       tabSwitchCount: entry.tabSwitchCount || 0,
       focusLostDurationMs: Math.max(0, Math.round(entry.focusLostDurationMs || 0)),
-      answerChangeCount: Math.max(0, parseInt(entry.answerChangeCount, 10) || 0)
+      answerChangeCount: Math.max(0, parseInt(entry.answerChangeCount, 10) || 0),
+      trainingAccuracy: trainingSummary.trainingAccuracy,
+      trainingTotalTimeS: trainingSummary.trainingTotalTimeS
     };
 
     this.responses.push(record);
@@ -862,7 +880,15 @@ class ParticipantAnalytics {
     if (!Array.isArray(this.trainingResponses)) {
       this.trainingResponses = [];
     }
-    this.trainingResponses.push(record);
+    const qNum = parseInt(record.questionNumber, 10);
+    const existingIdx = !isNaN(qNum)
+      ? this.trainingResponses.findIndex(r => r.participantId === pid && parseInt(r.questionNumber, 10) === qNum)
+      : -1;
+    if (existingIdx >= 0) {
+      this.trainingResponses[existingIdx] = record;
+    } else {
+      this.trainingResponses.push(record);
+    }
     try {
       localStorage.setItem(this.trainingStorageKey, JSON.stringify(this.trainingResponses));
     } catch (e) {}
@@ -874,6 +900,36 @@ class ParticipantAnalytics {
       this.trainingResponses = this.loadTrainingResponses();
     }
     return this.trainingResponses.filter(r => r.participantId === participantId);
+  }
+
+  getTrainingSummary(participantId = this.participantId, fallbackResponse = null) {
+    if (fallbackResponse) {
+      const acc = fallbackResponse.trainingAccuracy ?? fallbackResponse.training_accuracy;
+      const timeS = fallbackResponse.trainingTotalTimeS ?? fallbackResponse.training_total_time_s;
+      if (acc !== undefined && acc !== null && acc !== '' && timeS !== undefined && timeS !== null && timeS !== '') {
+        return { trainingAccuracy: acc, trainingTotalTimeS: timeS };
+      }
+    }
+    const tResps = this.getTrainingResponses(participantId);
+    if (tResps && tResps.length > 0) {
+      const correctCount = tResps.filter(r => this.toBinary(r.isCorrect) === 1).length;
+      const totalMs = tResps.reduce((sum, r) => sum + (parseInt(r.responseTimeMs, 10) || 0), 0);
+      return {
+        trainingAccuracy: Math.round((correctCount / tResps.length) * 10000) / 100,
+        trainingTotalTimeS: Math.round((totalMs / 1000.0) * 1000) / 1000
+      };
+    }
+    if (Array.isArray(this.responses)) {
+      const userResps = this.responses.filter(r => r.participantId === participantId);
+      for (const r of userResps) {
+        const acc = r.trainingAccuracy ?? r.training_accuracy;
+        const timeS = r.trainingTotalTimeS ?? r.training_total_time_s;
+        if (acc !== undefined && acc !== null && acc !== '') {
+          return { trainingAccuracy: acc, trainingTotalTimeS: timeS ?? '' };
+        }
+      }
+    }
+    return { trainingAccuracy: '', trainingTotalTimeS: '' };
   }
 
   hasCompletedTraining(pid = this.participantId) {
@@ -1253,13 +1309,24 @@ class ParticipantAnalytics {
           ? rawCorrectOpt
           : (parsedCorrectKey >= 1 && parsedCorrectKey <= 4 ? `Option ${String.fromCharCode(64 + Number(parsedCorrectKey))}` : '');
 
+        const qNumParsed = parseInt(getVal(row, ['question_number', 'Question Number', 'questionNumber'], 4), 10) || 1;
+        const rawCodeStruct = getVal(row, ['code_structure', 'Code Structure', 'codeStructure'], undefined);
+        const rawOpCount = getVal(row, ['operator_count', 'Operator Count', 'operatorCount'], undefined);
+        const rawFirstSelectMs = getVal(row, ['time_to_first_select_ms', 'Time to First Select (ms)', 'timeToFirstSelectMs'], undefined);
+        const rawConfirmMs = getVal(row, ['decision_confirm_ms', 'Decision Confirm (ms)', 'decisionConfirmMs'], undefined);
+        const rawInputMethod = getVal(row, ['input_method', 'Input Method', 'inputMethod'], undefined);
+        const rawTrainAcc = getVal(row, ['training_accuracy', 'Training Accuracy', 'trainingAccuracy'], undefined);
+        const rawTrainTimeS = getVal(row, ['training_total_time_s', 'Training Total Time (s)', 'trainingTotalTimeS'], undefined);
+
         const resp = {
           id: getVal(row, ['response_id', 'Response ID', 'id'], 0) || ('resp_' + Date.now() + '_' + Math.random().toString(36).substring(2, 7)),
           participantId: pid,
           sessionId: getVal(row, ['session_id', 'Session ID', 'sessionId'], 2) || '',
           timestamp: getVal(row, ['timestamp_iso', 'Timestamp (ISO)', 'timestamp'], 3) || new Date().toISOString(),
-          questionNumber: parseInt(getVal(row, ['question_number', 'Question Number', 'questionNumber'], 4), 10) || 1,
+          questionNumber: qNumParsed,
           questionCategory: getVal(row, ['question_category', 'Question Category', 'questionCategory'], 6) || 'General',
+          codeStructure: rawCodeStruct ? parseInt(rawCodeStruct, 10) : this.getStructureForQuestion(qNumParsed),
+          operatorCount: rawOpCount ? parseInt(rawOpCount, 10) : this.getOperatorCountForQuestion(qNumParsed),
           assignedGroup: assignedGroupVal || '',
           assignedGroupId: assignedGroupIdVal || '',
           assignedGroupName: assignedGroupVal || '',
@@ -1272,10 +1339,15 @@ class ParticipantAnalytics {
           correctOptionText: correctOptionTextVal,
           isCorrect: isCorrectParsed ? 1 : 0,
           responseTimeMs: parseInt(getVal(row, ['response_time_ms', 'Response Time (ms)', 'responseTimeMs'], undefined), 10) || 0,
+          timeToFirstSelectMs: rawFirstSelectMs !== '' && rawFirstSelectMs !== undefined ? parseInt(rawFirstSelectMs, 10) : '',
+          decisionConfirmMs: rawConfirmMs !== '' && rawConfirmMs !== undefined ? parseInt(rawConfirmMs, 10) : '',
+          inputMethod: rawInputMethod || '',
           tabFocusLost: focusLostParsed ? 1 : 0,
           tabSwitchCount: parseInt(getVal(row, ['tab_switch_count', 'Tab Switch Count', 'tabSwitchCount'], undefined), 10) || 0,
           focusLostDurationMs: parseInt(getVal(row, ['focus_lost_duration_ms', 'Focus Lost Duration (ms)', 'focusLostDurationMs'], undefined), 10) || 0,
           answerChangeCount: parseInt(getVal(row, ['answer_change_count', 'Answer Change Count', 'Answer Changes', 'answerChangeCount'], undefined), 10) || 0,
+          trainingAccuracy: rawTrainAcc !== '' && rawTrainAcc !== undefined ? Number(rawTrainAcc) : '',
+          trainingTotalTimeS: rawTrainTimeS !== '' && rawTrainTimeS !== undefined ? Number(rawTrainTimeS) : '',
           rawQuery: getVal(row, ['raw_query', 'Raw SQL Query', 'rawQuery'], undefined) || '',
           dialectSql: getVal(row, ['dialect_sql', 'Dialect SQL Query', 'dialectSql'], undefined) || '',
           codeSnippet: codeVal || '',
@@ -1517,6 +1589,18 @@ class ParticipantAnalytics {
     return Math.floor((q - 1) / 5) + 1;
   }
 
+  getStructureForQuestion(qNum) {
+    const structures = [2, 3, 4, 5, 1, 2, 4, 5, 1, 3, 5, 2, 3, 4, 1, 4, 1, 2, 3, 5, 3, 2, 5, 4, 1];
+    const idx = (parseInt(qNum, 10) || 1) - 1;
+    return (idx >= 0 && idx < structures.length) ? structures[idx] : '';
+  }
+
+  getOperatorCountForQuestion(qNum) {
+    const counts = [5, 3, 3, 6, 4, 5, 3, 6, 4, 3, 16, 13, 3, 8, 6, 5, 7, 9, 7, 7, 10, 11, 23, 9, 10];
+    const idx = (parseInt(qNum, 10) || 1) - 1;
+    return (idx >= 0 && idx < counts.length) ? counts[idx] : '';
+  }
+
   calcLogRT(rtMs) {
     const ms = parseFloat(rtMs) || 0;
     return Math.round(Math.log(Math.max(ms, 1.0)) * 10000) / 10000;
@@ -1564,6 +1648,8 @@ class ParticipantAnalytics {
       'question_number',
       'trial_block',
       'question_category',
+      'code_structure',
+      'operator_count',
       'assigned_group',
       'host_language',
       'syntax_dialect_id',
@@ -1571,6 +1657,9 @@ class ParticipantAnalytics {
       'response_time_ms',
       'response_time_s',
       'log_response_time',
+      'time_to_first_select_ms',
+      'decision_confirm_ms',
+      'input_method',
       'tab_focus_lost',
       'valid_trial',
       'tab_switch_count',
@@ -1578,6 +1667,8 @@ class ParticipantAnalytics {
       'answer_change_count',
       'selected_key',
       'correct_option',
+      'training_accuracy',
+      'training_total_time_s',
       'age',
       'gender',
       'gender_label',
@@ -1594,8 +1685,6 @@ class ParticipantAnalytics {
       'is_english_primary',
       'country_of_origin',
       'is_country_us',
-      'disability_status',
-      'has_disability',
       'likert_clarity',
       'likert_difficulty',
       'likert_interface',
@@ -1618,6 +1707,19 @@ class ParticipantAnalytics {
     const validTrialVal = tabFocusLostVal === 0 ? 1 : 0;
     const qNum = parseInt(r.questionNumber, 10) || 1;
     const trialBlock = this.getTrialBlock(qNum);
+    const codeStructure = r.codeStructure || r.code_structure || this.getStructureForQuestion(qNum);
+    const operatorCount = (r.operatorCount !== undefined && r.operatorCount !== null && r.operatorCount !== '')
+      ? r.operatorCount
+      : ((r.operator_count !== undefined && r.operator_count !== null && r.operator_count !== '') ? r.operator_count : this.getOperatorCountForQuestion(qNum));
+
+    const firstSelectMs = (r.timeToFirstSelectMs !== undefined && r.timeToFirstSelectMs !== null && r.timeToFirstSelectMs !== '')
+      ? r.timeToFirstSelectMs
+      : (r.time_to_first_select_ms ?? '');
+    const confirmMs = (r.decisionConfirmMs !== undefined && r.decisionConfirmMs !== null && r.decisionConfirmMs !== '')
+      ? r.decisionConfirmMs
+      : (r.decision_confirm_ms ?? '');
+    const inputMethod = r.inputMethod || r.input_method || '';
+    const trainingSummary = this.getTrainingSummary(r.participantId, r);
 
     const assignedGroupName = r.assignedGroupName || r.assignedGroup || (assigned ? assigned.name : (demo.assignedGroupName || demo.assignedGroup || ''));
 
@@ -1628,7 +1730,6 @@ class ParticipantAnalytics {
     const dbYears = this.parseNum(demo.dbExp);
     const langInfo = this.parseLanguageInfo(demo.primaryLanguage);
     const countryInfo = this.parseCountryInfo(demo.countryOfOrigin);
-    const disInfo = this.parseDisabilityInfo(demo.disability);
 
     const escapeCsv = (val) => {
       if (val === null || val === undefined) return '""';
@@ -1644,6 +1745,8 @@ class ParticipantAnalytics {
       qNum,
       trialBlock,
       r.questionCategory || '',
+      codeStructure,
+      operatorCount,
       assignedGroupName,
       r.hostLanguage || (assigned ? assigned.hostLanguage : (demo.hostLanguage || '')),
       r.activeDialect || '',
@@ -1651,6 +1754,9 @@ class ParticipantAnalytics {
       rtMs,
       rtS,
       logRt,
+      firstSelectMs,
+      confirmMs,
+      inputMethod,
       tabFocusLostVal,
       validTrialVal,
       r.tabSwitchCount || 0,
@@ -1658,6 +1764,8 @@ class ParticipantAnalytics {
       r.answerChangeCount || 0,
       r.selectedKey !== null && r.selectedKey !== undefined ? r.selectedKey : '',
       this.resolveCorrectKey(r),
+      trainingSummary.trainingAccuracy,
+      trainingSummary.trainingTotalTimeS,
       ageVal,
       genderInfo.code,
       genderInfo.label,
@@ -1674,8 +1782,6 @@ class ParticipantAnalytics {
       langInfo.is_english,
       countryInfo.country,
       countryInfo.is_us,
-      disInfo.disability,
-      disInfo.has_disability,
       this.resolveLikertVal(thoughtsObj, 'clarity'),
       this.resolveLikertVal(thoughtsObj, 'difficulty'),
       this.resolveLikertVal(thoughtsObj, 'interface'),

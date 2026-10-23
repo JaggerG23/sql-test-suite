@@ -21,6 +21,10 @@ class HumanResolver {
     this.isAnswered = false;
     this.selectedOptionIndex = null;
     this.answerChangeCount = 0;
+    this.firstSelectionTime = null;
+    this.usedKeyboard = false;
+    this.usedMouse = false;
+    this.inputMethod = null;
 
     this.focusMetrics = {
       tabFocusLost: false,
@@ -268,16 +272,16 @@ class HumanResolver {
       if (['1', '2', '3', '4'].includes(e.key)) {
         e.preventDefault();
         const optionIndex = parseInt(e.key, 10) - 1;
-        this.selectOption(optionIndex);
-      } else if (e.code === 'Numpad1') { e.preventDefault(); this.selectOption(0); }
-      else if (e.code === 'Numpad2') { e.preventDefault(); this.selectOption(1); }
-      else if (e.code === 'Numpad3') { e.preventDefault(); this.selectOption(2); }
-      else if (e.code === 'Numpad4') { e.preventDefault(); this.selectOption(3); }
+        this.selectOption(optionIndex, 'keyboard');
+      } else if (e.code === 'Numpad1') { e.preventDefault(); this.selectOption(0, 'keyboard'); }
+      else if (e.code === 'Numpad2') { e.preventDefault(); this.selectOption(1, 'keyboard'); }
+      else if (e.code === 'Numpad3') { e.preventDefault(); this.selectOption(2, 'keyboard'); }
+      else if (e.code === 'Numpad4') { e.preventDefault(); this.selectOption(3, 'keyboard'); }
       // Handle Enter to submit chosen answer or advance to next question
       else if (e.key === 'Enter' || e.code === 'Enter' || e.code === 'NumpadEnter') {
         if (!this.isAnswered && this.selectedOptionIndex !== null) {
           e.preventDefault();
-          this.submitAnswer();
+          this.submitAnswer('keyboard');
         } else if (this.isAnswered) {
           e.preventDefault();
           this.nextQuestion();
@@ -1613,6 +1617,10 @@ class HumanResolver {
     this.isAnswered = false;
     this.selectedOptionIndex = null;
     this.answerChangeCount = 0;
+    this.firstSelectionTime = null;
+    this.usedKeyboard = false;
+    this.usedMouse = false;
+    this.inputMethod = null;
     const isFocused = (typeof document.hasFocus === 'function' ? document.hasFocus() : true) && document.visibilityState !== 'hidden';
     this.focusMetrics = {
       tabFocusLost: !isFocused,
@@ -1629,6 +1637,10 @@ class HumanResolver {
     this.isAnswered = false;
     this.selectedOptionIndex = null;
     this.answerChangeCount = 0;
+    this.firstSelectionTime = null;
+    this.usedKeyboard = false;
+    this.usedMouse = false;
+    this.inputMethod = null;
     this.currentQuestion = null;
     this.intakeCompleted = false;
     this.isTrainingChallenge = false;
@@ -1932,14 +1944,14 @@ class HumanResolver {
     this.currentQuestion.options.forEach((_, idx) => {
       const btn = document.getElementById(`opt-btn-${idx}`);
       if (btn) {
-        btn.addEventListener('click', () => this.selectOption(idx));
+        btn.addEventListener('click', () => this.selectOption(idx, 'mouse'));
       }
     });
 
     // Submit answer button
     const btnSubmit = document.getElementById('btn-submit-answer');
     if (btnSubmit) {
-      btnSubmit.addEventListener('click', () => this.submitAnswer());
+      btnSubmit.addEventListener('click', () => this.submitAnswer('mouse'));
     }
 
     // Group preview selector buttons in Admin Mode
@@ -2009,7 +2021,7 @@ class HumanResolver {
     }
   }
 
-  selectOption(index) {
+  selectOption(index, inputSource = 'mouse') {
     if (this.isParticipantView() && !this.hasCompletedDemographics()) {
       this.intakeCompleted = false;
       this.renderIntakeScreen();
@@ -2020,6 +2032,16 @@ class HumanResolver {
     if (this.app && (this.app.currentQuestionNumber === 'final_thoughts' || (this.isParticipantView() && this.stats && this.stats.totalAnswered >= maxQ))) {
       return;
     }
+
+    if (this.firstSelectionTime === null) {
+      this.firstSelectionTime = Date.now();
+    }
+    if (inputSource === 'keyboard') {
+      this.usedKeyboard = true;
+    } else if (inputSource === 'mouse') {
+      this.usedMouse = true;
+    }
+    this.inputMethod = (this.usedKeyboard && this.usedMouse) ? 'mixed' : (inputSource || 'mouse');
 
     if (this.selectedOptionIndex !== null && this.selectedOptionIndex !== index) {
       this.answerChangeCount = (this.answerChangeCount || 0) + 1;
@@ -2072,12 +2094,21 @@ class HumanResolver {
     }
   }
 
-  submitAnswer() {
+  submitAnswer(submitSource = null) {
     if (this.isAnswered || this.selectedOptionIndex === null || !this.currentQuestion) return;
     const maxQ = (window.studyConfig && typeof window.studyConfig.getMaxQuestions === 'function') ? window.studyConfig.getMaxQuestions() : 25;
     if (this.app && (this.app.currentQuestionNumber === 'final_thoughts' || (this.isParticipantView() && !this.isTrainingChallenge && this.stats && this.stats.totalAnswered >= maxQ))) {
       return;
     }
+
+    if (submitSource === 'keyboard') {
+      this.usedKeyboard = true;
+    } else if (submitSource === 'mouse') {
+      this.usedMouse = true;
+    }
+    const resolvedInputMethod = (this.usedKeyboard && this.usedMouse)
+      ? 'mixed'
+      : (this.usedKeyboard ? 'keyboard' : (this.usedMouse ? 'mouse' : (this.inputMethod || 'mouse')));
 
     this.isAnswered = true;
     const index = this.selectedOptionIndex;
@@ -2099,7 +2130,12 @@ class HumanResolver {
 
     // Log telemetry to analytics storage (stored persistently in localStorage)
     if (this.app.analytics) {
-      const responseTimeMs = q.startTime ? (Date.now() - q.startTime) : 0;
+      const now = Date.now();
+      const responseTimeMs = q.startTime ? Math.max(0, now - q.startTime) : 0;
+      const timeToFirstSelectMs = (this.firstSelectionTime && q.startTime)
+        ? Math.max(0, this.firstSelectionTime - q.startTime)
+        : responseTimeMs;
+      const decisionConfirmMs = Math.max(0, responseTimeMs - timeToFirstSelectMs);
       const assignedGroup = (this.app.analytics && typeof this.app.analytics.getAssignedGroup === 'function')
         ? this.app.analytics.getAssignedGroup()
         : null;
@@ -2125,6 +2161,9 @@ class HumanResolver {
             correctOptionText: `Option ${String.fromCharCode(65 + q.correctIndex)} (${correctOpt.rows.length} ${correctOpt.rows.length === 1 ? 'row' : 'rows'})`,
             isCorrect: isCorrect ? 1 : 0,
             responseTimeMs: responseTimeMs,
+            timeToFirstSelectMs: timeToFirstSelectMs,
+            decisionConfirmMs: decisionConfirmMs,
+            inputMethod: resolvedInputMethod,
             tabFocusLost: this.focusMetrics.tabFocusLost ? 1 : 0,
             tabSwitchCount: this.focusMetrics.tabSwitchCount,
             focusLostDurationMs: Math.round(this.focusMetrics.totalFocusLostTimeMs),
@@ -2139,10 +2178,18 @@ class HumanResolver {
         const currentQNum = (!isNaN(parsedQ) && parsedQ >= 1 && parsedQ <= maxLimit)
           ? parsedQ
           : Math.min(maxLimit, (this.stats ? this.stats.totalAnswered + 1 : 1));
+        const codeStructureVal = (typeof this.app.analytics.getStructureForQuestion === 'function')
+          ? this.app.analytics.getStructureForQuestion(currentQNum)
+          : null;
+        const operatorCountVal = (typeof this.app.analytics.getOperatorCountForQuestion === 'function')
+          ? this.app.analytics.getOperatorCountForQuestion(currentQNum)
+          : null;
 
         this.app.analytics.logResponse({
           questionNumber: currentQNum,
           questionCategory: q.type,
+          codeStructure: codeStructureVal,
+          operatorCount: operatorCountVal,
           assignedGroup: q.assignedGroup || (assignedGroup ? assignedGroup.name : 'Unknown'),
           assignedGroupId: q.assignedGroupId || (assignedGroup ? assignedGroup.id : 'unknown'),
           assignedGroupName: q.assignedGroup || (assignedGroup ? assignedGroup.name : 'Unknown'),
@@ -2159,6 +2206,9 @@ class HumanResolver {
           correctOptionText: `Option ${String.fromCharCode(65 + q.correctIndex)} (${correctOpt.rows.length} ${correctOpt.rows.length === 1 ? 'row' : 'rows'})`,
           isCorrect: isCorrect ? 1 : 0,
           responseTimeMs: responseTimeMs,
+          timeToFirstSelectMs: timeToFirstSelectMs,
+          decisionConfirmMs: decisionConfirmMs,
+          inputMethod: resolvedInputMethod,
           tabFocusLost: this.focusMetrics.tabFocusLost ? 1 : 0,
           tabSwitchCount: this.focusMetrics.tabSwitchCount,
           focusLostDurationMs: Math.round(this.focusMetrics.totalFocusLostTimeMs),
