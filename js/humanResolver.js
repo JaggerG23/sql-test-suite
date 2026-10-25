@@ -1637,8 +1637,16 @@ class HumanResolver {
     }
 
     if (!this.currentQuestion) {
-      console.warn('QuizGenerator returned null for query:', query);
+      console.warn('QuizGenerator returned null for query');
       return;
+    }
+
+    if (isParticipant) {
+      this.currentRawQuery = '';
+      this.currentGroundTruth = null;
+      if (this.app) {
+        this.app.currentQuery = '';
+      }
     }
 
     this.currentQuestion.isTraining = isTraining;
@@ -2146,9 +2154,7 @@ class HumanResolver {
     this.isAnswered = true;
     const index = this.selectedOptionIndex;
     const q = this.currentQuestion;
-    const isCorrect = (index === q.correctIndex);
-    const chosenOpt = q.options[index];
-    const correctOpt = q.options[q.correctIndex];
+    const chosenOpt = q.options[index] || { rows: [] };
 
     // Finalize focus loss duration
     if (this.focusMetrics.lastBlurTime) {
@@ -2184,15 +2190,8 @@ class HumanResolver {
             hostLanguage: q.hostLanguage || (assignedGroup ? assignedGroup.hostLanguage : 'javascript'),
             activeDialect: q.dialect ? q.dialect.id : (assignedGroup ? assignedGroup.sqlDialect : 'pipe'),
             activeDialectName: q.dialect ? q.dialect.name : (assignedGroup && assignedGroup.sqlDialect === 'quorum' ? 'Quorum Syntax' : 'Google SQL (Pipe Syntax)'),
-            codeSnippet: q.codeSnippet || q.jsCode || '',
-            jsCode: q.codeSnippet || q.jsCode || '',
-            dialectSql: q.dialectSql || q.rawQuery || '',
-            rawQuery: q.rawQuery || '',
             selectedKey: index + 1,
-            correctKey: q.correctIndex + 1,
             selectedOptionText: `Option ${String.fromCharCode(65 + index)} (${chosenOpt.rows.length} ${chosenOpt.rows.length === 1 ? 'row' : 'rows'})`,
-            correctOptionText: `Option ${String.fromCharCode(65 + q.correctIndex)} (${correctOpt.rows.length} ${correctOpt.rows.length === 1 ? 'row' : 'rows'})`,
-            isCorrect: isCorrect ? 1 : 0,
             responseTimeMs: responseTimeMs,
             timeToFirstSelectMs: timeToFirstSelectMs,
             decisionConfirmMs: decisionConfirmMs,
@@ -2229,15 +2228,8 @@ class HumanResolver {
           hostLanguage: q.hostLanguage || (assignedGroup ? assignedGroup.hostLanguage : 'javascript'),
           activeDialect: q.dialect ? q.dialect.id : (assignedGroup ? assignedGroup.sqlDialect : 'pipe'),
           activeDialectName: q.dialect ? q.dialect.name : (assignedGroup && assignedGroup.sqlDialect === 'quorum' ? 'Quorum Syntax' : 'Google SQL (Pipe Syntax)'),
-          codeSnippet: q.codeSnippet || q.jsCode || '',
-          jsCode: q.codeSnippet || q.jsCode || '',
-          dialectSql: q.dialectSql || q.rawQuery || '',
-          rawQuery: q.rawQuery || '',
           selectedKey: index + 1,
-          correctKey: q.correctIndex + 1,
           selectedOptionText: `Option ${String.fromCharCode(65 + index)} (${chosenOpt.rows.length} ${chosenOpt.rows.length === 1 ? 'row' : 'rows'})`,
-          correctOptionText: `Option ${String.fromCharCode(65 + q.correctIndex)} (${correctOpt.rows.length} ${correctOpt.rows.length === 1 ? 'row' : 'rows'})`,
-          isCorrect: isCorrect ? 1 : 0,
           responseTimeMs: responseTimeMs,
           timeToFirstSelectMs: timeToFirstSelectMs,
           decisionConfirmMs: decisionConfirmMs,

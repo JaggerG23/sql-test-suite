@@ -40,6 +40,7 @@ const CSV_HEADERS = [
 
 const STRUCTURE_BY_QUESTION = [2, 3, 4, 5, 1, 2, 4, 5, 1, 3, 5, 2, 3, 4, 1, 4, 1, 2, 3, 5, 3, 2, 5, 4, 1];
 const OPERATOR_COUNT_BY_QUESTION = [5, 3, 3, 6, 4, 5, 3, 6, 4, 3, 16, 13, 3, 8, 6, 5, 7, 9, 7, 7, 10, 11, 23, 9, 10];
+const CORRECT_KEY_BY_QUESTION = [4, 4, 3, 3, 3, 3, 3, 2, 2, 1, 4, 4, 2, 2, 2, 4, 2, 1, 1, 3, 4, 4, 2, 3, 3];
 
 function setupSheet() {
   const ss = SpreadsheetApp.getActiveSpreadsheet();
@@ -290,6 +291,10 @@ function doPost(e) {
 
       const resolveCorrectKey = (respObj) => {
         if (!respObj) return '';
+        const qIdx = (parseInt(respObj.questionNumber, 10) || 1) - 1;
+        if (qIdx >= 0 && qIdx < CORRECT_KEY_BY_QUESTION.length && !respObj.isTraining) {
+          return CORRECT_KEY_BY_QUESTION[qIdx];
+        }
         if (respObj.correctKey !== undefined && respObj.correctKey !== null && respObj.correctKey !== '') {
           const k = parseInt(respObj.correctKey, 10);
           if (!isNaN(k) && k >= 1 && k <= 4) return k;

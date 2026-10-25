@@ -232,6 +232,7 @@ CSV_HEADERS = [
 
 STRUCTURE_BY_QUESTION = [2, 3, 4, 5, 1, 2, 4, 5, 1, 3, 5, 2, 3, 4, 1, 4, 1, 2, 3, 5, 3, 2, 5, 4, 1]
 OPERATOR_COUNT_BY_QUESTION = [5, 3, 3, 6, 4, 5, 3, 6, 4, 3, 16, 13, 3, 8, 6, 5, 7, 9, 7, 7, 10, 11, 23, 9, 10]
+CORRECT_KEY_BY_QUESTION = [4, 4, 3, 3, 3, 3, 3, 2, 2, 1, 4, 4, 2, 2, 2, 4, 2, 1, 1, 3, 4, 4, 2, 3, 3]
 
 def get_structure_for_question(q_num):
     idx = (int(q_num) if q_num else 1) - 1
@@ -241,9 +242,21 @@ def get_operator_count_for_question(q_num):
     idx = (int(q_num) if q_num else 1) - 1
     return OPERATOR_COUNT_BY_QUESTION[idx] if 0 <= idx < len(OPERATOR_COUNT_BY_QUESTION) else ''
 
+def get_correct_key_for_question(q_num):
+    idx = (int(q_num) if q_num else 1) - 1
+    return CORRECT_KEY_BY_QUESTION[idx] if 0 <= idx < len(CORRECT_KEY_BY_QUESTION) else ''
+
 def resolve_correct_key(r):
     if not isinstance(r, dict):
         return ''
+    qn = r.get('questionNumber') or r.get('question_number')
+    if qn is not None and not r.get('isTraining'):
+        try:
+            q_int = int(qn)
+            if 1 <= q_int <= 25:
+                return get_correct_key_for_question(q_int)
+        except Exception:
+            pass
     ck = r.get('correctKey')
     if ck is not None and str(ck).strip() != '':
         try:
@@ -520,9 +533,25 @@ def export_csv(db_data):
             demo = demographics.get(pid, {})
             thought_obj = final_thoughts.get(pid, {})
 
-            # Response correctness & timing metrics (1s and 0s)
-            is_correct_val = to_binary(r.get('isCorrect'))
-            
+            # Trial sequence & block (5 blocks of 5 questions for 25-question study)
+            raw_q_num = r.get('questionNumber', 1)
+            try:
+                q_num = int(raw_q_num)
+            except:
+                q_num = 1
+            trial_block = ((max(1, q_num) - 1) // 5) + 1
+            code_structure = r.get('codeStructure') or r.get('code_structure') or get_structure_for_question(q_num)
+            raw_op_cnt = r.get('operatorCount', r.get('operator_count', ''))
+            operator_count = raw_op_cnt if (raw_op_cnt is not None and str(raw_op_cnt).strip() != '') else get_operator_count_for_question(q_num)
+
+            # Authoritative server-side correctness grading against canonical key
+            canonical_ck = get_correct_key_for_question(q_num)
+            sel_key = r.get('selectedKey')
+            if canonical_ck != '' and sel_key is not None and str(sel_key).strip() != '':
+                is_correct_val = 1 if str(sel_key).strip() == str(canonical_ck) else 0
+            else:
+                is_correct_val = to_binary(r.get('isCorrect'))
+
             raw_rt_ms = r.get('responseTimeMs', 0)
             try:
                 rt_ms = int(raw_rt_ms) if raw_rt_ms is not None else 0
@@ -546,17 +575,6 @@ def export_csv(db_data):
                 ans_change_cnt = int(r.get('answerChangeCount', 0))
             except:
                 ans_change_cnt = 0
-
-            # Trial sequence & block (5 blocks of 5 questions for 25-question study)
-            raw_q_num = r.get('questionNumber', 1)
-            try:
-                q_num = int(raw_q_num)
-            except:
-                q_num = 1
-            trial_block = ((max(1, q_num) - 1) // 5) + 1
-            code_structure = r.get('codeStructure') or r.get('code_structure') or get_structure_for_question(q_num)
-            raw_op_cnt = r.get('operatorCount', r.get('operator_count', ''))
-            operator_count = raw_op_cnt if (raw_op_cnt is not None and str(raw_op_cnt).strip() != '') else get_operator_count_for_question(q_num)
 
             t_acc = r.get('trainingAccuracy', r.get('training_accuracy', ''))
             t_time = r.get('trainingTotalTimeS', r.get('training_total_time_s', ''))
@@ -705,10 +723,16 @@ class TelemetryHandler(http.server.SimpleHTTPRequestHandler):
             return
 
         if parsed_path.startswith('/.') or parsed_path in (
-            '/server.py', '/patch_nginx.py', '/sql-study.service', '/nginx.conf', '/nginx_lightsail.conf'
+            '/server.py', '/patch_nginx.py', '/sql-study.service', '/nginx.conf', '/nginx_lightsail.conf', '/build_bundle.js'
         ):
             self.send_json(403, {"status": "error", "message": "Forbidden"})
             return
+
+        # Block direct access to unbundled raw JS source files so participants cannot inspect unminified source
+        if parsed_path.startswith('/js/') and parsed_path not in ('/js/study.bundle.min.js', '/js/admin.bundle.min.js'):
+            if not self.is_admin_authenticated():
+                self.send_json(403, {"status": "error", "message": "Forbidden"})
+                return
 
         if parsed_path in (
             '/extra_credit_emails.csv', '/extra_credit_emails.txt',
@@ -802,6 +826,14 @@ class TelemetryHandler(http.server.SimpleHTTPRequestHandler):
                         else:
                             r.pop('seed', None)
                             r.pop('random_seed', None)
+                            try:
+                                q_int = int(r.get('questionNumber') or 1)
+                                ck = get_correct_key_for_question(q_int)
+                                if ck != '':
+                                    r['correctKey'] = ck
+                                    r['isCorrect'] = 1 if str(r.get('selectedKey', '')).strip() == str(ck) else 0
+                            except Exception:
+                                pass
                             print(f"[{pst_now}] Response logged: Participant={r.get('participantId')} Q={r.get('questionNumber')} Correct={r.get('isCorrect')}", flush=True)
                             append_event("RESPONSE", r)
                     if payload.get('newDemographic'):

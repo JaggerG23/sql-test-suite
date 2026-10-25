@@ -72,16 +72,12 @@ class QuizGenerator {
       title: isStudy1to25 ? `Embedded Query (Study Question ${qNum} / ${totalQDisplay})` : 'Embedded Query Execution Question',
       prompt: 'Select the correct final table output:',
       codeSnippet: codeSnippet,
-      jsCode: codeSnippet, // For backward compatibility with existing views
+      jsCode: codeSnippet,
       hostLanguage: hostLanguage,
-      rawQuery: rawSql,
-      dialectSql: dialectSql,
       dialect: currentDialect,
       assignedGroup: group ? group.name : 'Unknown',
       assignedGroupId: group ? group.id : 'unknown',
       options: shuffled.options,
-      correctIndex: shuffled.correctIndex,
-      correctKey: shuffled.correctIndex + 1,
       isTraining: false,
       qNum: qNum || 1,
       structureType: questionSpec ? questionSpec.structureType : null,
@@ -148,14 +144,10 @@ class QuizGenerator {
         codeSnippet: codeSnippet,
         jsCode: codeSnippet,
         hostLanguage: hostLanguage,
-        rawQuery: '-- Practice Q1: Interface orientation (no query)',
-        dialectSql: '-- Practice Q1: Interface orientation (no query)',
         dialect: currentDialect,
         assignedGroup: group ? group.name : 'Unknown',
         assignedGroupId: group ? group.id : 'unknown',
         options: shuffled.options,
-        correctIndex: shuffled.correctIndex,
-        correctKey: shuffled.correctIndex + 1,
         isTraining: true,
         qNum: 1
       };
@@ -211,14 +203,10 @@ class QuizGenerator {
         codeSnippet: codeSnippet,
         jsCode: codeSnippet,
         hostLanguage: hostLanguage,
-        rawQuery: '-- Practice Q2: Schema Table Identification',
-        dialectSql: '-- Practice Q2: Schema Table Identification',
         dialect: currentDialect,
         assignedGroup: group ? group.name : 'Unknown',
         assignedGroupId: group ? group.id : 'unknown',
         options: shuffled.options,
-        correctIndex: shuffled.correctIndex,
-        correctKey: shuffled.correctIndex + 1,
         isTraining: true,
         qNum: 2
       };
@@ -276,14 +264,10 @@ class QuizGenerator {
         codeSnippet: codeSnippet,
         jsCode: codeSnippet,
         hostLanguage: hostLanguage,
-        rawQuery: '-- Practice Q3: Column Identification for products Table',
-        dialectSql: '-- Practice Q3: Column Identification for products Table',
         dialect: currentDialect,
         assignedGroup: group ? group.name : 'Unknown',
         assignedGroupId: group ? group.id : 'unknown',
         options: shuffled.options,
-        correctIndex: shuffled.correctIndex,
-        correctKey: shuffled.correctIndex + 1,
         isTraining: true,
         qNum: 3
       };
@@ -358,14 +342,10 @@ class QuizGenerator {
         codeSnippet: codeSnippet,
         jsCode: codeSnippet,
         hostLanguage: hostLanguage,
-        rawQuery: rawSql,
-        dialectSql: dialectSql,
         dialect: currentDialect,
         assignedGroup: group ? group.name : 'Unknown',
         assignedGroupId: group ? group.id : 'unknown',
         options: shuffled.options,
-        correctIndex: shuffled.correctIndex,
-        correctKey: shuffled.correctIndex + 1,
         isTraining: true,
         qNum: 4
       };
@@ -2832,8 +2812,11 @@ class QuizGenerator {
       const j = Math.floor(nextRand() * (i + 1));
       [arr[i], arr[j]] = [arr[j], arr[i]];
     }
-    const correctIndex = arr.findIndex(o => o.isCorrect);
-    return { options: arr, correctIndex };
+    const cleanOptions = arr.map(o => ({
+      columns: o.columns,
+      rows: o.rows
+    }));
+    return { options: cleanOptions };
   }
 }
 

@@ -761,6 +761,11 @@ class ParticipantAnalytics {
       ? Math.max(0, Math.round(Number(entry.decisionConfirmMs)))
       : Math.max(0, rtMsVal - firstSelectMsVal);
 
+    const canonicalCorrectKey = entry.correctKey || this.getCanonicalCorrectKey(resolvedQNum, false) || this.resolveCorrectKey(entry) || null;
+    const isCorrectVal = (entry.isCorrect !== undefined && entry.isCorrect !== null)
+      ? (entry.isCorrect ? 1 : 0)
+      : ((canonicalCorrectKey && Number(entry.selectedKey) === Number(canonicalCorrectKey)) ? 1 : 0);
+
     const record = {
       id: 'resp_' + Date.now() + '_' + Math.random().toString(36).substring(2, 7),
       studyVersion: this.studySchemaVersion,
@@ -787,10 +792,10 @@ class ParticipantAnalytics {
       codeSnippet: entry.codeSnippet || entry.jsCode || entry.incompleteQuery || '',
       jsCode: entry.codeSnippet || entry.jsCode || entry.incompleteQuery || '',
       selectedKey: entry.selectedKey || null,
-      correctKey: entry.correctKey || this.resolveCorrectKey(entry) || null,
+      correctKey: canonicalCorrectKey,
       selectedOptionText: entry.selectedOptionText || '',
       correctOptionText: entry.correctOptionText || '',
-      isCorrect: entry.isCorrect ? 1 : 0,
+      isCorrect: isCorrectVal,
       responseTimeMs: rtMsVal,
       timeToFirstSelectMs: firstSelectMsVal,
       decisionConfirmMs: confirmMsVal,
@@ -935,13 +940,21 @@ class ParticipantAnalytics {
 
   logTrainingResponse(data) {
     const pid = data.participantId || this.participantId;
+    const tQNum = parseInt(data.questionNumber, 10) || 1;
+    const canonicalKey = data.correctKey || this.getCanonicalCorrectKey(tQNum, true) || null;
+    const isCorrectVal = (data.isCorrect !== undefined && data.isCorrect !== null)
+      ? (data.isCorrect ? 1 : 0)
+      : ((canonicalKey && Number(data.selectedKey) === Number(canonicalKey)) ? 1 : 0);
     const record = Object.assign({
       id: 'train_' + Date.now() + '_' + Math.random().toString(36).substring(2, 7),
       participantId: pid,
       sessionId: this.sessionId,
       timestamp: new Date().toISOString(),
       isTraining: true
-    }, data);
+    }, data, {
+      correctKey: canonicalKey,
+      isCorrect: isCorrectVal
+    });
 
     if (!Array.isArray(this.trainingResponses)) {
       this.trainingResponses = [];
@@ -1680,11 +1693,26 @@ class ParticipantAnalytics {
 
   // --- Export Routines ---
 
+  getCanonicalCorrectKey(qNum, isTraining = false) {
+    const idx = (parseInt(qNum, 10) || 1) - 1;
+    if (isTraining) {
+      const tk = [12, 19, 31, 37];
+      return (idx >= 0 && idx < tk.length) ? (tk[idx] ^ ((idx * 7 + 13) & 0xFF)) : '';
+    }
+    const sk = [9, 24, 24, 33, 42, 51, 52, 60, 71, 77, 87, 94, 97, 106, 113, 114, 127, 133, 138, 149, 155, 164, 165, 173, 182];
+    return (idx >= 0 && idx < sk.length) ? (sk[idx] ^ ((idx * 7 + 13) & 0xFF)) : '';
+  }
+
   resolveCorrectKey(r) {
     if (!r) return '';
     if (r.correctKey !== undefined && r.correctKey !== null && r.correctKey !== '') {
       const k = parseInt(r.correctKey, 10);
       if (!isNaN(k) && k >= 1 && k <= 4) return k;
+    }
+    const qn = parseInt(r.questionNumber ?? r.question_number, 10);
+    if (!isNaN(qn) && qn >= 1 && qn <= 25 && !r.isTraining) {
+      const ck = this.getCanonicalCorrectKey(qn, false);
+      if (ck) return ck;
     }
     const rawOpt = String(r.correctOptionText ?? r.correct_option ?? '').trim();
     if (/^[1-4]$/.test(rawOpt)) {
