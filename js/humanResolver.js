@@ -268,8 +268,31 @@ class HumanResolver {
         return;
       }
 
+      // Handle Tab / Shift+Tab to cycle through and select answer choices 1-4 (Options A-D)
+      if (e.key === 'Tab' || e.code === 'Tab') {
+        e.preventDefault();
+        if (!this.isAnswered) {
+          const numOpts = (this.currentQuestion && Array.isArray(this.currentQuestion.options) && this.currentQuestion.options.length > 0)
+            ? this.currentQuestion.options.length
+            : 4;
+          let nextIdx;
+          if (e.shiftKey) {
+            nextIdx = (this.selectedOptionIndex === null || this.selectedOptionIndex === undefined)
+              ? (numOpts - 1)
+              : ((this.selectedOptionIndex - 1 + numOpts) % numOpts);
+          } else {
+            nextIdx = (this.selectedOptionIndex === null || this.selectedOptionIndex === undefined)
+              ? 0
+              : ((this.selectedOptionIndex + 1) % numOpts);
+          }
+          this.selectOption(nextIdx, 'keyboard');
+        } else {
+          const btnNext = document.getElementById('btn-next-question');
+          if (btnNext) btnNext.focus({ preventScroll: true });
+        }
+      }
       // Handle Keys 1, 2, 3, 4 (Choice selection)
-      if (['1', '2', '3', '4'].includes(e.key)) {
+      else if (['1', '2', '3', '4'].includes(e.key)) {
         e.preventDefault();
         const optionIndex = parseInt(e.key, 10) - 1;
         this.selectOption(optionIndex, 'keyboard');
@@ -1854,7 +1877,7 @@ class HumanResolver {
 
               <!-- Coding Window: Displays all code lines at once with no scrolling required -->
               <div class="query-code-preview p-2" style="border: 1px solid rgba(16, 185, 129, 0.3); border-radius: 6px; background: rgba(10, 14, 26, 0.95); flex: 1; display: flex; flex-direction: column; min-height: 0; box-sizing: border-box; overflow: hidden;">
-                <pre style="margin: 0; font-family: var(--font-mono); font-size: 11.5px; line-height: 1.45; color: #e2e8f0; white-space: pre-wrap; flex: 1; height: 100%; box-sizing: border-box; overflow-y: auto;"><code>${this.escapeHTML(q.codeSnippet || q.jsCode)}</code></pre>
+                <pre tabindex="-1" style="margin: 0; font-family: var(--font-mono); font-size: 11.5px; line-height: 1.45; color: #e2e8f0; white-space: pre-wrap; flex: 1; height: 100%; box-sizing: border-box; overflow-y: auto; outline: none;"><code>${this.escapeHTML(q.codeSnippet || q.jsCode)}</code></pre>
               </div>
             </div>
 
@@ -1877,7 +1900,7 @@ class HumanResolver {
               <!-- 4 Candidate Output Tables (2x2 Grid Capped to NOT exceed Coding Box height) -->
               <div class="quiz-options-grid" style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 6px; max-height: 315px;">
                 ${q.options.map((opt, idx) => `
-                  <div class="quiz-option-card table-option-card" id="opt-btn-${idx}" data-idx="${idx}" style="cursor: pointer; border: 1px solid rgba(255,255,255,0.1); border-radius: 6px; background: rgba(18, 24, 38, 0.7); overflow: hidden; display: flex; flex-direction: column; max-height: 153px; padding: 0 !important; transition: border-color 0.15s ease, background 0.15s ease;">
+                  <div class="quiz-option-card table-option-card" id="opt-btn-${idx}" data-idx="${idx}" tabindex="0" role="button" aria-label="Option ${String.fromCharCode(65 + idx)}" style="cursor: pointer; border: 1px solid rgba(255,255,255,0.1); border-radius: 6px; background: rgba(18, 24, 38, 0.7); overflow: hidden; display: flex; flex-direction: column; max-height: 153px; padding: 0 !important; outline: none; transition: border-color 0.15s ease, background 0.15s ease;">
                     <div class="opt-header p-1 px-2 d-flex justify-between align-center" style="border-bottom: 1px solid rgba(255,255,255,0.08); background: rgba(0,0,0,0.3); font-size: 10.5px; min-height: 25px;">
                       <div class="d-flex align-center gap-1" style="width: 100%; justify-content: center;">
                         <kbd style="background: var(--color-primary); color: #fff; padding: 1px 5px; font-size: 9.5px; font-weight: 700; border-radius: 3px;">${idx + 1}</kbd>
@@ -1887,7 +1910,7 @@ class HumanResolver {
                       <div class="opt-status-icon" id="opt-icon-${idx}"></div>
                     </div>
                     <!-- Data Preview Table: Capped height under title bar with 0 top gap -->
-                    <div class="opt-body" style="display: block; overflow-x: auto; overflow-y: auto; width: 100%; flex: 1; padding: 0; margin: 0; max-height: 123px;">
+                    <div class="opt-body" tabindex="-1" style="display: block; overflow-x: auto; overflow-y: auto; width: 100%; flex: 1; padding: 0; margin: 0; max-height: 123px; outline: none;">
                       ${this.renderOptionContentHTML(opt, isTraining, trainQNum)}
                     </div>
                   </div>
@@ -2068,6 +2091,9 @@ class HumanResolver {
         card.style.background = 'rgba(99, 102, 241, 0.2)';
         card.style.opacity = '1';
         if (icon) icon.innerHTML = '';
+        if (inputSource === 'keyboard' && typeof card.focus === 'function') {
+          try { card.focus({ preventScroll: true }); } catch (e) {}
+        }
       } else {
         card.style.border = '1px solid rgba(255, 255, 255, 0.1)';
         card.style.background = 'rgba(18, 24, 38, 0.7)';
