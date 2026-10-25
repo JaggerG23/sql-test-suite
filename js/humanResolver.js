@@ -367,6 +367,10 @@ class HumanResolver {
     const btnContinue = document.getElementById('btn-consent-continue');
     if (btnContinue) {
       btnContinue.addEventListener('click', () => {
+        if (this.app && this.app.analytics && typeof this.app.analytics.resetParticipantAttemptState === 'function') {
+          this.app.analytics.resetParticipantAttemptState();
+        }
+        this.stats = { totalAnswered: 0, correctAnswers: 0, totalTimeMs: 0 };
         this.setConsentAccepted(true);
         if (this.app) {
           this.app.loadIncrementalQuestion('intake');
@@ -386,7 +390,9 @@ class HumanResolver {
     const container = document.getElementById('human-challenge-container');
     if (!container) return;
 
-    const existingDemo = this.app.analytics ? this.app.analytics.getDemographics() || {} : {};
+    const existingDemo = (!this.isParticipantView() && this.app.analytics)
+      ? (this.app.analytics.getDemographics() || {})
+      : {};
     const pid = this.app.analytics ? this.app.analytics.participantId : '';
 
     const mapGenderCode = (val) => {
@@ -681,6 +687,7 @@ class HumanResolver {
         this.app.analytics.saveDemographics(data, pid);
       }
 
+      this.stats = { totalAnswered: 0, correctAnswers: 0, totalTimeMs: 0 };
       this.intakeCompleted = true;
       this.app.loadIncrementalQuestion('training_intro');
     };

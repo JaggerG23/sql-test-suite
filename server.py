@@ -399,6 +399,35 @@ def append_event(event_type, data):
     with open(LOG_FILE, 'a', encoding='utf-8') as f:
         f.write(json.dumps(event) + '\n')
 
+def is_legacy_response(r):
+    """Returns True if a response object originates from an obsolete prototype version of the study."""
+    if not isinstance(r, dict):
+        return True
+    try:
+        q_num = int(r.get('questionNumber', 0) or 0)
+        if q_num < 1 or q_num > 25:
+            return True
+    except Exception:
+        return True
+    raw_q = str(r.get('rawQuery', '') or '')
+    if 'agg_val' in raw_q or 'COUNT(products.id) AS agg_val' in raw_q:
+        return True
+    sel_txt = str(r.get('selectedOptionText', '') or '')
+    if sel_txt in ('Option A', 'Option B', 'Option C', 'Option D') and not r.get('codeStructure'):
+        return True
+    return False
+
+def is_legacy_demographic(d):
+    """Returns True if a demographic object originates from an obsolete prototype version of the study."""
+    if not isinstance(d, dict):
+        return True
+    if 'disability' in d or 'has_disability' in d or 'disability_status' in d:
+        return True
+    q_exp = str(d.get('queryExp', '') or '')
+    if 'Frequently write SQL' in q_exp:
+        return True
+    return False
+
 def load_db_data():
     """Reconstructs state by chronologically replaying the append-only log."""
     db_data = {"responses": [], "demographics": {}, "finalThoughts": {}}
@@ -418,9 +447,29 @@ def load_db_data():
                     edata = event.get("data", {})
                     
                     if etype == "RESPONSE":
-                        responses_map[edata.get('id')] = edata
+                        pid = edata.get('participantId')
+                        q_num = edata.get('questionNumber')
+                        # Deduplicate by (participantId, questionNumber) so re-answering replaces stale answers
+                        if pid and q_num is not None:
+                            stale_keys = [
+                                k for k, v in responses_map.items()
+                                if v.get('participantId') == pid and str(v.get('questionNumber')) == str(q_num)
+                            ]
+                            for sk in stale_keys:
+                                del responses_map[sk]
+                        rid = edata.get('id') or f"{pid}_{q_num}"
+                        responses_map[rid] = edata
                     elif etype == "DEMOGRAPHICS":
-                        db_data['demographics'][edata.get('participantId')] = edata
+                        pid = edata.get('participantId')
+                        if pid:
+                            db_data['demographics'][pid] = edata
+                            # In live participant flow, demographics are submitted before Q1-Q25.
+                            # Clear any earlier responses for this pid unless this is an admin batch import.
+                            if not edata.get('_admin_import'):
+                                responses_map = {
+                                    k: v for k, v in responses_map.items()
+                                    if v.get('participantId') != pid
+                                }
                     elif etype == "FINAL_THOUGHT":
                         db_data['finalThoughts'][edata.get('participantId')] = edata
                     elif etype == "DELETE_USER":
@@ -586,6 +635,12 @@ def export_csv(db_data):
 class TelemetryHandler(http.server.SimpleHTTPRequestHandler):
     directory = BASE_DIR
 
+    def end_headers(self):
+        self.send_header('Cache-Control', 'no-store, no-cache, must-revalidate, max-age=0')
+        self.send_header('Pragma', 'no-cache')
+        self.send_header('Expires', '0')
+        super().end_headers()
+
     def get_request_admin_token(self):
         auth_header = self.headers.get('Authorization', '')
         if auth_header.startswith('Bearer '):
@@ -735,50 +790,66 @@ class TelemetryHandler(http.server.SimpleHTTPRequestHandler):
         elif parsed_path == '/api/save-telemetry':
             try:
                 payload = json.loads(body.decode('utf-8'))
+                is_admin = self.is_admin_authenticated()
                 
                 with db_lock:
                     pst_now = datetime.now(ZoneInfo('America/Los_Angeles')).strftime('%Y-%m-%d %I:%M:%S %p PST')
-                    # Handle new incremental payloads
+                    # Handle incremental payloads from live study participants
                     if payload.get('newResponse'):
                         r = payload['newResponse']
-                        r.pop('seed', None)
-                        r.pop('random_seed', None)
-                        print(f"[{pst_now}] Response logged: Participant={r.get('participantId')} Q={r.get('questionNumber')} Correct={r.get('isCorrect')}", flush=True)
-                        append_event("RESPONSE", r)
+                        if is_legacy_response(r):
+                            print(f"[{pst_now}] Rejected legacy response from Participant={r.get('participantId')} Q={r.get('questionNumber')}", flush=True)
+                        else:
+                            r.pop('seed', None)
+                            r.pop('random_seed', None)
+                            print(f"[{pst_now}] Response logged: Participant={r.get('participantId')} Q={r.get('questionNumber')} Correct={r.get('isCorrect')}", flush=True)
+                            append_event("RESPONSE", r)
                     if payload.get('newDemographic'):
                         d = payload['newDemographic']
-                        g_info = parse_gender_info(d.get('gender'))
-                        if g_info['code'] != '':
-                            d['gender'] = g_info['code']
-                            d['genderLabel'] = g_info['label']
-                        e_info = parse_education_info(d.get('education') or d.get('highestEducation') or d.get('academicStanding'))
-                        if e_info['code'] != '':
-                            d['education'] = e_info['code']
-                            d['educationLabel'] = e_info['label']
-                        append_event("DEMOGRAPHICS", d)
+                        if is_legacy_demographic(d):
+                            print(f"[{pst_now}] Rejected legacy demographic from Participant={d.get('participantId')}", flush=True)
+                        else:
+                            g_info = parse_gender_info(d.get('gender'))
+                            if g_info['code'] != '':
+                                d['gender'] = g_info['code']
+                                d['genderLabel'] = g_info['label']
+                            e_info = parse_education_info(d.get('education') or d.get('highestEducation') or d.get('academicStanding'))
+                            if e_info['code'] != '':
+                                d['education'] = e_info['code']
+                                d['educationLabel'] = e_info['label']
+                            append_event("DEMOGRAPHICS", d)
                     if payload.get('newFinalThought'):
                         append_event("FINAL_THOUGHT", payload['newFinalThought'])
 
-                    # Support legacy arrays if old clients connect
-                    for r in payload.get('responses', []):
-                        r.pop('seed', None)
-                        r.pop('random_seed', None)
-                        print(f"[{pst_now}] Response logged (batch): Participant={r.get('participantId')} Q={r.get('questionNumber')} Correct={r.get('isCorrect')}", flush=True)
-                        append_event("RESPONSE", r)
-                    if payload.get('demographics'):
-                        for k, v in payload['demographics'].items():
-                            g_info = parse_gender_info(v.get('gender'))
-                            if g_info['code'] != '':
-                                v['gender'] = g_info['code']
-                                v['genderLabel'] = g_info['label']
-                            e_info = parse_education_info(v.get('education') or v.get('highestEducation') or v.get('academicStanding'))
-                            if e_info['code'] != '':
-                                v['education'] = e_info['code']
-                                v['educationLabel'] = e_info['label']
-                            append_event("DEMOGRAPHICS", v)
-                    if payload.get('finalThoughts'):
-                        for k, v in payload['finalThoughts'].items():
-                            append_event("FINAL_THOUGHT", v)
+                    # Only allow batch arrays (responses, demographics, finalThoughts) from authenticated Admin imports.
+                    # Never accept unauthenticated batch dumps from stale cached client localStorage!
+                    if is_admin:
+                        for r in payload.get('responses', []):
+                            if isinstance(r, dict) and not is_legacy_response(r):
+                                r.pop('seed', None)
+                                r.pop('random_seed', None)
+                                print(f"[{pst_now}] Response logged (admin batch): Participant={r.get('participantId')} Q={r.get('questionNumber')} Correct={r.get('isCorrect')}", flush=True)
+                                append_event("RESPONSE", r)
+                        if payload.get('demographics') and isinstance(payload['demographics'], dict):
+                            for k, v in payload['demographics'].items():
+                                if isinstance(v, dict) and not is_legacy_demographic(v):
+                                    v = dict(v)
+                                    v['_admin_import'] = True
+                                    g_info = parse_gender_info(v.get('gender'))
+                                    if g_info['code'] != '':
+                                        v['gender'] = g_info['code']
+                                        v['genderLabel'] = g_info['label']
+                                    e_info = parse_education_info(v.get('education') or v.get('highestEducation') or v.get('academicStanding'))
+                                    if e_info['code'] != '':
+                                        v['education'] = e_info['code']
+                                        v['educationLabel'] = e_info['label']
+                                    append_event("DEMOGRAPHICS", v)
+                        if payload.get('finalThoughts') and isinstance(payload['finalThoughts'], dict):
+                            for k, v in payload['finalThoughts'].items():
+                                if isinstance(v, dict):
+                                    append_event("FINAL_THOUGHT", v)
+                    elif payload.get('responses') or payload.get('demographics') or payload.get('finalThoughts'):
+                        print(f"[{pst_now}] Ignored unauthenticated batch localStorage dump on /api/save-telemetry", flush=True)
 
                     # Export CSV
                     db_data = load_db_data()

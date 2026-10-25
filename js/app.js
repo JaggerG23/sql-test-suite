@@ -158,6 +158,12 @@ class QueryExperimentApp {
     }
 
     if (this.isParticipantView() && !this.hasAcceptedConsent()) {
+      if (this.analytics && typeof this.analytics.resetParticipantAttemptState === 'function') {
+        this.analytics.resetParticipantAttemptState();
+      }
+      if (this.humanResolver && this.humanResolver.stats) {
+        this.humanResolver.stats.totalAnswered = 0;
+      }
       this.currentQuestionNumber = 'consent';
       await this.loadIncrementalQuestion('consent');
     } else if (this.isParticipantView() && !this.hasCompletedDemographics()) {

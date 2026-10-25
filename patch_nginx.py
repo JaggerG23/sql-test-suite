@@ -24,14 +24,17 @@ server {
     }
 
     location = /admin {
+        add_header Cache-Control "no-store, no-cache, must-revalidate, proxy-revalidate, max-age=0" always;
         try_files /index.html =404;
     }
 
     location = /admin/ {
+        add_header Cache-Control "no-store, no-cache, must-revalidate, proxy-revalidate, max-age=0" always;
         try_files /index.html =404;
     }
 
     location / {
+        add_header Cache-Control "no-store, no-cache, must-revalidate, proxy-revalidate, max-age=0" always;
         try_files $uri $uri/ =404;
     }
 

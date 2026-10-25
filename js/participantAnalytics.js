@@ -7,6 +7,8 @@
 
 class ParticipantAnalytics {
   constructor() {
+    this.studySchemaVersion = 'v2026_10_24_final_25q';
+    this.schemaVersionKey = 'sql_study_schema_version';
     this.storageKey = 'sql_study_responses';
     this.trainingStorageKey = 'sql_study_training_responses';
     this.demographicsKey = 'sql_study_demographics';
@@ -14,11 +16,12 @@ class ParticipantAnalytics {
     this.participantIdKey = 'sql_study_participant_id';
     this.sessionIdKey = 'sql_study_session_id';
 
+    this.enforceStudySchemaVersion();
+
     this.participantId = this.initParticipantId();
     this.sessionId = this.initSessionId();
     this.callbacks = [];
 
-    this.migrateLegacyData();
     this.responses = this.loadResponses();
     this.trainingResponses = this.loadTrainingResponses();
     this.demographics = this.loadDemographics();
@@ -34,42 +37,81 @@ class ParticipantAnalytics {
     }
   }
 
-  // Auto-migrate legacy storage keys
-  migrateLegacyData() {
+  // Purge any legacy prototype keys and invalidate stale localStorage if the study schema version changed
+  enforceStudySchemaVersion() {
     try {
-      const oldResponses = localStorage.getItem('sql_test_suite_participant_responses');
-      if (oldResponses && !localStorage.getItem(this.storageKey)) {
-        localStorage.setItem(this.storageKey, oldResponses);
-      }
-
-      const demos = this.loadDemographics();
-      const thoughts = this.loadFinalThoughts();
-      let migrated = false;
-
+      const keysToRemove = [];
       for (let i = 0; i < localStorage.length; i++) {
-        const key = localStorage.key(i);
-        if (key && key.startsWith('sql_test_suite_demographics_')) {
-          const pid = key.replace('sql_test_suite_demographics_', '');
-          try {
-            demos[pid] = JSON.parse(localStorage.getItem(key));
-            migrated = true;
-          } catch (e) {}
-        } else if (key && key.startsWith('sql_test_suite_final_thoughts_')) {
-          const pid = key.replace('sql_test_suite_final_thoughts_', '');
-          try {
-            thoughts[pid] = JSON.parse(localStorage.getItem(key));
-            migrated = true;
-          } catch (e) {}
+        const k = localStorage.key(i);
+        if (k && k.startsWith('sql_test_suite_')) {
+          keysToRemove.push(k);
         }
       }
+      keysToRemove.forEach(k => localStorage.removeItem(k));
 
-      if (migrated) {
-        localStorage.setItem(this.demographicsKey, JSON.stringify(demos));
-        localStorage.setItem(this.finalThoughtsKey, JSON.stringify(thoughts));
+      const storedVersion = localStorage.getItem(this.schemaVersionKey);
+      if (storedVersion !== this.studySchemaVersion) {
+        const staleStudyKeys = [];
+        for (let i = 0; i < localStorage.length; i++) {
+          const k = localStorage.key(i);
+          if (k && k.startsWith('sql_study_') && k !== 'sql_study_admin_config' && k !== 'sql_study_admin_token') {
+            staleStudyKeys.push(k);
+          }
+        }
+        staleStudyKeys.forEach(k => localStorage.removeItem(k));
+        try {
+          const sessionKeys = [];
+          for (let i = 0; i < sessionStorage.length; i++) {
+            const sk = sessionStorage.key(i);
+            if (sk && sk.startsWith('sql_study_') && sk !== 'sql_study_admin_token') {
+              sessionKeys.push(sk);
+            }
+          }
+          sessionKeys.forEach(sk => sessionStorage.removeItem(sk));
+        } catch (e) {}
+        localStorage.setItem(this.schemaVersionKey, this.studySchemaVersion);
       }
     } catch (e) {
-      console.warn('Telemetry migration check:', e);
+      console.warn('Schema version check:', e);
     }
+  }
+
+  // Reset attempt state when a participant begins a new session from the Consent / Intake screen
+  resetParticipantAttemptState(forceNewParticipantId = false) {
+    try {
+      const existingResps = this.getParticipantResponses(this.participantId);
+      const hasFinishedPrior = localStorage.getItem('sql_study_completed_finished') === 'true';
+      if (forceNewParticipantId || existingResps.length > 0 || hasFinishedPrior) {
+        const newPid = 'user_' + Math.random().toString(36).substring(2, 9) + Math.random().toString(36).substring(2, 5);
+        this.participantId = newPid;
+        localStorage.setItem(this.participantIdKey, newPid);
+      }
+      const pid = this.participantId;
+      this.responses = (this.responses || []).filter(r => r && r.participantId !== pid);
+      this.trainingResponses = (this.trainingResponses || []).filter(r => r && r.participantId !== pid);
+      if (this.demographics && this.demographics[pid]) {
+        delete this.demographics[pid];
+      }
+      if (this.finalThoughts && this.finalThoughts[pid]) {
+        delete this.finalThoughts[pid];
+      }
+      this.saveResponsesLocally();
+      localStorage.setItem(this.trainingStorageKey, JSON.stringify(this.trainingResponses));
+      localStorage.setItem(this.demographicsKey, JSON.stringify(this.demographics || {}));
+      localStorage.setItem(this.finalThoughtsKey, JSON.stringify(this.finalThoughts || {}));
+      localStorage.removeItem('sql_study_completed_finished');
+      localStorage.removeItem('sql_study_training_completed_' + pid);
+      localStorage.removeItem('sql_study_final_thoughts_done_' + pid);
+      try {
+        sessionStorage.removeItem('sql_study_training_completed_' + pid);
+      } catch (e) {}
+      if (this.isParticipantView()) {
+        this.prefetchRotatingGroupIndex(pid);
+      }
+    } catch (e) {
+      console.warn('Reset participant attempt state error:', e);
+    }
+    return this.participantId;
   }
 
   initParticipantId() {
@@ -85,12 +127,13 @@ class ParticipantAnalytics {
 
     let pid = null;
     if (!isExplicitNew) {
-      pid = localStorage.getItem(this.participantIdKey) || localStorage.getItem('sql_test_suite_participant_id');
+      pid = localStorage.getItem(this.participantIdKey);
     }
 
     if (!pid || isExplicitNew) {
       pid = 'user_' + Math.random().toString(36).substring(2, 9) + Math.random().toString(36).substring(2, 5);
       localStorage.setItem(this.participantIdKey, pid);
+      localStorage.removeItem('sql_study_completed_finished');
       try {
         sessionStorage.removeItem('sql_study_consent_accepted');
         localStorage.removeItem('sql_study_consent_accepted');
@@ -602,25 +645,27 @@ class ParticipantAnalytics {
     } catch (e) {
       // Backend offline or static hosting
     }
-
-    if (!pullOnly) {
-      // Push local data to server or cloud webhook
-      this.pushToDiskStorage();
-      this.pushToCloudWebhook();
-    }
   }
 
   async pushToDiskStorage(incrementalData = null) {
     try {
-      const payload = incrementalData || {};
+      const payload = incrementalData ? { ...incrementalData, studyVersion: this.studySchemaVersion } : {};
 
       // If there's no incremental data to push, don't ping the server
       if (Object.keys(payload).length === 0) return;
 
       const endpoint = this.getApiUrl('/api/save-telemetry');
+      const token = (typeof window !== 'undefined' && window.adminAuth && typeof window.adminAuth.getToken === 'function')
+        ? window.adminAuth.getToken()
+        : '';
+      const headers = { 'Content-Type': 'application/json' };
+      if (token) {
+        headers['X-Admin-Token'] = token;
+        headers['Authorization'] = 'Bearer ' + token;
+      }
       await fetch(endpoint, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers,
         body: JSON.stringify(payload)
       });
     } catch (e) {
@@ -634,11 +679,10 @@ class ParticipantAnalytics {
     if (!webhookUrl) return;
 
     try {
+      // Only send incremental telemetry events, never full localStorage state
       const payload = {
-        responses: this.responses,
-        demographics: this.demographics,
-        finalThoughts: this.finalThoughts,
-        ...incrementalData
+        ...incrementalData,
+        studyVersion: this.studySchemaVersion
       };
 
       await fetch(webhookUrl, {
@@ -684,13 +728,20 @@ class ParticipantAnalytics {
   }
 
   logResponse(entry) {
-    const existingResponses = this.getParticipantResponses(this.participantId);
+    let existingResponses = this.getParticipantResponses(this.participantId);
     const maxQ = (typeof window !== 'undefined' && window.studyConfig && typeof window.studyConfig.getMaxQuestions === 'function')
       ? window.studyConfig.getMaxQuestions()
       : 25;
-    if (existingResponses.length >= maxQ) {
-      console.warn(`[ParticipantAnalytics] Participant ${this.participantId} has already completed the maximum of ${maxQ} questions. Dropping additional submission.`);
-      return null;
+
+    const rawQ = parseInt(entry.questionNumber, 10);
+    const resolvedQNum = (!isNaN(rawQ) && rawQ >= 1 && rawQ <= maxQ)
+      ? rawQ
+      : Math.min(maxQ, existingResponses.length + 1);
+
+    // If participant is starting at Q1 and stale responses exist for this ID, purge stale responses so new answers are never dropped
+    if (resolvedQNum === 1 && existingResponses.length >= maxQ) {
+      this.responses = (this.responses || []).filter(r => r && r.participantId !== this.participantId);
+      existingResponses = [];
     }
 
     const pst = this.getPSTDateTime();
@@ -700,11 +751,6 @@ class ParticipantAnalytics {
     const hostLang = entry.hostLanguage || (assignedGroup ? assignedGroup.hostLanguage : 'javascript');
     const activeDialectKey = entry.activeDialect || (assignedGroup ? assignedGroup.sqlDialect : 'pipe');
     const activeDialectLabel = entry.activeDialectName || (activeDialectKey === 'quorum' ? 'Quorum Syntax' : 'Google SQL (Pipe Syntax)');
-
-    const rawQ = parseInt(entry.questionNumber, 10);
-    const resolvedQNum = (!isNaN(rawQ) && rawQ >= 1 && rawQ <= maxQ)
-      ? rawQ
-      : Math.min(maxQ, existingResponses.length + 1);
 
     const trainingSummary = this.getTrainingSummary(this.participantId, entry);
     const rtMsVal = Math.max(0, Math.round(entry.responseTimeMs || 0));
@@ -717,6 +763,7 @@ class ParticipantAnalytics {
 
     const record = {
       id: 'resp_' + Date.now() + '_' + Math.random().toString(36).substring(2, 7),
+      studyVersion: this.studySchemaVersion,
       participantId: this.participantId,
       sessionId: this.sessionId,
       timestamp: new Date().toISOString(),
@@ -756,7 +803,15 @@ class ParticipantAnalytics {
       trainingTotalTimeS: trainingSummary.trainingTotalTimeS
     };
 
-    this.responses.push(record);
+    // Replace any existing response for the same (participantId, questionNumber) rather than dropping new answers
+    const existingIdx = this.responses.findIndex(
+      r => r && r.participantId === this.participantId && Number(r.questionNumber) === resolvedQNum
+    );
+    if (existingIdx !== -1) {
+      this.responses[existingIdx] = record;
+    } else {
+      this.responses.push(record);
+    }
     this.saveResponsesLocally();
 
     this.pushToDiskStorage({ newResponse: record });
@@ -772,10 +827,20 @@ class ParticipantAnalytics {
 
   saveDemographics(demographicsData, pid = this.participantId) {
     if (!pid) return null;
+    // Submitting demographics happens before training and Q1-Q25; purge any leftover responses for this pid
+    this.responses = (this.responses || []).filter(r => r && r.participantId !== pid);
+    this.trainingResponses = (this.trainingResponses || []).filter(r => r && r.participantId !== pid);
+    this.saveResponsesLocally();
+    try {
+      localStorage.setItem(this.trainingStorageKey, JSON.stringify(this.trainingResponses));
+      localStorage.removeItem('sql_study_completed_finished');
+    } catch (e) {}
+
     const pst = this.getPSTDateTime();
     const assignedGroup = this.decideAssignedGroupAfterDemographics(pid);
     const record = {
       participantId: pid,
+      studyVersion: this.studySchemaVersion,
       assignedGroup: assignedGroup ? assignedGroup.name : '',
       assignedGroupId: assignedGroup ? assignedGroup.id : '',
       assignedGroupName: assignedGroup ? assignedGroup.name : '',
@@ -832,6 +897,7 @@ class ParticipantAnalytics {
     };
     const record = {
       participantId: pid,
+      studyVersion: this.studySchemaVersion,
       assignedGroup: assignedGroup ? assignedGroup.name : '',
       assignedGroupId: assignedGroup ? assignedGroup.id : '',
       assignedGroupName: assignedGroup ? assignedGroup.name : '',
@@ -1208,7 +1274,13 @@ class ParticipantAnalytics {
     const finalUsers = new Set(this.responses.map(r => r.participantId)).size;
     const newUsers = Math.max(0, finalUsers - initialUsers);
 
-    this.pushToDiskStorage();
+    if (!this.isParticipantView()) {
+      this.pushToDiskStorage({
+        responses: incomingResponses,
+        demographics: incomingDemos,
+        finalThoughts: incomingThoughts
+      });
+    }
     if (this.channel) {
       this.channel.postMessage({ type: 'IMPORT_SYNC', importedCount, newUsers });
     }

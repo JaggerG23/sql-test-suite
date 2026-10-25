@@ -137,20 +137,28 @@ function doPost(e) {
       sheet = setupSheet();
     }
 
-    const incomingResponses = payload.newResponse
+    const rawResponses = payload.newResponse
       ? [payload.newResponse]
-      : (payload.record ? [payload.record] : (Array.isArray(payload.responses) ? payload.responses : []));
+      : (payload.record ? [payload.record] : (payload.action === 'adminImport' && Array.isArray(payload.responses) ? payload.responses : []));
+    const incomingResponses = rawResponses.filter(r => {
+      if (!r || typeof r !== 'object') return false;
+      const qn = parseInt(r.questionNumber, 10);
+      if (isNaN(qn) || qn < 1 || qn > 25) return false;
+      const rq = String(r.rawQuery || '');
+      if (rq.indexOf('agg_val') !== -1) return false;
+      return true;
+    });
 
     const incomingDemographics = Object.assign(
       {},
-      payload.demographics || {},
+      payload.action === 'adminImport' ? (payload.demographics || {}) : {},
       payload.newDemographic ? { [payload.newDemographic.participantId]: payload.newDemographic } : {},
       payload.newDemographics ? { [payload.newDemographics.participantId]: payload.newDemographics } : {}
     );
 
     const incomingFinalThoughts = Object.assign(
       {},
-      payload.finalThoughts || {},
+      payload.action === 'adminImport' ? (payload.finalThoughts || {}) : {},
       payload.newFinalThought ? { [payload.newFinalThought.participantId]: payload.newFinalThought } : {}
     );
 
