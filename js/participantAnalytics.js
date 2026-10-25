@@ -735,6 +735,31 @@ class ParticipantAnalytics {
             this.responses = Array.from(map.values());
           }
 
+          if (diskData.trainingResponses && Array.isArray(diskData.trainingResponses)) {
+            if (!Array.isArray(this.trainingResponses)) {
+              this.trainingResponses = [];
+            }
+            const tMap = new Map();
+            this.trainingResponses.forEach(tr => {
+              if (tr && tr.participantId && tr.questionNumber !== undefined) {
+                tMap.set(`${tr.participantId}_t${tr.questionNumber}`, tr);
+              }
+            });
+            diskData.trainingResponses.forEach(tr => {
+              if (tr && tr.participantId && tr.questionNumber !== undefined) {
+                const key = `${tr.participantId}_t${tr.questionNumber}`;
+                if (!tMap.has(key)) {
+                  changed = true;
+                }
+                tMap.set(key, tr);
+              }
+            });
+            this.trainingResponses = Array.from(tMap.values());
+            try {
+              localStorage.setItem(this.trainingStorageKey, JSON.stringify(this.trainingResponses));
+            } catch (e) {}
+          }
+
           if (diskData.demographics && typeof diskData.demographics === 'object') {
             Object.assign(this.demographics, diskData.demographics);
             localStorage.setItem(this.demographicsKey, JSON.stringify(this.demographics));
@@ -772,6 +797,9 @@ class ParticipantAnalytics {
       if (payload.newResponse && payload.newResponse.participantId) {
         eventPid = payload.newResponse.participantId;
         eventKey = `resp_${eventPid}_q${payload.newResponse.questionNumber}`;
+      } else if (payload.newTrainingResponse && payload.newTrainingResponse.participantId) {
+        eventPid = payload.newTrainingResponse.participantId;
+        eventKey = `train_${eventPid}_t${payload.newTrainingResponse.questionNumber}`;
       } else if (payload.newDemographic && payload.newDemographic.participantId) {
         eventPid = payload.newDemographic.participantId;
         eventKey = `demo_${eventPid}`;
@@ -846,68 +874,78 @@ class ParticipantAnalytics {
       return true;
     }
 
-    if (this._isFlushingOutbox) return false;
+    if (this._isFlushingOutbox && this._activeFlushPromise) {
+      return this._activeFlushPromise;
+    }
     this._isFlushingOutbox = true;
     if (this._outboxRetryTimer) {
       clearTimeout(this._outboxRetryTimer);
       this._outboxRetryTimer = null;
     }
 
-    let allSucceeded = true;
-    let maxAttemptsSeen = 0;
+    this._activeFlushPromise = (async () => {
+      let allSucceeded = true;
+      let maxAttemptsSeen = 0;
 
-    try {
-      const token = (typeof window !== 'undefined' && window.adminAuth && typeof window.adminAuth.getToken === 'function')
-        ? window.adminAuth.getToken()
-        : '';
-      const headers = { 'Content-Type': 'application/json' };
-      if (token) {
-        headers['X-Admin-Token'] = token;
-        headers['Authorization'] = 'Bearer ' + token;
-      }
-
-      const snapshot = [...this.pendingOutbox];
-      for (const item of snapshot) {
-        if (!item || !item.payload || item.studyVersion !== this.studySchemaVersion) {
-          this.pendingOutbox = this.pendingOutbox.filter(x => x !== item);
-          continue;
+      try {
+        const token = (typeof window !== 'undefined' && window.adminAuth && typeof window.adminAuth.getToken === 'function')
+          ? window.adminAuth.getToken()
+          : '';
+        const headers = { 'Content-Type': 'application/json' };
+        if (token) {
+          headers['X-Admin-Token'] = token;
+          headers['Authorization'] = 'Bearer ' + token;
         }
-        try {
-          const res = await fetch(endpoint, {
-            method: 'POST',
-            headers,
-            keepalive: true,
-            body: JSON.stringify(item.payload)
-          });
-          if (res.ok || (res.status >= 400 && res.status < 500 && res.status !== 408 && res.status !== 429)) {
-            this.pendingOutbox = this.pendingOutbox.filter(x => x && x.eventKey !== item.eventKey);
-            this.savePendingOutbox();
-          } else {
-            item.attempts = (item.attempts || 0) + 1;
-            maxAttemptsSeen = Math.max(maxAttemptsSeen, item.attempts);
-            allSucceeded = false;
-            this.savePendingOutbox();
+
+        while (Array.isArray(this.pendingOutbox) && this.pendingOutbox.length > 0 && allSucceeded) {
+          const snapshot = [...this.pendingOutbox];
+          for (const item of snapshot) {
+            if (!item || !item.payload || item.studyVersion !== this.studySchemaVersion) {
+              this.pendingOutbox = this.pendingOutbox.filter(x => x !== item);
+              continue;
+            }
+            try {
+              const res = await fetch(endpoint, {
+                method: 'POST',
+                headers,
+                keepalive: true,
+                body: JSON.stringify(item.payload)
+              });
+              if (res.ok || (res.status >= 400 && res.status < 500 && res.status !== 408 && res.status !== 429)) {
+                this.pendingOutbox = this.pendingOutbox.filter(x => x && x.eventKey !== item.eventKey);
+                this.savePendingOutbox();
+              } else {
+                item.attempts = (item.attempts || 0) + 1;
+                maxAttemptsSeen = Math.max(maxAttemptsSeen, item.attempts);
+                allSucceeded = false;
+                this.savePendingOutbox();
+                break;
+              }
+            } catch (err) {
+              item.attempts = (item.attempts || 0) + 1;
+              maxAttemptsSeen = Math.max(maxAttemptsSeen, item.attempts);
+              allSucceeded = false;
+              this.savePendingOutbox();
+              break; // Stop sequential loop on network disconnect, retry later
+            }
           }
-        } catch (err) {
-          item.attempts = (item.attempts || 0) + 1;
-          maxAttemptsSeen = Math.max(maxAttemptsSeen, item.attempts);
-          allSucceeded = false;
-          this.savePendingOutbox();
-          break; // Stop sequential loop on network disconnect, retry later
         }
+      } finally {
+        this._isFlushingOutbox = false;
+        this._activeFlushPromise = null;
       }
-    } finally {
-      this._isFlushingOutbox = false;
-    }
 
-    if (!allSucceeded && this.pendingOutbox.length > 0) {
-      const delayMs = Math.min(15000, Math.round(1500 * Math.pow(1.5, Math.min(6, maxAttemptsSeen))));
-      this._outboxRetryTimer = setTimeout(() => {
-        this._outboxRetryTimer = null;
-        this.flushPendingOutbox();
-      }, delayMs);
-    }
-    return allSucceeded;
+      if (!allSucceeded && this.pendingOutbox.length > 0) {
+        const delayMs = Math.min(15000, Math.round(1500 * Math.pow(1.5, Math.min(6, maxAttemptsSeen))));
+        this._outboxRetryTimer = setTimeout(() => {
+          this._outboxRetryTimer = null;
+          this.flushPendingOutbox();
+        }, delayMs);
+      }
+      return allSucceeded;
+    })();
+
+    return this._activeFlushPromise;
   }
 
   async pushToCloudWebhook(incrementalData = null) {
@@ -1041,6 +1079,22 @@ class ParticipantAnalytics {
       tabSwitchCount: entry.tabSwitchCount || 0,
       focusLostDurationMs: Math.max(0, Math.round(entry.focusLostDurationMs || 0)),
       answerChangeCount: Math.max(0, parseInt(entry.answerChangeCount, 10) || 0),
+      t1_selected_key: trainingSummary.t1_selected_key,
+      t1_correct_option: trainingSummary.t1_correct_option,
+      t1_is_correct: trainingSummary.t1_is_correct,
+      t1_time_ms: trainingSummary.t1_time_ms,
+      t2_selected_key: trainingSummary.t2_selected_key,
+      t2_correct_option: trainingSummary.t2_correct_option,
+      t2_is_correct: trainingSummary.t2_is_correct,
+      t2_time_ms: trainingSummary.t2_time_ms,
+      t3_selected_key: trainingSummary.t3_selected_key,
+      t3_correct_option: trainingSummary.t3_correct_option,
+      t3_is_correct: trainingSummary.t3_is_correct,
+      t3_time_ms: trainingSummary.t3_time_ms,
+      t4_selected_key: trainingSummary.t4_selected_key,
+      t4_correct_option: trainingSummary.t4_correct_option,
+      t4_is_correct: trainingSummary.t4_is_correct,
+      t4_time_ms: trainingSummary.t4_time_ms,
       trainingAccuracy: trainingSummary.trainingAccuracy,
       trainingTotalTimeS: trainingSummary.trainingTotalTimeS
     };
@@ -1183,16 +1237,18 @@ class ParticipantAnalytics {
     const pid = data.participantId || this.participantId;
     const tQNum = parseInt(data.questionNumber, 10) || 1;
     const canonicalKey = data.correctKey || this.getCanonicalCorrectKey(tQNum, true) || null;
-    const isCorrectVal = (data.isCorrect !== undefined && data.isCorrect !== null)
-      ? (data.isCorrect ? 1 : 0)
-      : ((canonicalKey && Number(data.selectedKey) === Number(canonicalKey)) ? 1 : 0);
+    const isCorrectVal = (canonicalKey && data.selectedKey !== undefined && data.selectedKey !== null && data.selectedKey !== '')
+      ? (Number(data.selectedKey) === Number(canonicalKey) ? 1 : 0)
+      : ((data.isCorrect !== undefined && data.isCorrect !== null) ? (data.isCorrect ? 1 : 0) : 0);
     const record = Object.assign({
       id: `train_${pid}_t${tQNum}_${Date.now().toString(36)}_${this.generateRandomHex(4)}`,
+      studyVersion: this.studySchemaVersion,
       participantId: pid,
       sessionId: this.sessionId,
       timestamp: new Date().toISOString(),
       isTraining: true
     }, data, {
+      questionNumber: tQNum,
       correctKey: canonicalKey,
       isCorrect: isCorrectVal
     });
@@ -1212,6 +1268,14 @@ class ParticipantAnalytics {
     try {
       localStorage.setItem(this.trainingStorageKey, JSON.stringify(this.trainingResponses));
     } catch (e) {}
+
+    this.pushToDiskStorage({ newTrainingResponse: record });
+    this.pushToCloudWebhook({ newTrainingResponse: record });
+
+    if (this.channel) {
+      this.channel.postMessage({ type: 'TRAINING_RESPONSE', record });
+    }
+    this.notify({ type: 'TRAINING_RESPONSE', record });
     return record;
   }
 
@@ -1223,33 +1287,114 @@ class ParticipantAnalytics {
   }
 
   getTrainingSummary(participantId = this.participantId, fallbackResponse = null) {
-    if (fallbackResponse) {
-      const acc = fallbackResponse.trainingAccuracy ?? fallbackResponse.training_accuracy;
-      const timeS = fallbackResponse.trainingTotalTimeS ?? fallbackResponse.training_total_time_s;
-      if (acc !== undefined && acc !== null && acc !== '' && timeS !== undefined && timeS !== null && timeS !== '') {
-        return { trainingAccuracy: acc, trainingTotalTimeS: timeS };
-      }
-    }
+    const result = {
+      t1_selected_key: '', t1_correct_option: '', t1_is_correct: '', t1_time_ms: '',
+      t2_selected_key: '', t2_correct_option: '', t2_is_correct: '', t2_time_ms: '',
+      t3_selected_key: '', t3_correct_option: '', t3_is_correct: '', t3_time_ms: '',
+      t4_selected_key: '', t4_correct_option: '', t4_is_correct: '', t4_time_ms: '',
+      trainingAccuracy: '',
+      trainingTotalTimeS: ''
+    };
+
+    const byQ = {};
     const tResps = this.getTrainingResponses(participantId);
     if (tResps && tResps.length > 0) {
-      const correctCount = tResps.filter(r => this.toBinary(r.isCorrect) === 1).length;
-      const totalMs = tResps.reduce((sum, r) => sum + (parseInt(r.responseTimeMs, 10) || 0), 0);
-      return {
-        trainingAccuracy: Math.round((correctCount / tResps.length) * 10000) / 100,
-        trainingTotalTimeS: Math.round((totalMs / 1000.0) * 1000) / 1000
-      };
-    }
-    if (Array.isArray(this.responses)) {
-      const userResps = this.responses.filter(r => r.participantId === participantId);
-      for (const r of userResps) {
-        const acc = r.trainingAccuracy ?? r.training_accuracy;
-        const timeS = r.trainingTotalTimeS ?? r.training_total_time_s;
-        if (acc !== undefined && acc !== null && acc !== '') {
-          return { trainingAccuracy: acc, trainingTotalTimeS: timeS ?? '' };
+      for (const tr of tResps) {
+        const qn = parseInt(tr.questionNumber, 10);
+        if (qn >= 1 && qn <= 4) {
+          byQ[qn] = {
+            selectedKey: tr.selectedKey,
+            correctOption: tr.correctKey ?? tr.correct_option,
+            isCorrect: tr.isCorrect,
+            timeMs: tr.responseTimeMs ?? tr.time_ms
+          };
         }
       }
     }
-    return { trainingAccuracy: '', trainingTotalTimeS: '' };
+
+    const candidateSources = [];
+    if (fallbackResponse && typeof fallbackResponse === 'object') {
+      candidateSources.push(fallbackResponse);
+    }
+    if (Array.isArray(this.responses)) {
+      for (const r of this.responses) {
+        if (r && r.participantId === participantId && r !== fallbackResponse) {
+          candidateSources.push(r);
+        }
+      }
+    }
+
+    for (let tNum = 1; tNum <= 4; tNum++) {
+      if (!byQ[tNum]) {
+        for (const src of candidateSources) {
+          const sk = src[`t${tNum}_selected_key`] ?? src[`t${tNum}SelectedKey`];
+          const co = src[`t${tNum}_correct_option`] ?? src[`t${tNum}CorrectOption`];
+          const ic = src[`t${tNum}_is_correct`] ?? src[`t${tNum}IsCorrect`];
+          const tm = src[`t${tNum}_time_ms`] ?? src[`t${tNum}TimeMs`];
+          if (
+            (sk !== undefined && sk !== null && sk !== '') ||
+            (ic !== undefined && ic !== null && ic !== '') ||
+            (tm !== undefined && tm !== null && tm !== '')
+          ) {
+            byQ[tNum] = { selectedKey: sk, correctOption: co, isCorrect: ic, timeMs: tm };
+            break;
+          }
+        }
+      }
+    }
+
+    let answeredCount = 0;
+    let correctCount = 0;
+    let totalTimeMs = 0;
+
+    for (let tNum = 1; tNum <= 4; tNum++) {
+      const canonKey = this.getCanonicalCorrectKey(tNum, true);
+      const entry = byQ[tNum];
+      if (entry) {
+        const hasSk = entry.selectedKey !== undefined && entry.selectedKey !== null && entry.selectedKey !== '';
+        const skVal = hasSk ? parseInt(entry.selectedKey, 10) : '';
+        const cOptVal = canonKey !== '' ? canonKey : (entry.correctOption ?? '');
+        let icVal = '';
+        if (hasSk && !isNaN(skVal) && canonKey !== '') {
+          icVal = (skVal === Number(canonKey)) ? 1 : 0;
+        } else if (entry.isCorrect !== undefined && entry.isCorrect !== null && entry.isCorrect !== '') {
+          icVal = this.toBinary(entry.isCorrect);
+        }
+        const hasTm = entry.timeMs !== undefined && entry.timeMs !== null && entry.timeMs !== '';
+        const tmVal = hasTm ? Math.max(0, parseInt(entry.timeMs, 10) || 0) : '';
+
+        result[`t${tNum}_selected_key`] = (!isNaN(skVal) && skVal !== '') ? skVal : '';
+        result[`t${tNum}_correct_option`] = cOptVal;
+        result[`t${tNum}_is_correct`] = icVal;
+        result[`t${tNum}_time_ms`] = tmVal;
+
+        if (icVal !== '') {
+          answeredCount++;
+          if (icVal === 1) correctCount++;
+        }
+        if (tmVal !== '') {
+          totalTimeMs += tmVal;
+        }
+      }
+    }
+
+    if (answeredCount > 0) {
+      result.trainingAccuracy = Math.round((correctCount / answeredCount) * 10000) / 100;
+      result.trainingTotalTimeS = Math.round((totalTimeMs / 1000.0) * 1000) / 1000;
+      return result;
+    }
+
+    for (const src of candidateSources) {
+      const acc = src.trainingAccuracy ?? src.training_accuracy;
+      const timeS = src.trainingTotalTimeS ?? src.training_total_time_s;
+      if (acc !== undefined && acc !== null && acc !== '') {
+        result.trainingAccuracy = acc;
+        result.trainingTotalTimeS = (timeS !== undefined && timeS !== null) ? timeS : '';
+        return result;
+      }
+    }
+
+    return result;
   }
 
   hasCompletedTraining(pid = this.participantId) {
@@ -1498,6 +1643,7 @@ class ParticipantAnalytics {
     const initialUsers = new Set(this.responses.map(r => r.participantId)).size;
 
     const incomingResponses = data.responses || (Array.isArray(data) ? data : []);
+    const incomingTraining = Array.isArray(data.trainingResponses) ? data.trainingResponses : [];
     const incomingDemos = data.demographics || {};
     const incomingThoughts = data.finalThoughts || {};
 
@@ -1516,11 +1662,57 @@ class ParticipantAnalytics {
     });
 
     this.responses = Array.from(map.values());
+
+    if (!Array.isArray(this.trainingResponses)) {
+      this.trainingResponses = [];
+    }
+    const tMap = new Map();
+    this.trainingResponses.forEach(tr => {
+      if (tr && tr.participantId && tr.questionNumber !== undefined) {
+        tMap.set(`${tr.participantId}_t${tr.questionNumber}`, tr);
+      }
+    });
+    incomingTraining.forEach(tr => {
+      if (tr && tr.participantId && tr.questionNumber !== undefined) {
+        tMap.set(`${tr.participantId}_t${tr.questionNumber}`, tr);
+      }
+    });
+    // Also reconstruct trainingResponses if embedded on incoming study responses
+    incomingResponses.forEach(r => {
+      if (!r || !r.participantId) return;
+      for (let tNum = 1; tNum <= 4; tNum++) {
+        const tKey = `${r.participantId}_t${tNum}`;
+        if (!tMap.has(tKey)) {
+          const sk = r[`t${tNum}_selected_key`] ?? r[`t${tNum}SelectedKey`];
+          const tm = r[`t${tNum}_time_ms`] ?? r[`t${tNum}TimeMs`];
+          if (sk !== undefined && sk !== null && sk !== '') {
+            const canonKey = this.getCanonicalCorrectKey(tNum, true);
+            const skInt = parseInt(sk, 10);
+            tMap.set(tKey, {
+              id: `train_${r.participantId}_t${tNum}`,
+              studyVersion: this.studySchemaVersion,
+              participantId: r.participantId,
+              sessionId: r.sessionId || '',
+              timestamp: r.timestamp || new Date().toISOString(),
+              isTraining: true,
+              questionNumber: tNum,
+              selectedKey: !isNaN(skInt) ? skInt : sk,
+              correctKey: canonKey,
+              isCorrect: (!isNaN(skInt) && canonKey !== '') ? (skInt === Number(canonKey) ? 1 : 0) : 0,
+              responseTimeMs: (tm !== undefined && tm !== null && tm !== '') ? (parseInt(tm, 10) || 0) : 0
+            });
+          }
+        }
+      }
+    });
+    this.trainingResponses = Array.from(tMap.values());
+
     Object.assign(this.demographics, incomingDemos);
     Object.assign(this.finalThoughts, incomingThoughts);
 
     this.saveResponsesLocally();
     try {
+      localStorage.setItem(this.trainingStorageKey, JSON.stringify(this.trainingResponses));
       localStorage.setItem(this.demographicsKey, JSON.stringify(this.demographics));
       localStorage.setItem(this.finalThoughtsKey, JSON.stringify(this.finalThoughts));
     } catch (e) {}
@@ -1531,6 +1723,7 @@ class ParticipantAnalytics {
     if (!this.isParticipantView()) {
       this.pushToDiskStorage({
         responses: incomingResponses,
+        trainingResponses: this.trainingResponses,
         demographics: incomingDemos,
         finalThoughts: incomingThoughts
       });
@@ -1644,6 +1837,18 @@ class ParticipantAnalytics {
         const rawTrainAcc = getVal(row, ['training_accuracy', 'Training Accuracy', 'trainingAccuracy'], undefined);
         const rawTrainTimeS = getVal(row, ['training_total_time_s', 'Training Total Time (s)', 'trainingTotalTimeS'], undefined);
 
+        const trainFields = {};
+        for (let tNum = 1; tNum <= 4; tNum++) {
+          const rawTSk = getVal(row, [`t${tNum}_selected_key`, `t${tNum}SelectedKey`], undefined);
+          const rawTCo = getVal(row, [`t${tNum}_correct_option`, `t${tNum}CorrectOption`], undefined);
+          const rawTIc = getVal(row, [`t${tNum}_is_correct`, `t${tNum}IsCorrect`], undefined);
+          const rawTTm = getVal(row, [`t${tNum}_time_ms`, `t${tNum}TimeMs`], undefined);
+          trainFields[`t${tNum}_selected_key`] = (rawTSk !== '' && rawTSk !== undefined) ? parseInt(rawTSk, 10) : '';
+          trainFields[`t${tNum}_correct_option`] = (rawTCo !== '' && rawTCo !== undefined) ? parseInt(rawTCo, 10) : '';
+          trainFields[`t${tNum}_is_correct`] = (rawTIc !== '' && rawTIc !== undefined) ? this.toBinary(rawTIc) : '';
+          trainFields[`t${tNum}_time_ms`] = (rawTTm !== '' && rawTTm !== undefined) ? parseInt(rawTTm, 10) : '';
+        }
+
         const resp = {
           id: getVal(row, ['response_id', 'Response ID', 'id'], 0) || ('resp_' + Date.now() + '_' + Math.random().toString(36).substring(2, 7)),
           participantId: pid,
@@ -1672,6 +1877,7 @@ class ParticipantAnalytics {
           tabSwitchCount: parseInt(getVal(row, ['tab_switch_count', 'Tab Switch Count', 'tabSwitchCount'], undefined), 10) || 0,
           focusLostDurationMs: parseInt(getVal(row, ['focus_lost_duration_ms', 'Focus Lost Duration (ms)', 'focusLostDurationMs'], undefined), 10) || 0,
           answerChangeCount: parseInt(getVal(row, ['answer_change_count', 'Answer Change Count', 'Answer Changes', 'answerChangeCount'], undefined), 10) || 0,
+          ...trainFields,
           trainingAccuracy: rawTrainAcc !== '' && rawTrainAcc !== undefined ? Number(rawTrainAcc) : '',
           trainingTotalTimeS: rawTrainTimeS !== '' && rawTrainTimeS !== undefined ? Number(rawTrainTimeS) : '',
           rawQuery: getVal(row, ['raw_query', 'Raw SQL Query', 'rawQuery'], undefined) || '',
@@ -1753,12 +1959,14 @@ class ParticipantAnalytics {
 
   getParticipantToken(participantId = this.participantId) {
     const userResponses = this.getParticipantResponses(participantId);
+    const userTraining = this.getTrainingResponses(participantId);
     const demo = this.getDemographics(participantId);
     const thoughts = this.getFinalThoughts(participantId);
 
     const payload = {
       participantId,
       responses: userResponses,
+      trainingResponses: userTraining,
       demographics: demo ? { [participantId]: demo } : {},
       finalThoughts: thoughts ? { [participantId]: thoughts } : {}
     };
@@ -1768,6 +1976,7 @@ class ParticipantAnalytics {
 
   downloadParticipantJSON(participantId = this.participantId) {
     const userResponses = this.getParticipantResponses(participantId);
+    const userTraining = this.getTrainingResponses(participantId);
     const demo = this.getDemographics(participantId);
     const thoughts = this.getFinalThoughts(participantId);
 
@@ -1775,6 +1984,7 @@ class ParticipantAnalytics {
       participantId,
       exportedAt: new Date().toISOString(),
       responses: userResponses,
+      trainingResponses: userTraining,
       demographics: demo ? { [participantId]: demo } : {},
       finalThoughts: thoughts ? { [participantId]: thoughts } : {}
     };
@@ -1937,10 +2147,10 @@ class ParticipantAnalytics {
   getCanonicalCorrectKey(qNum, isTraining = false) {
     const idx = (parseInt(qNum, 10) || 1) - 1;
     if (isTraining) {
-      const tk = [12, 19, 31, 37];
+      const tk = [12, 21, 31, 33];
       return (idx >= 0 && idx < tk.length) ? (tk[idx] ^ ((idx * 7 + 13) & 0xFF)) : '';
     }
-    const sk = [9, 24, 24, 33, 42, 51, 52, 60, 71, 77, 87, 94, 97, 106, 113, 114, 127, 133, 138, 149, 155, 164, 165, 173, 182];
+    const sk = [9, 16, 24, 33, 42, 51, 52, 60, 71, 77, 87, 94, 99, 106, 109, 114, 127, 133, 138, 145, 157, 164, 165, 173, 182];
     return (idx >= 0 && idx < sk.length) ? (sk[idx] ^ ((idx * 7 + 13) & 0xFF)) : '';
   }
 
@@ -2008,6 +2218,22 @@ class ParticipantAnalytics {
       'answer_change_count',
       'selected_key',
       'correct_option',
+      't1_selected_key',
+      't1_correct_option',
+      't1_is_correct',
+      't1_time_ms',
+      't2_selected_key',
+      't2_correct_option',
+      't2_is_correct',
+      't2_time_ms',
+      't3_selected_key',
+      't3_correct_option',
+      't3_is_correct',
+      't3_time_ms',
+      't4_selected_key',
+      't4_correct_option',
+      't4_is_correct',
+      't4_time_ms',
       'training_accuracy',
       'training_total_time_s',
       'age',
@@ -2040,7 +2266,10 @@ class ParticipantAnalytics {
     const thoughtsObj = this.getFinalThoughts(r.participantId) || {};
     const assigned = this.getAssignedGroup(r.participantId);
 
-    const isCorrectVal = this.toBinary(r.isCorrect);
+    const canonicalCorrectOpt = this.resolveCorrectKey(r);
+    const isCorrectVal = (canonicalCorrectOpt !== '' && r.selectedKey !== undefined && r.selectedKey !== null && r.selectedKey !== '')
+      ? (Number(r.selectedKey) === Number(canonicalCorrectOpt) ? 1 : 0)
+      : this.toBinary(r.isCorrect);
     const rtMs = parseInt(r.responseTimeMs, 10) || 0;
     const rtS = Math.round((rtMs / 1000.0) * 1000) / 1000;
     const logRt = this.calcLogRT(rtMs);
@@ -2104,7 +2333,23 @@ class ParticipantAnalytics {
       r.focusLostDurationMs || 0,
       r.answerChangeCount || 0,
       r.selectedKey !== null && r.selectedKey !== undefined ? r.selectedKey : '',
-      this.resolveCorrectKey(r),
+      canonicalCorrectOpt,
+      trainingSummary.t1_selected_key,
+      trainingSummary.t1_correct_option,
+      trainingSummary.t1_is_correct,
+      trainingSummary.t1_time_ms,
+      trainingSummary.t2_selected_key,
+      trainingSummary.t2_correct_option,
+      trainingSummary.t2_is_correct,
+      trainingSummary.t2_time_ms,
+      trainingSummary.t3_selected_key,
+      trainingSummary.t3_correct_option,
+      trainingSummary.t3_is_correct,
+      trainingSummary.t3_time_ms,
+      trainingSummary.t4_selected_key,
+      trainingSummary.t4_correct_option,
+      trainingSummary.t4_is_correct,
+      trainingSummary.t4_time_ms,
       trainingSummary.trainingAccuracy,
       trainingSummary.trainingTotalTimeS,
       ageVal,
@@ -2132,6 +2377,25 @@ class ParticipantAnalytics {
     ].map(escapeCsv).join(',');
   }
 
+  getSortedResponsesForExport(filterParticipantId = null) {
+    const source = filterParticipantId
+      ? this.responses.filter(r => (r.participantId || 'Anonymous') === filterParticipantId)
+      : this.responses;
+    const byPid = new Map();
+    source.forEach(r => {
+      if (!r) return;
+      const pid = r.participantId || 'Anonymous';
+      if (!byPid.has(pid)) byPid.set(pid, []);
+      byPid.get(pid).push(r);
+    });
+    const ordered = [];
+    for (const [, list] of byPid.entries()) {
+      list.sort((a, b) => (parseInt(a.questionNumber, 10) || 0) - (parseInt(b.questionNumber, 10) || 0));
+      ordered.push(...list);
+    }
+    return ordered;
+  }
+
   downloadBlob(content, filename, mimeType) {
     const blob = new Blob([content], { type: mimeType });
     const url = URL.createObjectURL(blob);
@@ -2150,14 +2414,15 @@ class ParticipantAnalytics {
       return;
     }
 
+    const sortedResponses = this.getSortedResponsesForExport(null);
     const headers = this.getCSVHeaders().map(h => `"${h}"`).join(',');
-    const rows = this.responses.map(r => this.formatCSVRow(r));
+    const rows = sortedResponses.map(r => this.formatCSVRow(r));
     const csvContent = [headers, ...rows].join('\n');
     this.downloadBlob(csvContent, `participant_responses_${new Date().toISOString().slice(0, 10)}.csv`, 'text/csv;charset=utf-8;');
   }
 
   exportUserCSV(participantId) {
-    const userResponses = this.responses.filter(r => (r.participantId || 'Anonymous') === participantId);
+    const userResponses = this.getSortedResponsesForExport(participantId);
     if (userResponses.length === 0) {
       alert(`No responses logged for User ID: ${participantId}`);
       return;
@@ -2181,6 +2446,7 @@ class ParticipantAnalytics {
       summary: this.getAnalyticsSummary(),
       demographics: this.demographics,
       finalThoughts: this.finalThoughts,
+      trainingResponses: this.trainingResponses || [],
       responses: this.responses
     };
 
@@ -2192,11 +2458,15 @@ class ParticipantAnalytics {
     if (!participantId) return;
     if (confirm(`Are you sure you want to permanently delete all telemetry records for User ID: ${participantId}?`)) {
       this.responses = this.responses.filter(r => (r.participantId || 'Anonymous') !== participantId);
+      if (Array.isArray(this.trainingResponses)) {
+        this.trainingResponses = this.trainingResponses.filter(r => (r.participantId || 'Anonymous') !== participantId);
+      }
       delete this.demographics[participantId];
       delete this.finalThoughts[participantId];
 
       this.saveResponsesLocally();
       try {
+        localStorage.setItem(this.trainingStorageKey, JSON.stringify(this.trainingResponses || []));
         localStorage.setItem(this.demographicsKey, JSON.stringify(this.demographics));
         localStorage.setItem(this.finalThoughtsKey, JSON.stringify(this.finalThoughts));
       } catch (e) {}
@@ -2219,11 +2489,13 @@ class ParticipantAnalytics {
 
   async clearAllResponsesWithoutConfirm() {
     this.responses = [];
+    this.trainingResponses = [];
     this.demographics = {};
     this.finalThoughts = {};
 
     try {
       localStorage.removeItem(this.storageKey);
+      localStorage.removeItem(this.trainingStorageKey);
       localStorage.removeItem(this.demographicsKey);
       localStorage.removeItem(this.finalThoughtsKey);
     } catch (e) {}

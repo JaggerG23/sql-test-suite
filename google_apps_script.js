@@ -26,6 +26,10 @@ const CSV_HEADERS = [
   'tab_focus_lost', 'valid_trial', 'tab_switch_count', 'focus_lost_duration_ms',
   'answer_change_count',
   'selected_key', 'correct_option',
+  't1_selected_key', 't1_correct_option', 't1_is_correct', 't1_time_ms',
+  't2_selected_key', 't2_correct_option', 't2_is_correct', 't2_time_ms',
+  't3_selected_key', 't3_correct_option', 't3_is_correct', 't3_time_ms',
+  't4_selected_key', 't4_correct_option', 't4_is_correct', 't4_time_ms',
   'training_accuracy', 'training_total_time_s',
   'age', 'gender', 'gender_label', 'gender_male', 'gender_female',
   'education', 'education_label', 'has_college_degree',
@@ -41,6 +45,7 @@ const CSV_HEADERS = [
 const STRUCTURE_BY_QUESTION = [2, 3, 4, 5, 1, 2, 4, 5, 1, 3, 5, 2, 3, 4, 1, 4, 1, 2, 3, 5, 3, 2, 5, 4, 1];
 const OPERATOR_COUNT_BY_QUESTION = [5, 3, 3, 6, 4, 5, 3, 6, 4, 3, 16, 13, 3, 8, 6, 5, 7, 9, 7, 7, 10, 11, 23, 9, 10];
 const CORRECT_KEY_BY_QUESTION = [4, 4, 3, 3, 3, 3, 3, 2, 2, 1, 4, 4, 2, 2, 2, 4, 2, 1, 1, 3, 4, 4, 2, 3, 3];
+const TRAINING_CORRECT_KEY_BY_QUESTION = [1, 1, 4, 3];
 
 function setupSheet() {
   const ss = SpreadsheetApp.getActiveSpreadsheet();
@@ -68,12 +73,13 @@ function setupBackupSheet() {
 
 function loadBackupState() {
   const backupSheet = setupBackupSheet();
-  const db = { responses: [], demographics: {}, finalThoughts: {} };
+  const db = { responses: [], trainingResponses: [], demographics: {}, finalThoughts: {} };
   const lastRow = backupSheet.getLastRow();
   if (lastRow <= 1) return db;
 
   const rows = backupSheet.getRange(2, 1, lastRow - 1, 3).getValues();
   const respMap = new Map();
+  const trainMap = new Map();
   for (let i = 0; i < rows.length; i++) {
     const type = rows[i][0];
     const key = rows[i][1];
@@ -83,6 +89,8 @@ function loadBackupState() {
       const parsed = JSON.parse(rawJson);
       if (type === 'RESPONSE' && key) {
         respMap.set(key, parsed);
+      } else if (type === 'TRAINING_RESPONSE' && key) {
+        trainMap.set(key, parsed);
       } else if (type === 'DEMOGRAPHICS' && key) {
         db.demographics[key] = parsed;
       } else if (type === 'FINAL_THOUGHT' && key) {
@@ -91,6 +99,7 @@ function loadBackupState() {
     } catch (e) {}
   }
   db.responses = Array.from(respMap.values());
+  db.trainingResponses = Array.from(trainMap.values());
   return db;
 }
 
@@ -152,6 +161,10 @@ function doPost(e) {
       return true;
     });
 
+    const incomingTraining = payload.newTrainingResponse
+      ? [payload.newTrainingResponse]
+      : (payload.action === 'adminImport' && Array.isArray(payload.trainingResponses) ? payload.trainingResponses : []);
+
     const incomingDemographics = Object.assign(
       {},
       payload.action === 'adminImport' ? (payload.demographics || {}) : {},
@@ -176,6 +189,14 @@ function doPost(e) {
         if (idVals[i][0]) existingIds.add(String(idVals[i][0]));
       }
     }
+
+    incomingTraining.forEach(tr => {
+      if (tr && tr.participantId && tr.questionNumber !== undefined) {
+        const tKey = `${tr.participantId}_t${tr.questionNumber}`;
+        db.trainingResponses.push(tr);
+        appendBackupRecord('TRAINING_RESPONSE', tKey, tr);
+      }
+    });
 
     Object.keys(incomingDemographics).forEach(pid => {
       if (pid && incomingDemographics[pid]) {
@@ -285,12 +306,36 @@ function doPost(e) {
         ? r.decisionConfirmMs
         : (r.decision_confirm_ms !== undefined && r.decision_confirm_ms !== null ? r.decision_confirm_ms : '');
       const inputMethod = r.inputMethod || r.input_method || '';
-      const trainingAcc = (r.trainingAccuracy !== undefined && r.trainingAccuracy !== null)
-        ? r.trainingAccuracy
-        : (r.training_accuracy !== undefined && r.training_accuracy !== null ? r.training_accuracy : '');
-      const trainingTimeS = (r.trainingTotalTimeS !== undefined && r.trainingTotalTimeS !== null)
-        ? r.trainingTotalTimeS
-        : (r.training_total_time_s !== undefined && r.training_total_time_s !== null ? r.training_total_time_s : '');
+      const trainingCols16 = [];
+      let tAnsCnt = 0;
+      let tCorrCnt = 0;
+      let tTotalMs = 0;
+      for (let tNum = 1; tNum <= 4; tNum++) {
+        const canonTCk = TRAINING_CORRECT_KEY_BY_QUESTION[tNum - 1];
+        const trMatch = (db.trainingResponses || []).find(tr => tr && tr.participantId === pid && parseInt(tr.questionNumber, 10) === tNum);
+        const rawSk = trMatch ? trMatch.selectedKey : (r[`t${tNum}_selected_key`] !== undefined ? r[`t${tNum}_selected_key`] : r[`t${tNum}SelectedKey`]);
+        const rawTm = trMatch ? trMatch.responseTimeMs : (r[`t${tNum}_time_ms`] !== undefined ? r[`t${tNum}_time_ms`] : r[`t${tNum}TimeMs`]);
+        const skVal = (rawSk !== undefined && rawSk !== null && rawSk !== '') ? parseInt(rawSk, 10) : '';
+        const tmVal = (rawTm !== undefined && rawTm !== null && rawTm !== '') ? Math.max(0, parseInt(rawTm, 10) || 0) : '';
+        const coVal = (skVal !== '' || tmVal !== '') ? canonTCk : '';
+        const icVal = (skVal !== '' && !isNaN(skVal)) ? (skVal === canonTCk ? 1 : 0) : '';
+        trainingCols16.push(skVal, coVal, icVal, tmVal);
+        if (icVal !== '') {
+          tAnsCnt++;
+          if (icVal === 1) tCorrCnt++;
+        }
+        if (tmVal !== '') tTotalMs += tmVal;
+      }
+      const trainingAcc = tAnsCnt > 0
+        ? Math.round((tCorrCnt / tAnsCnt) * 10000) / 100
+        : ((r.trainingAccuracy !== undefined && r.trainingAccuracy !== null)
+          ? r.trainingAccuracy
+          : (r.training_accuracy !== undefined && r.training_accuracy !== null ? r.training_accuracy : ''));
+      const trainingTimeS = tAnsCnt > 0
+        ? Math.round((tTotalMs / 1000.0) * 1000) / 1000
+        : ((r.trainingTotalTimeS !== undefined && r.trainingTotalTimeS !== null)
+          ? r.trainingTotalTimeS
+          : (r.training_total_time_s !== undefined && r.training_total_time_s !== null ? r.training_total_time_s : ''));
 
       const assignedGroupName = r.assignedGroupName || r.assignedGroup || demo.assignedGroupName || demo.assignedGroup || '';
 
@@ -364,6 +409,7 @@ function doPost(e) {
         r.answerChangeCount !== undefined ? r.answerChangeCount : 0,
         r.selectedKey !== undefined && r.selectedKey !== null ? r.selectedKey : '',
         resolveCorrectKey(r),
+        ...trainingCols16,
         trainingAcc,
         trainingTimeS,
         demo.age || '',
@@ -447,6 +493,7 @@ function doGet(e) {
     return ContentService.createTextOutput(JSON.stringify({
       status: 'success',
       responses: db.responses,
+      trainingResponses: db.trainingResponses || [],
       demographics: db.demographics,
       finalThoughts: db.finalThoughts
     })).setMimeType(ContentService.MimeType.JSON);

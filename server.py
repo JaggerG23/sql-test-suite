@@ -243,6 +243,10 @@ CSV_HEADERS = [
     'tab_focus_lost', 'valid_trial', 'tab_switch_count', 'focus_lost_duration_ms',
     'answer_change_count',
     'selected_key', 'correct_option',
+    't1_selected_key', 't1_correct_option', 't1_is_correct', 't1_time_ms',
+    't2_selected_key', 't2_correct_option', 't2_is_correct', 't2_time_ms',
+    't3_selected_key', 't3_correct_option', 't3_is_correct', 't3_time_ms',
+    't4_selected_key', 't4_correct_option', 't4_is_correct', 't4_time_ms',
     'training_accuracy', 'training_total_time_s',
     'age', 'gender', 'gender_label', 'gender_male', 'gender_female',
     'education', 'education_label', 'has_college_degree',
@@ -258,6 +262,7 @@ CSV_HEADERS = [
 STRUCTURE_BY_QUESTION = [2, 3, 4, 5, 1, 2, 4, 5, 1, 3, 5, 2, 3, 4, 1, 4, 1, 2, 3, 5, 3, 2, 5, 4, 1]
 OPERATOR_COUNT_BY_QUESTION = [5, 3, 3, 6, 4, 5, 3, 6, 4, 3, 16, 13, 3, 8, 6, 5, 7, 9, 7, 7, 10, 11, 23, 9, 10]
 CORRECT_KEY_BY_QUESTION = [4, 4, 3, 3, 3, 3, 3, 2, 2, 1, 4, 4, 2, 2, 2, 4, 2, 1, 1, 3, 4, 4, 2, 3, 3]
+TRAINING_CORRECT_KEY_BY_QUESTION = [1, 1, 4, 3]
 
 def get_structure_for_question(q_num):
     idx = (int(q_num) if q_num else 1) - 1
@@ -270,6 +275,10 @@ def get_operator_count_for_question(q_num):
 def get_correct_key_for_question(q_num):
     idx = (int(q_num) if q_num else 1) - 1
     return CORRECT_KEY_BY_QUESTION[idx] if 0 <= idx < len(CORRECT_KEY_BY_QUESTION) else ''
+
+def get_training_correct_key_for_question(t_num):
+    idx = (int(t_num) if t_num else 1) - 1
+    return TRAINING_CORRECT_KEY_BY_QUESTION[idx] if 0 <= idx < len(TRAINING_CORRECT_KEY_BY_QUESTION) else ''
 
 def resolve_correct_key(r):
     if not isinstance(r, dict):
@@ -437,6 +446,7 @@ _MEM_DB_CACHE = {
     "log_size": -1,
     "log_mtime_ns": -1,
     "responses_map": {},
+    "training_map": {},
     "demographics": {},
     "finalThoughts": {}
 }
@@ -450,7 +460,7 @@ def _get_log_file_stat():
     except Exception:
         return (-1, -1)
 
-def _apply_event_to_maps(etype, edata, responses_map, demographics, final_thoughts):
+def _apply_event_to_maps(etype, edata, responses_map, training_map, demographics, final_thoughts):
     """Applies a single telemetry event to the state dictionaries in O(1) time."""
     if not isinstance(edata, dict):
         return
@@ -467,11 +477,16 @@ def _apply_event_to_maps(etype, edata, responses_map, demographics, final_though
         else:
             rid = edata.get('id') or f"{pid}_{q_num}"
             responses_map[rid] = edata
+    elif etype == "TRAINING_RESPONSE":
+        pid = edata.get('participantId')
+        q_num = edata.get('questionNumber')
+        if pid and q_num is not None:
+            training_map[f"pt::{pid}::{q_num}"] = edata
     elif etype == "DEMOGRAPHICS":
         pid = edata.get('participantId')
         if pid:
             demographics[pid] = edata
-            # In live participant flow, demographics are submitted before Q1-Q25.
+            # In live participant flow, demographics are submitted before training & Q1-Q25.
             # Clear any earlier responses from prior sessions for this pid, while preserving
             # responses from the same sessionId if demographics was retried out-of-order.
             if not edata.get('_admin_import'):
@@ -486,6 +501,15 @@ def _apply_event_to_maps(etype, edata, responses_map, demographics, final_though
                 ]
                 for sk in stale_keys:
                     del responses_map[sk]
+                stale_t_keys = [
+                    k for k, v in training_map.items()
+                    if v.get('participantId') == pid and not (
+                        (demo_sid and v.get('sessionId') == demo_sid) or
+                        (demo_ts and str(v.get('timestamp') or '') > demo_ts)
+                    )
+                ]
+                for tk in stale_t_keys:
+                    del training_map[tk]
     elif etype == "FINAL_THOUGHT":
         pid = edata.get('participantId')
         if pid:
@@ -496,10 +520,14 @@ def _apply_event_to_maps(etype, edata, responses_map, demographics, final_though
             stale_keys = [k for k, v in responses_map.items() if v.get('participantId') == pid]
             for sk in stale_keys:
                 del responses_map[sk]
+            stale_t_keys = [k for k, v in training_map.items() if v.get('participantId') == pid]
+            for tk in stale_t_keys:
+                del training_map[tk]
             demographics.pop(pid, None)
             final_thoughts.pop(pid, None)
     elif etype == "CLEAR_ALL":
         responses_map.clear()
+        training_map.clear()
         demographics.clear()
         final_thoughts.clear()
 
@@ -523,6 +551,7 @@ def append_event(event_type, data):
             event_type,
             data,
             _MEM_DB_CACHE["responses_map"],
+            _MEM_DB_CACHE["training_map"],
             _MEM_DB_CACHE["demographics"],
             _MEM_DB_CACHE["finalThoughts"]
         )
@@ -566,9 +595,10 @@ def load_db_data():
         _MEM_DB_CACHE["log_size"] = 0
         _MEM_DB_CACHE["log_mtime_ns"] = 0
         _MEM_DB_CACHE["responses_map"].clear()
+        _MEM_DB_CACHE["training_map"].clear()
         _MEM_DB_CACHE["demographics"].clear()
         _MEM_DB_CACHE["finalThoughts"].clear()
-        return {"responses": [], "demographics": {}, "finalThoughts": {}}
+        return {"responses": [], "trainingResponses": [], "demographics": {}, "finalThoughts": {}}
 
     cur_size, cur_mtime = _get_log_file_stat()
     if (
@@ -578,11 +608,13 @@ def load_db_data():
     ):
         return {
             "responses": list(_MEM_DB_CACHE["responses_map"].values()),
+            "trainingResponses": list(_MEM_DB_CACHE["training_map"].values()),
             "demographics": dict(_MEM_DB_CACHE["demographics"]),
             "finalThoughts": dict(_MEM_DB_CACHE["finalThoughts"])
         }
 
     responses_map = {}
+    training_map = {}
     demographics = {}
     final_thoughts = {}
 
@@ -596,7 +628,7 @@ def load_db_data():
                     event = json.loads(line)
                     etype = event.get("type")
                     edata = event.get("data", {})
-                    _apply_event_to_maps(etype, edata, responses_map, demographics, final_thoughts)
+                    _apply_event_to_maps(etype, edata, responses_map, training_map, demographics, final_thoughts)
                 except Exception:
                     continue
     except Exception as e:
@@ -606,11 +638,13 @@ def load_db_data():
     _MEM_DB_CACHE["log_size"] = cur_size
     _MEM_DB_CACHE["log_mtime_ns"] = cur_mtime
     _MEM_DB_CACHE["responses_map"] = responses_map
+    _MEM_DB_CACHE["training_map"] = training_map
     _MEM_DB_CACHE["demographics"] = demographics
     _MEM_DB_CACHE["finalThoughts"] = final_thoughts
 
     return {
         "responses": list(responses_map.values()),
+        "trainingResponses": list(training_map.values()),
         "demographics": dict(demographics),
         "finalThoughts": dict(final_thoughts)
     }
@@ -618,6 +652,7 @@ def load_db_data():
 def export_csv(db_data):
     """Exports reconstructed state to CSV formatted for immediate ANOVA / statistical analysis."""
     responses = db_data.get('responses', [])
+    training_responses = db_data.get('trainingResponses', [])
     demographics = db_data.get('demographics', {})
     final_thoughts = db_data.get('finalThoughts', {})
 
@@ -627,16 +662,131 @@ def export_csv(db_data):
             except: pass
         return
 
-    # Pre-scan responses for participant-level training summary fallback
-    training_by_pid = {}
+    # Group responses by participant and sort each participant's responses by question_number ascending (1..25)
+    by_pid_responses = {}
     for r in responses:
+        if not isinstance(r, dict):
+            continue
         pid_key = r.get('participantId', '')
+        by_pid_responses.setdefault(pid_key, []).append(r)
+
+    sorted_responses = []
+    for pid_key, r_list in by_pid_responses.items():
+        r_list.sort(key=lambda x: int(x.get('questionNumber') or 0) if str(x.get('questionNumber') or '').isdigit() else 0)
+        sorted_responses.extend(r_list)
+
+    # Index standalone training responses by (pid, t_num)
+    training_records_by_pid = {}
+    for tr in training_responses:
+        if not isinstance(tr, dict):
+            continue
+        pid_key = tr.get('participantId', '')
         if not pid_key:
             continue
-        t_acc = r.get('trainingAccuracy', r.get('training_accuracy', ''))
-        t_time = r.get('trainingTotalTimeS', r.get('training_total_time_s', ''))
-        if t_acc != '' and t_acc is not None:
-            training_by_pid[pid_key] = (t_acc, t_time if t_time is not None else '')
+        try:
+            t_num = int(tr.get('questionNumber') or 0)
+        except Exception:
+            t_num = 0
+        if 1 <= t_num <= 4:
+            training_records_by_pid.setdefault(pid_key, {})[t_num] = tr
+
+    # Pre-compute the 18 training columns (t1_* .. t4_*, training_accuracy, training_total_time_s) once per participant
+    parsed_training_cols = {}
+    def get_participant_training_cols(pid):
+        if pid in parsed_training_cols:
+            return parsed_training_cols[pid]
+
+        t_map = training_records_by_pid.get(pid, {})
+        user_resps = by_pid_responses.get(pid, [])
+
+        cols_16 = []
+        answered_cnt = 0
+        correct_cnt = 0
+        total_ms = 0
+
+        for t_num in range(1, 5):
+            canon_ck = get_training_correct_key_for_question(t_num)
+            tr = t_map.get(t_num)
+            sk_val = ''
+            ic_val = ''
+            tm_val = ''
+            co_val = ''
+
+            if tr:
+                raw_sk = tr.get('selectedKey')
+                raw_tm = tr.get('responseTimeMs', tr.get('time_ms', ''))
+                raw_ic = tr.get('isCorrect')
+                if raw_sk is not None and str(raw_sk).strip() != '':
+                    try:
+                        sk_val = int(raw_sk)
+                    except Exception:
+                        sk_val = str(raw_sk).strip()
+                if raw_tm is not None and str(raw_tm).strip() != '':
+                    try:
+                        tm_val = max(0, int(float(raw_tm)))
+                    except Exception:
+                        tm_val = ''
+                if sk_val != '' and canon_ck != '':
+                    ic_val = 1 if str(sk_val) == str(canon_ck) else 0
+                elif raw_ic is not None and str(raw_ic).strip() != '':
+                    ic_val = to_binary(raw_ic)
+                co_val = canon_ck
+            else:
+                # Fallback: check embedded t{N}_* fields on participant's study responses
+                for ur in user_resps:
+                    raw_sk = ur.get(f't{t_num}_selected_key', ur.get(f't{t_num}SelectedKey', ''))
+                    raw_tm = ur.get(f't{t_num}_time_ms', ur.get(f't{t_num}TimeMs', ''))
+                    raw_ic = ur.get(f't{t_num}_is_correct', ur.get(f't{t_num}IsCorrect', ''))
+                    if (raw_sk is not None and str(raw_sk).strip() != '') or (raw_tm is not None and str(raw_tm).strip() != ''):
+                        if raw_sk is not None and str(raw_sk).strip() != '':
+                            try:
+                                sk_val = int(raw_sk)
+                            except Exception:
+                                sk_val = str(raw_sk).strip()
+                        if raw_tm is not None and str(raw_tm).strip() != '':
+                            try:
+                                tm_val = max(0, int(float(raw_tm)))
+                            except Exception:
+                                tm_val = ''
+                        if sk_val != '' and canon_ck != '':
+                            ic_val = 1 if str(sk_val) == str(canon_ck) else 0
+                        elif raw_ic is not None and str(raw_ic).strip() != '':
+                            ic_val = to_binary(raw_ic)
+                        co_val = canon_ck
+                        break
+
+            cols_16.extend([sk_val, co_val, ic_val, tm_val])
+            if ic_val != '':
+                answered_cnt += 1
+                if ic_val == 1:
+                    correct_cnt += 1
+            if tm_val != '':
+                total_ms += tm_val
+
+        if answered_cnt > 0:
+            t_acc = round((correct_cnt / answered_cnt) * 100.0, 2)
+            if t_acc == int(t_acc):
+                t_acc = int(t_acc)
+            t_time_s = round(total_ms / 1000.0, 3)
+            if t_time_s == int(t_time_s):
+                t_time_s = int(t_time_s)
+            res = cols_16 + [t_acc, t_time_s]
+            parsed_training_cols[pid] = res
+            return res
+
+        # Legacy fallback when only summary training_accuracy / training_total_time_s exist
+        t_acc = ''
+        t_time_s = ''
+        for ur in user_resps:
+            cand_acc = ur.get('trainingAccuracy', ur.get('training_accuracy', ''))
+            cand_time = ur.get('trainingTotalTimeS', ur.get('training_total_time_s', ''))
+            if cand_acc is not None and str(cand_acc).strip() != '':
+                t_acc = cand_acc
+                t_time_s = cand_time if cand_time is not None else ''
+                break
+        res = cols_16 + [t_acc, t_time_s]
+        parsed_training_cols[pid] = res
+        return res
 
     # Pre-compute parsed demographic and final-thought columns once per participant (O(P) instead of O(25*P))
     parsed_participant_cols = {}
@@ -685,9 +835,10 @@ def export_csv(db_data):
     with tempfile.NamedTemporaryFile('w', dir=BASE_DIR, delete=False, newline='', encoding='utf-8') as f:
         writer = csv.writer(f)
         writer.writerow(CSV_HEADERS)
-        for r in responses:
+        for r in sorted_responses:
             pid = r.get('participantId', '')
             demo, tail_cols = get_participant_meta_cols(pid)
+            training_cols = get_participant_training_cols(pid)
 
             # Trial sequence & block (5 blocks of 5 questions for 25-question study)
             raw_q_num = r.get('questionNumber', 1)
@@ -732,11 +883,6 @@ def export_csv(db_data):
             except:
                 ans_change_cnt = 0
 
-            t_acc = r.get('trainingAccuracy', r.get('training_accuracy', ''))
-            t_time = r.get('trainingTotalTimeS', r.get('training_total_time_s', ''))
-            if (t_acc == '' or t_acc is None) and pid in training_by_pid:
-                t_acc, t_time = training_by_pid[pid]
-
             # Group and Dialect
             assigned_group = r.get('assignedGroupName', r.get('assignedGroup', demo.get('assignedGroupName', demo.get('assignedGroup', ''))))
 
@@ -767,8 +913,7 @@ def export_csv(db_data):
                 ans_change_cnt,
                 r.get('selectedKey', ''),
                 resolve_correct_key(r),
-                t_acc if t_acc is not None else '',
-                t_time if t_time is not None else '',
+                *training_cols,
                 *tail_cols
             ])
         f.flush()
@@ -961,6 +1106,19 @@ class TelemetryHandler(http.server.SimpleHTTPRequestHandler):
                                 pass
                             print(f"[{pst_now}] Response logged: Participant={r.get('participantId')} Q={r.get('questionNumber')} Correct={r.get('isCorrect')}", flush=True)
                             append_event("RESPONSE", r)
+                    if payload.get('newTrainingResponse'):
+                        tr = payload['newTrainingResponse']
+                        if isinstance(tr, dict) and tr.get('participantId'):
+                            try:
+                                tq_int = int(tr.get('questionNumber') or 1)
+                                if 1 <= tq_int <= 4:
+                                    tck = get_training_correct_key_for_question(tq_int)
+                                    if tck != '':
+                                        tr['correctKey'] = tck
+                                        tr['isCorrect'] = 1 if str(tr.get('selectedKey', '')).strip() == str(tck) else 0
+                                    append_event("TRAINING_RESPONSE", tr)
+                            except Exception:
+                                pass
                     if payload.get('newDemographic'):
                         d = payload['newDemographic']
                         if is_legacy_demographic(d):
@@ -981,6 +1139,18 @@ class TelemetryHandler(http.server.SimpleHTTPRequestHandler):
                     # Only allow batch arrays (responses, demographics, finalThoughts) from authenticated Admin imports.
                     # Never accept unauthenticated batch dumps from stale cached client localStorage!
                     if is_admin:
+                        for tr in payload.get('trainingResponses', []):
+                            if isinstance(tr, dict) and tr.get('participantId'):
+                                try:
+                                    tq_int = int(tr.get('questionNumber') or 1)
+                                    if 1 <= tq_int <= 4:
+                                        tck = get_training_correct_key_for_question(tq_int)
+                                        if tck != '':
+                                            tr['correctKey'] = tck
+                                            tr['isCorrect'] = 1 if str(tr.get('selectedKey', '')).strip() == str(tck) else 0
+                                        append_event("TRAINING_RESPONSE", tr)
+                                except Exception:
+                                    pass
                         for r in payload.get('responses', []):
                             if isinstance(r, dict) and not is_legacy_response(r):
                                 r.pop('seed', None)
