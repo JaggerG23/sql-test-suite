@@ -15,6 +15,11 @@ class ParticipantAnalytics {
     this.finalThoughtsKey = 'sql_study_final_thoughts';
     this.participantIdKey = 'sql_study_participant_id';
     this.sessionIdKey = 'sql_study_session_id';
+    this.outboxStorageKey = 'sql_study_pending_outbox_v1';
+
+    this._groupPrefetchPromises = {};
+    this._isFlushingOutbox = false;
+    this._outboxRetryTimer = null;
 
     this.enforceStudySchemaVersion();
 
@@ -26,15 +31,47 @@ class ParticipantAnalytics {
     this.trainingResponses = this.loadTrainingResponses();
     this.demographics = this.loadDemographics();
     this.finalThoughts = this.loadFinalThoughts();
+    this.pendingOutbox = this.loadPendingOutbox();
 
     this.assignedGroup = this.initAssignedGroup(this.participantId);
 
     this.initRealtimeChannel();
     if (this.isParticipantView()) {
       this.prefetchRotatingGroupIndex(this.participantId);
+      if (this.pendingOutbox.length > 0) {
+        this.flushPendingOutbox();
+      }
     } else {
       this.syncWithDiskStorage(true);
     }
+  }
+
+  generateRandomHex(byteCount = 8) {
+    try {
+      if (typeof window !== 'undefined' && window.crypto) {
+        if (typeof window.crypto.randomUUID === 'function' && byteCount >= 8) {
+          return window.crypto.randomUUID().replace(/-/g, '').substring(0, byteCount * 2);
+        }
+        if (typeof window.crypto.getRandomValues === 'function') {
+          const bytes = new Uint8Array(byteCount);
+          window.crypto.getRandomValues(bytes);
+          return Array.from(bytes, b => b.toString(16).padStart(2, '0')).join('');
+        }
+      }
+    } catch (e) {}
+    let fallback = '';
+    while (fallback.length < byteCount * 2) {
+      fallback += Math.random().toString(16).substring(2);
+    }
+    return fallback.substring(0, byteCount * 2);
+  }
+
+  generateUniqueId(prefix = 'id') {
+    ParticipantAnalytics._idSeq = ((ParticipantAnalytics._idSeq || 0) + 1) & 0xffff;
+    const tsPart = Date.now().toString(36);
+    const seqPart = ParticipantAnalytics._idSeq.toString(36);
+    const randPart = this.generateRandomHex(6);
+    return `${prefix}_${tsPart}${seqPart}_${randPart}`;
   }
 
   // Purge any legacy prototype keys and invalidate stale localStorage if the study schema version changed
@@ -79,21 +116,30 @@ class ParticipantAnalytics {
   // Reset attempt state when a participant begins a new session from the Consent / Intake screen
   resetParticipantAttemptState(forceNewParticipantId = false) {
     try {
-      const existingResps = this.getParticipantResponses(this.participantId);
+      const oldPid = this.participantId;
+      const existingResps = this.getParticipantResponses(oldPid);
       const hasFinishedPrior = localStorage.getItem('sql_study_completed_finished') === 'true';
       if (forceNewParticipantId || existingResps.length > 0 || hasFinishedPrior) {
-        const newPid = 'user_' + Math.random().toString(36).substring(2, 9) + Math.random().toString(36).substring(2, 5);
+        const newPid = this.generateUniqueId('user');
         this.participantId = newPid;
         localStorage.setItem(this.participantIdKey, newPid);
+        this.sessionId = this.generateUniqueId('session');
+        try { sessionStorage.setItem(this.sessionIdKey, this.sessionId); } catch (e) {}
       }
       const pid = this.participantId;
-      this.responses = (this.responses || []).filter(r => r && r.participantId !== pid);
-      this.trainingResponses = (this.trainingResponses || []).filter(r => r && r.participantId !== pid);
-      if (this.demographics && this.demographics[pid]) {
+      this.responses = (this.responses || []).filter(r => r && r.participantId !== pid && r.participantId !== oldPid);
+      this.trainingResponses = (this.trainingResponses || []).filter(r => r && r.participantId !== pid && r.participantId !== oldPid);
+      if (this.demographics) {
         delete this.demographics[pid];
+        if (oldPid && oldPid !== pid) delete this.demographics[oldPid];
       }
-      if (this.finalThoughts && this.finalThoughts[pid]) {
+      if (this.finalThoughts) {
         delete this.finalThoughts[pid];
+        if (oldPid && oldPid !== pid) delete this.finalThoughts[oldPid];
+      }
+      if (Array.isArray(this.pendingOutbox)) {
+        this.pendingOutbox = this.pendingOutbox.filter(item => item && item.participantId !== pid && item.participantId !== oldPid);
+        this.savePendingOutbox();
       }
       this.saveResponsesLocally();
       localStorage.setItem(this.trainingStorageKey, JSON.stringify(this.trainingResponses));
@@ -131,7 +177,7 @@ class ParticipantAnalytics {
     }
 
     if (!pid || isExplicitNew) {
-      pid = 'user_' + Math.random().toString(36).substring(2, 9) + Math.random().toString(36).substring(2, 5);
+      pid = this.generateUniqueId('user');
       localStorage.setItem(this.participantIdKey, pid);
       localStorage.removeItem('sql_study_completed_finished');
       try {
@@ -419,8 +465,8 @@ class ParticipantAnalytics {
     if (!pid || typeof fetch === 'undefined') return null;
     const cacheKey = `sql_study_prefetched_group_idx_${pid}`;
     try {
-      const cached = sessionStorage.getItem(cacheKey);
-      if (cached !== null) {
+      const cached = sessionStorage.getItem(cacheKey) ?? localStorage.getItem(cacheKey);
+      if (cached !== null && cached !== undefined) {
         const parsed = parseInt(cached, 10);
         if (!isNaN(parsed) && parsed >= 0 && parsed < ParticipantAnalytics.STUDY_GROUPS.length) {
           return parsed;
@@ -428,24 +474,60 @@ class ParticipantAnalytics {
       }
     } catch (e) {}
 
-    try {
-      const res = await fetch(this.getApiUrl('/api/assign-group'), {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ participantId: pid })
-      });
-      if (res.ok) {
-        const data = await res.json();
-        const idx = parseInt(data && data.groupIndex, 10);
-        if (!isNaN(idx) && idx >= 0 && idx < ParticipantAnalytics.STUDY_GROUPS.length) {
-          try { sessionStorage.setItem(cacheKey, String(idx)); } catch (e) {}
-          return idx;
+    if (this._groupPrefetchPromises && this._groupPrefetchPromises[pid]) {
+      return this._groupPrefetchPromises[pid];
+    }
+
+    const fetchPromise = (async () => {
+      try {
+        const res = await fetch(this.getApiUrl('/api/assign-group'), {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ participantId: pid })
+        });
+        if (res.ok) {
+          const data = await res.json();
+          const idx = parseInt(data && data.groupIndex, 10);
+          if (!isNaN(idx) && idx >= 0 && idx < ParticipantAnalytics.STUDY_GROUPS.length) {
+            try {
+              sessionStorage.setItem(cacheKey, String(idx));
+              localStorage.setItem(cacheKey, String(idx));
+            } catch (e) {}
+            return idx;
+          }
+        }
+      } catch (e) {
+        // Backend offline or static hosting
+      } finally {
+        if (this._groupPrefetchPromises) {
+          delete this._groupPrefetchPromises[pid];
         }
       }
-    } catch (e) {
-      // Backend offline or static hosting
+      return null;
+    })();
+
+    if (this._groupPrefetchPromises) {
+      this._groupPrefetchPromises[pid] = fetchPromise;
     }
-    return null;
+    return fetchPromise;
+  }
+
+  /**
+   * Ensures the server-assigned round-robin group index is resolved (with a bounded timeout)
+   * before demographics are finalized, preventing fallback group drift on fast submissions.
+   */
+  async ensureGroupAssigned(pid = this.participantId, timeoutMs = 1500) {
+    const targetPid = pid || this.participantId;
+    if (!targetPid) return null;
+    const existing = this.requestRotatingGroupIndex(targetPid);
+    if (existing !== null) return existing;
+    try {
+      await Promise.race([
+        this.prefetchRotatingGroupIndex(targetPid),
+        new Promise(resolve => setTimeout(resolve, timeoutMs))
+      ]);
+    } catch (e) {}
+    return this.requestRotatingGroupIndex(targetPid);
   }
 
   /**
@@ -456,8 +538,8 @@ class ParticipantAnalytics {
     if (!pid) return null;
     const cacheKey = `sql_study_prefetched_group_idx_${pid}`;
     try {
-      const cached = sessionStorage.getItem(cacheKey);
-      if (cached !== null) {
+      const cached = sessionStorage.getItem(cacheKey) ?? localStorage.getItem(cacheKey);
+      if (cached !== null && cached !== undefined) {
         const idx = parseInt(cached, 10);
         if (!isNaN(idx) && idx >= 0 && idx < ParticipantAnalytics.STUDY_GROUPS.length) {
           return idx;
@@ -486,10 +568,11 @@ class ParticipantAnalytics {
   }
 
   initSessionId() {
-    let sid = sessionStorage.getItem(this.sessionIdKey);
+    let sid = null;
+    try { sid = sessionStorage.getItem(this.sessionIdKey); } catch (e) {}
     if (!sid) {
-      sid = 'session_' + Date.now() + '_' + Math.random().toString(36).substring(2, 7);
-      sessionStorage.setItem(this.sessionIdKey, sid);
+      sid = this.generateUniqueId('session');
+      try { sessionStorage.setItem(this.sessionIdKey, sid); } catch (e) {}
     }
     return sid;
   }
@@ -520,13 +603,24 @@ class ParticipantAnalytics {
       }
     });
 
+    if (typeof window !== 'undefined') {
+      window.addEventListener('online', () => {
+        this.flushPendingOutbox();
+      });
+      window.addEventListener('pagehide', () => {
+        this.flushPendingOutbox(true);
+      });
+    }
+
     // Cross-device synchronization (polling) for the Admin Dashboard
     setInterval(() => {
       // Only poll if we are logged in as admin to avoid spamming 401s from normal participants
       if (window.adminAuth && window.adminAuth.getToken()) {
         this.syncWithDiskStorage(true);
+      } else if (this.isParticipantView() && Array.isArray(this.pendingOutbox) && this.pendingOutbox.length > 0) {
+        this.flushPendingOutbox();
       }
-    }, 5000); // Check for new data every 5 seconds
+    }, 5000); // Check for new data or pending retries every 5 seconds
   }
 
   subscribe(callback) {
@@ -583,6 +677,24 @@ class ParticipantAnalytics {
     } catch (e) {
       return [];
     }
+  }
+
+  loadPendingOutbox() {
+    try {
+      const raw = localStorage.getItem(this.outboxStorageKey);
+      if (!raw) return [];
+      const parsed = JSON.parse(raw);
+      if (!Array.isArray(parsed)) return [];
+      return parsed.filter(item => item && item.studyVersion === this.studySchemaVersion && item.payload);
+    } catch (e) {
+      return [];
+    }
+  }
+
+  savePendingOutbox() {
+    try {
+      localStorage.setItem(this.outboxStorageKey, JSON.stringify(this.pendingOutbox || []));
+    } catch (e) {}
   }
 
   getApiUrl(path) {
@@ -654,6 +766,44 @@ class ParticipantAnalytics {
       // If there's no incremental data to push, don't ping the server
       if (Object.keys(payload).length === 0) return;
 
+      // Determine deterministic event key for deduplication & retry queue
+      let eventKey = null;
+      let eventPid = this.participantId;
+      if (payload.newResponse && payload.newResponse.participantId) {
+        eventPid = payload.newResponse.participantId;
+        eventKey = `resp_${eventPid}_q${payload.newResponse.questionNumber}`;
+      } else if (payload.newDemographic && payload.newDemographic.participantId) {
+        eventPid = payload.newDemographic.participantId;
+        eventKey = `demo_${eventPid}`;
+      } else if (payload.newFinalThought && payload.newFinalThought.participantId) {
+        eventPid = payload.newFinalThought.participantId;
+        eventKey = `ft_${eventPid}`;
+      }
+
+      if (eventKey) {
+        if (!Array.isArray(this.pendingOutbox)) {
+          this.pendingOutbox = [];
+        }
+        const existingIdx = this.pendingOutbox.findIndex(item => item && item.eventKey === eventKey);
+        const queueItem = {
+          eventKey,
+          participantId: eventPid,
+          studyVersion: this.studySchemaVersion,
+          payload,
+          attempts: 0,
+          queuedAt: Date.now()
+        };
+        if (existingIdx !== -1) {
+          this.pendingOutbox[existingIdx] = queueItem;
+        } else {
+          this.pendingOutbox.push(queueItem);
+        }
+        this.savePendingOutbox();
+        await this.flushPendingOutbox();
+        return;
+      }
+
+      // Admin batch import or direct payload
       const endpoint = this.getApiUrl('/api/save-telemetry');
       const token = (typeof window !== 'undefined' && window.adminAuth && typeof window.adminAuth.getToken === 'function')
         ? window.adminAuth.getToken()
@@ -666,11 +816,98 @@ class ParticipantAnalytics {
       await fetch(endpoint, {
         method: 'POST',
         headers,
+        keepalive: true,
         body: JSON.stringify(payload)
       });
     } catch (e) {
       // Server offline fallback
     }
+  }
+
+  async flushPendingOutbox(useBeaconFallback = false) {
+    if (!Array.isArray(this.pendingOutbox) || this.pendingOutbox.length === 0) return true;
+    if (typeof fetch === 'undefined') return false;
+
+    const endpoint = this.getApiUrl('/api/save-telemetry');
+
+    // On pagehide/unload, attempt sendBeacon or keepalive fetch for any remaining items
+    if (useBeaconFallback) {
+      for (const item of this.pendingOutbox) {
+        if (!item || !item.payload || item.studyVersion !== this.studySchemaVersion) continue;
+        try {
+          fetch(endpoint, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            keepalive: true,
+            body: JSON.stringify(item.payload)
+          }).catch(() => {});
+        } catch (e) {}
+      }
+      return true;
+    }
+
+    if (this._isFlushingOutbox) return false;
+    this._isFlushingOutbox = true;
+    if (this._outboxRetryTimer) {
+      clearTimeout(this._outboxRetryTimer);
+      this._outboxRetryTimer = null;
+    }
+
+    let allSucceeded = true;
+    let maxAttemptsSeen = 0;
+
+    try {
+      const token = (typeof window !== 'undefined' && window.adminAuth && typeof window.adminAuth.getToken === 'function')
+        ? window.adminAuth.getToken()
+        : '';
+      const headers = { 'Content-Type': 'application/json' };
+      if (token) {
+        headers['X-Admin-Token'] = token;
+        headers['Authorization'] = 'Bearer ' + token;
+      }
+
+      const snapshot = [...this.pendingOutbox];
+      for (const item of snapshot) {
+        if (!item || !item.payload || item.studyVersion !== this.studySchemaVersion) {
+          this.pendingOutbox = this.pendingOutbox.filter(x => x !== item);
+          continue;
+        }
+        try {
+          const res = await fetch(endpoint, {
+            method: 'POST',
+            headers,
+            keepalive: true,
+            body: JSON.stringify(item.payload)
+          });
+          if (res.ok || (res.status >= 400 && res.status < 500 && res.status !== 408 && res.status !== 429)) {
+            this.pendingOutbox = this.pendingOutbox.filter(x => x && x.eventKey !== item.eventKey);
+            this.savePendingOutbox();
+          } else {
+            item.attempts = (item.attempts || 0) + 1;
+            maxAttemptsSeen = Math.max(maxAttemptsSeen, item.attempts);
+            allSucceeded = false;
+            this.savePendingOutbox();
+          }
+        } catch (err) {
+          item.attempts = (item.attempts || 0) + 1;
+          maxAttemptsSeen = Math.max(maxAttemptsSeen, item.attempts);
+          allSucceeded = false;
+          this.savePendingOutbox();
+          break; // Stop sequential loop on network disconnect, retry later
+        }
+      }
+    } finally {
+      this._isFlushingOutbox = false;
+    }
+
+    if (!allSucceeded && this.pendingOutbox.length > 0) {
+      const delayMs = Math.min(15000, Math.round(1500 * Math.pow(1.5, Math.min(6, maxAttemptsSeen))));
+      this._outboxRetryTimer = setTimeout(() => {
+        this._outboxRetryTimer = null;
+        this.flushPendingOutbox();
+      }, delayMs);
+    }
+    return allSucceeded;
   }
 
   async pushToCloudWebhook(incrementalData = null) {
@@ -767,7 +1004,7 @@ class ParticipantAnalytics {
       : ((canonicalCorrectKey && Number(entry.selectedKey) === Number(canonicalCorrectKey)) ? 1 : 0);
 
     const record = {
-      id: 'resp_' + Date.now() + '_' + Math.random().toString(36).substring(2, 7),
+      id: `resp_${this.participantId}_q${resolvedQNum}_${Date.now().toString(36)}_${this.generateRandomHex(4)}`,
       studyVersion: this.studySchemaVersion,
       participantId: this.participantId,
       sessionId: this.sessionId,
@@ -845,6 +1082,7 @@ class ParticipantAnalytics {
     const assignedGroup = this.decideAssignedGroupAfterDemographics(pid);
     const record = {
       participantId: pid,
+      sessionId: this.sessionId,
       studyVersion: this.studySchemaVersion,
       assignedGroup: assignedGroup ? assignedGroup.name : '',
       assignedGroupId: assignedGroup ? assignedGroup.id : '',
@@ -852,6 +1090,7 @@ class ParticipantAnalytics {
       hostLanguage: assignedGroup ? assignedGroup.hostLanguage : '',
       sqlDialect: assignedGroup ? assignedGroup.sqlDialect : '',
       ...demographicsData,
+      savedAtTimestamp: Date.now(),
       timestamp: new Date().toISOString(),
       timestampPST: pst.dateTimePST,
       datePST: pst.datePST,
@@ -902,6 +1141,7 @@ class ParticipantAnalytics {
     };
     const record = {
       participantId: pid,
+      sessionId: this.sessionId,
       studyVersion: this.studySchemaVersion,
       assignedGroup: assignedGroup ? assignedGroup.name : '',
       assignedGroupId: assignedGroup ? assignedGroup.id : '',
@@ -913,6 +1153,7 @@ class ParticipantAnalytics {
       likert_interface: pickLikert('interface', 'likert_interface'),
       likert_experience: pickLikert('experience', 'likert_experience'),
       durationExpectation: durationExpectation,
+      savedAtTimestamp: Date.now(),
       timestamp: new Date().toISOString(),
       timestampPST: pst.dateTimePST,
       datePST: pst.datePST,
@@ -946,7 +1187,7 @@ class ParticipantAnalytics {
       ? (data.isCorrect ? 1 : 0)
       : ((canonicalKey && Number(data.selectedKey) === Number(canonicalKey)) ? 1 : 0);
     const record = Object.assign({
-      id: 'train_' + Date.now() + '_' + Math.random().toString(36).substring(2, 7),
+      id: `train_${pid}_t${tQNum}_${Date.now().toString(36)}_${this.generateRandomHex(4)}`,
       participantId: pid,
       sessionId: this.sessionId,
       timestamp: new Date().toISOString(),

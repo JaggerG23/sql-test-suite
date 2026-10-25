@@ -42,8 +42,10 @@ class HumanResolver {
       try {
         const params = new URLSearchParams(window.location.search);
         if (params.get('new_participant') === '1' || params.get('new_session') === 'true') {
-          if (this.app && this.app.analytics) {
-            const newPid = 'user_' + Math.random().toString(36).substring(2, 9) + Math.random().toString(36).substring(2, 5);
+          if (this.app && this.app.analytics && !this.app.analytics.participantId) {
+            const newPid = (typeof this.app.analytics.generateUniqueId === 'function')
+              ? this.app.analytics.generateUniqueId('user')
+              : ('user_' + Date.now().toString(36) + '_' + Math.random().toString(36).substring(2, 10));
             this.app.analytics.setParticipantId(newPid);
           }
           this.intakeCompleted = false;
@@ -637,7 +639,10 @@ class HumanResolver {
 
     // Use intake-education element directly
 
-    const handleIntakeSubmit = () => {
+    const handleIntakeSubmit = async () => {
+      const btnStartElem = document.getElementById('btn-start-experiment');
+      if (btnStartElem && btnStartElem.dataset.submitting === 'true') return;
+
       const ageElem = document.getElementById('intake-age');
       const genderElem = document.getElementById('intake-gender');
       const educationElem = document.getElementById('intake-education') || document.getElementById('intake-academic-standing');
@@ -684,6 +689,11 @@ class HumanResolver {
 
       if (valMsg) valMsg.style.display = 'none';
 
+      if (btnStartElem) {
+        btnStartElem.dataset.submitting = 'true';
+        btnStartElem.disabled = true;
+      }
+
       const genderNum = parseInt(genderVal, 10);
       const eduNum = parseInt(educationVal, 10);
       const genderLabels = ['Male', 'Female', 'Non-binary', 'Other', 'Prefer not to say'];
@@ -707,6 +717,9 @@ class HumanResolver {
       };
 
       if (this.app.analytics) {
+        if (typeof this.app.analytics.ensureGroupAssigned === 'function') {
+          try { await this.app.analytics.ensureGroupAssigned(pid, 1500); } catch (e) {}
+        }
         this.app.analytics.saveDemographics(data, pid);
       }
 
@@ -984,7 +997,8 @@ class HumanResolver {
 
     const btnSubmit = document.getElementById('btn-submit-final-thoughts');
     if (btnSubmit) {
-      btnSubmit.addEventListener('click', () => {
+      btnSubmit.addEventListener('click', async () => {
+        if (btnSubmit.dataset.submitting === 'true') return;
         const valMsg = document.getElementById('likert-val-msg');
         let hasMissing = false;
         const ratings = {};
@@ -1021,6 +1035,8 @@ class HumanResolver {
         }
 
         if (valMsg) valMsg.style.display = 'none';
+        btnSubmit.dataset.submitting = 'true';
+        btnSubmit.disabled = true;
 
         const thoughtsInput = document.getElementById('final-thoughts-input');
         const thoughtsVal = thoughtsInput ? thoughtsInput.value.trim() : '';
@@ -1032,6 +1048,14 @@ class HumanResolver {
             thoughts: thoughtsVal,
             durationExpectation: durationVal
           });
+          if (typeof this.app.analytics.flushPendingOutbox === 'function') {
+            try {
+              await Promise.race([
+                this.app.analytics.flushPendingOutbox(),
+                new Promise(resolve => setTimeout(resolve, 2000))
+              ]);
+            } catch (e) {}
+          }
           if (typeof this.app.renderAnalyticsDashboard === 'function') {
             this.app.renderAnalyticsDashboard();
           }
@@ -1423,6 +1447,9 @@ class HumanResolver {
     if (this._skipCountdownInterval) {
       clearInterval(this._skipCountdownInterval);
       this._skipCountdownInterval = null;
+    }
+    if (this.app && this.app.analytics && typeof this.app.analytics.flushPendingOutbox === 'function') {
+      try { this.app.analytics.flushPendingOutbox(); } catch (e) {}
     }
     if (this.app) {
       this.app.currentQuestionNumber = 'thank_you';

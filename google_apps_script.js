@@ -100,7 +100,9 @@ function appendBackupRecord(type, key, obj) {
 }
 
 function doPost(e) {
+  const lock = LockService.getScriptLock();
   try {
+    lock.waitLock(30000);
     const contents = e.postData.contents;
     const payload = JSON.parse(contents);
     const ss = SpreadsheetApp.getActiveSpreadsheet();
@@ -258,15 +260,18 @@ function doPost(e) {
       const thoughts = db.finalThoughts[pid] || {};
       const lr = thoughts.likertRatings || {};
 
-      const isCorrectVal = toBinary(r.isCorrect);
+      const qNum = parseInt(r.questionNumber, 10) || 1;
+      const trialBlock = Math.floor((Math.max(1, qNum) - 1) / 5) + 1;
+      const qIdx = qNum - 1;
+      const canonicalCk = (qIdx >= 0 && qIdx < CORRECT_KEY_BY_QUESTION.length && !r.isTraining) ? CORRECT_KEY_BY_QUESTION[qIdx] : '';
+      const isCorrectVal = (canonicalCk !== '' && r.selectedKey !== undefined && r.selectedKey !== null && r.selectedKey !== '')
+        ? (String(r.selectedKey).trim() === String(canonicalCk) ? 1 : 0)
+        : toBinary(r.isCorrect);
       const rtMs = parseInt(r.responseTimeMs, 10) || 0;
       const rtS = Math.round((rtMs / 1000.0) * 1000) / 1000;
       const logRt = Math.round(Math.log(Math.max(rtMs, 1.0)) * 10000) / 10000;
       const tabFocusLostVal = toBinary(r.tabFocusLost);
       const validTrialVal = tabFocusLostVal === 0 ? 1 : 0;
-      const qNum = parseInt(r.questionNumber, 10) || 1;
-      const trialBlock = Math.floor((Math.max(1, qNum) - 1) / 5) + 1;
-      const qIdx = qNum - 1;
       const codeStructure = r.codeStructure || r.code_structure || ((qIdx >= 0 && qIdx < STRUCTURE_BY_QUESTION.length) ? STRUCTURE_BY_QUESTION[qIdx] : '');
       const operatorCount = (r.operatorCount !== undefined && r.operatorCount !== null && r.operatorCount !== '')
         ? r.operatorCount
@@ -431,6 +436,8 @@ function doPost(e) {
       status: 'error',
       message: err.toString()
     })).setMimeType(ContentService.MimeType.JSON);
+  } finally {
+    try { lock.releaseLock(); } catch (e) {}
   }
 }
 

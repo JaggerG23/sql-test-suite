@@ -13,6 +13,7 @@ import hashlib
 import hmac
 import tempfile
 import threading
+import time
 import urllib.parse
 import re
 import math
@@ -34,6 +35,28 @@ NUM_STUDY_GROUPS = 4
 config_lock = threading.Lock()
 rotation_lock = threading.Lock()
 
+def _safe_os_replace(temp_name, target_path, retries=6, delay=0.02):
+    """Atomically replaces target_path with temp_name, retrying briefly on transient Windows/OS file locks."""
+    last_err = None
+    for attempt in range(retries):
+        try:
+            os.replace(temp_name, target_path)
+            return True
+        except PermissionError as err:
+            last_err = err
+            time.sleep(delay * (attempt + 1))
+        except Exception as err:
+            last_err = err
+            break
+    try:
+        if os.path.exists(temp_name):
+            os.remove(temp_name)
+    except Exception:
+        pass
+    if last_err:
+        raise last_err
+    return False
+
 def _load_rotation_state():
     """Caller must hold rotation_lock."""
     if os.path.exists(GROUP_ROTATION_FILE):
@@ -52,8 +75,9 @@ def _save_rotation_state(state):
     """Caller must hold rotation_lock. Writes atomically via temp file."""
     with tempfile.NamedTemporaryFile('w', dir=BASE_DIR, delete=False, encoding='utf-8') as f:
         json.dump(state, f, indent=2)
+        f.flush()
         temp_name = f.name
-    os.replace(temp_name, GROUP_ROTATION_FILE)
+    _safe_os_replace(temp_name, GROUP_ROTATION_FILE)
 
 def assign_rotating_group(participant_id):
     """Round-robin group assignment.
@@ -187,8 +211,9 @@ def append_extra_credit_email(email, course=""):
                 writer.writerow(['Email', 'Course'])
                 for em, cs in sorted_rows:
                     writer.writerow([em, cs])
+                f.flush()
                 temp_name = f.name
-            os.replace(temp_name, EXTRA_CREDIT_FILE)
+            _safe_os_replace(temp_name, EXTRA_CREDIT_FILE)
         return True
 
 def migrate_legacy_txt_emails():
@@ -406,11 +431,104 @@ def parse_cookies(cookie_header):
         return {k: v.value for k, v in cookie.items()}
     except Exception: return {}
 
+# In-memory state cache protected by db_lock to avoid O(N^2) full-log disk scans on every POST
+_MEM_DB_CACHE = {
+    "initialized": False,
+    "log_size": -1,
+    "log_mtime_ns": -1,
+    "responses_map": {},
+    "demographics": {},
+    "finalThoughts": {}
+}
+
+def _get_log_file_stat():
+    if not os.path.exists(LOG_FILE):
+        return (0, 0)
+    try:
+        st = os.stat(LOG_FILE)
+        return (st.st_size, getattr(st, 'st_mtime_ns', int(st.st_mtime * 1e9)))
+    except Exception:
+        return (-1, -1)
+
+def _apply_event_to_maps(etype, edata, responses_map, demographics, final_thoughts):
+    """Applies a single telemetry event to the state dictionaries in O(1) time."""
+    if not isinstance(edata, dict):
+        return
+    if etype == "RESPONSE":
+        pid = edata.get('participantId')
+        q_num = edata.get('questionNumber')
+        if pid and q_num is not None:
+            comp_key = f"pq::{pid}::{q_num}"
+            # If an older entry was stored by raw id, remove it once
+            rid = edata.get('id')
+            if rid and rid in responses_map and rid != comp_key:
+                del responses_map[rid]
+            responses_map[comp_key] = edata
+        else:
+            rid = edata.get('id') or f"{pid}_{q_num}"
+            responses_map[rid] = edata
+    elif etype == "DEMOGRAPHICS":
+        pid = edata.get('participantId')
+        if pid:
+            demographics[pid] = edata
+            # In live participant flow, demographics are submitted before Q1-Q25.
+            # Clear any earlier responses from prior sessions for this pid, while preserving
+            # responses from the same sessionId if demographics was retried out-of-order.
+            if not edata.get('_admin_import'):
+                demo_sid = edata.get('sessionId')
+                demo_ts = str(edata.get('timestamp') or '')
+                stale_keys = [
+                    k for k, v in responses_map.items()
+                    if v.get('participantId') == pid and not (
+                        (demo_sid and v.get('sessionId') == demo_sid) or
+                        (demo_ts and str(v.get('timestamp') or '') > demo_ts)
+                    )
+                ]
+                for sk in stale_keys:
+                    del responses_map[sk]
+    elif etype == "FINAL_THOUGHT":
+        pid = edata.get('participantId')
+        if pid:
+            final_thoughts[pid] = edata
+    elif etype == "DELETE_USER":
+        pid = edata.get("participantId")
+        if pid:
+            stale_keys = [k for k, v in responses_map.items() if v.get('participantId') == pid]
+            for sk in stale_keys:
+                del responses_map[sk]
+            demographics.pop(pid, None)
+            final_thoughts.pop(pid, None)
+    elif etype == "CLEAR_ALL":
+        responses_map.clear()
+        demographics.clear()
+        final_thoughts.clear()
+
 def append_event(event_type, data):
-    """Appends an event to the append-only JSONL log file. Caller should hold db_lock."""
+    """Appends an event to the append-only JSONL log file and updates in-memory cache. Caller must hold db_lock."""
+    pre_size, pre_mtime = _get_log_file_stat()
+    cache_was_synced = (
+        _MEM_DB_CACHE["initialized"] and
+        _MEM_DB_CACHE["log_size"] == pre_size and
+        _MEM_DB_CACHE["log_mtime_ns"] == pre_mtime
+    )
+
     event = {"type": event_type, "data": data}
+    line_str = json.dumps(event) + '\n'
     with open(LOG_FILE, 'a', encoding='utf-8') as f:
-        f.write(json.dumps(event) + '\n')
+        f.write(line_str)
+        f.flush()
+
+    if cache_was_synced:
+        _apply_event_to_maps(
+            event_type,
+            data,
+            _MEM_DB_CACHE["responses_map"],
+            _MEM_DB_CACHE["demographics"],
+            _MEM_DB_CACHE["finalThoughts"]
+        )
+        post_size, post_mtime = _get_log_file_stat()
+        _MEM_DB_CACHE["log_size"] = post_size
+        _MEM_DB_CACHE["log_mtime_ns"] = post_mtime
 
 def is_legacy_response(r):
     """Returns True if a response object originates from an obsolete prototype version of the study."""
@@ -442,65 +560,60 @@ def is_legacy_demographic(d):
     return False
 
 def load_db_data():
-    """Reconstructs state by chronologically replaying the append-only log."""
-    db_data = {"responses": [], "demographics": {}, "finalThoughts": {}}
+    """Returns reconstructed state from the in-memory cache or replays the append-only log if modified externally."""
     if not os.path.exists(LOG_FILE):
-        return db_data
-        
+        _MEM_DB_CACHE["initialized"] = True
+        _MEM_DB_CACHE["log_size"] = 0
+        _MEM_DB_CACHE["log_mtime_ns"] = 0
+        _MEM_DB_CACHE["responses_map"].clear()
+        _MEM_DB_CACHE["demographics"].clear()
+        _MEM_DB_CACHE["finalThoughts"].clear()
+        return {"responses": [], "demographics": {}, "finalThoughts": {}}
+
+    cur_size, cur_mtime = _get_log_file_stat()
+    if (
+        _MEM_DB_CACHE["initialized"] and
+        _MEM_DB_CACHE["log_size"] == cur_size and
+        _MEM_DB_CACHE["log_mtime_ns"] == cur_mtime
+    ):
+        return {
+            "responses": list(_MEM_DB_CACHE["responses_map"].values()),
+            "demographics": dict(_MEM_DB_CACHE["demographics"]),
+            "finalThoughts": dict(_MEM_DB_CACHE["finalThoughts"])
+        }
+
     responses_map = {}
-    
+    demographics = {}
+    final_thoughts = {}
+
     try:
         with open(LOG_FILE, 'r', encoding='utf-8') as f:
             for line in f:
                 line = line.strip()
-                if not line: continue
+                if not line:
+                    continue
                 try:
                     event = json.loads(line)
                     etype = event.get("type")
                     edata = event.get("data", {})
-                    
-                    if etype == "RESPONSE":
-                        pid = edata.get('participantId')
-                        q_num = edata.get('questionNumber')
-                        # Deduplicate by (participantId, questionNumber) so re-answering replaces stale answers
-                        if pid and q_num is not None:
-                            stale_keys = [
-                                k for k, v in responses_map.items()
-                                if v.get('participantId') == pid and str(v.get('questionNumber')) == str(q_num)
-                            ]
-                            for sk in stale_keys:
-                                del responses_map[sk]
-                        rid = edata.get('id') or f"{pid}_{q_num}"
-                        responses_map[rid] = edata
-                    elif etype == "DEMOGRAPHICS":
-                        pid = edata.get('participantId')
-                        if pid:
-                            db_data['demographics'][pid] = edata
-                            # In live participant flow, demographics are submitted before Q1-Q25.
-                            # Clear any earlier responses for this pid unless this is an admin batch import.
-                            if not edata.get('_admin_import'):
-                                responses_map = {
-                                    k: v for k, v in responses_map.items()
-                                    if v.get('participantId') != pid
-                                }
-                    elif etype == "FINAL_THOUGHT":
-                        db_data['finalThoughts'][edata.get('participantId')] = edata
-                    elif etype == "DELETE_USER":
-                        pid = edata.get("participantId")
-                        responses_map = {k: v for k, v in responses_map.items() if v.get('participantId') != pid}
-                        if pid in db_data['demographics']: del db_data['demographics'][pid]
-                        if pid in db_data['finalThoughts']: del db_data['finalThoughts'][pid]
-                    elif etype == "CLEAR_ALL":
-                        responses_map.clear()
-                        db_data['demographics'].clear()
-                        db_data['finalThoughts'].clear()
+                    _apply_event_to_maps(etype, edata, responses_map, demographics, final_thoughts)
                 except Exception:
                     continue
     except Exception as e:
         print(f"Error reading log: {e}")
-        
-    db_data['responses'] = list(responses_map.values())
-    return db_data
+
+    _MEM_DB_CACHE["initialized"] = True
+    _MEM_DB_CACHE["log_size"] = cur_size
+    _MEM_DB_CACHE["log_mtime_ns"] = cur_mtime
+    _MEM_DB_CACHE["responses_map"] = responses_map
+    _MEM_DB_CACHE["demographics"] = demographics
+    _MEM_DB_CACHE["finalThoughts"] = final_thoughts
+
+    return {
+        "responses": list(responses_map.values()),
+        "demographics": dict(demographics),
+        "finalThoughts": dict(final_thoughts)
+    }
 
 def export_csv(db_data):
     """Exports reconstructed state to CSV formatted for immediate ANOVA / statistical analysis."""
@@ -525,13 +638,56 @@ def export_csv(db_data):
         if t_acc != '' and t_acc is not None:
             training_by_pid[pid_key] = (t_acc, t_time if t_time is not None else '')
 
+    # Pre-compute parsed demographic and final-thought columns once per participant (O(P) instead of O(25*P))
+    parsed_participant_cols = {}
+    def get_participant_meta_cols(pid):
+        if pid in parsed_participant_cols:
+            return parsed_participant_cols[pid]
+        demo = demographics.get(pid, {})
+        thought_obj = final_thoughts.get(pid, {})
+        age_val = parse_age(demo.get('age', ''))
+        gender_info = parse_gender_info(demo.get('gender', ''))
+        edu_info = parse_education_info(demo.get('education', demo.get('highestEducation', demo.get('academicStanding', ''))))
+        coding_years = parse_num(demo.get('codingExp', ''))
+        db_years = parse_num(demo.get('dbExp', ''))
+        lang_info = parse_language_info(demo.get('primaryLanguage', ''))
+        country_info = parse_country_info(demo.get('countryOfOrigin', ''))
+        cols = (
+            demo,
+            [
+                age_val,
+                gender_info['code'],
+                gender_info['label'],
+                gender_info['is_male'],
+                gender_info['is_female'],
+                edu_info['code'],
+                edu_info['label'],
+                edu_info['has_degree'],
+                coding_years,
+                1 if coding_years > 0 else 0,
+                db_years,
+                1 if db_years > 0 else 0,
+                lang_info['language'],
+                lang_info['is_english'],
+                country_info['country'],
+                country_info['is_us'],
+                resolve_likert_val(thought_obj, 'clarity'),
+                resolve_likert_val(thought_obj, 'difficulty'),
+                resolve_likert_val(thought_obj, 'interface'),
+                resolve_likert_val(thought_obj, 'experience'),
+                thought_obj.get('durationExpectation', thought_obj.get('duration_expectation', '')),
+                thought_obj.get('thoughts', '')
+            ]
+        )
+        parsed_participant_cols[pid] = cols
+        return cols
+
     with tempfile.NamedTemporaryFile('w', dir=BASE_DIR, delete=False, newline='', encoding='utf-8') as f:
         writer = csv.writer(f)
         writer.writerow(CSV_HEADERS)
         for r in responses:
             pid = r.get('participantId', '')
-            demo = demographics.get(pid, {})
-            thought_obj = final_thoughts.get(pid, {})
+            demo, tail_cols = get_participant_meta_cols(pid)
 
             # Trial sequence & block (5 blocks of 5 questions for 25-question study)
             raw_q_num = r.get('questionNumber', 1)
@@ -584,17 +740,6 @@ def export_csv(db_data):
             # Group and Dialect
             assigned_group = r.get('assignedGroupName', r.get('assignedGroup', demo.get('assignedGroupName', demo.get('assignedGroup', ''))))
 
-            # Demographics parsing (numeric, ordinal & 1s/0s)
-            raw_age = demo.get('age', '')
-            age_val = parse_age(raw_age)
-
-            gender_info = parse_gender_info(demo.get('gender', ''))
-            edu_info = parse_education_info(demo.get('education', demo.get('highestEducation', demo.get('academicStanding', ''))))
-            coding_years = parse_num(demo.get('codingExp', ''))
-            db_years = parse_num(demo.get('dbExp', ''))
-            lang_info = parse_language_info(demo.get('primaryLanguage', ''))
-            country_info = parse_country_info(demo.get('countryOfOrigin', ''))
-
             writer.writerow([
                 r.get('id', ''),
                 pid,
@@ -624,31 +769,11 @@ def export_csv(db_data):
                 resolve_correct_key(r),
                 t_acc if t_acc is not None else '',
                 t_time if t_time is not None else '',
-                age_val,
-                gender_info['code'],
-                gender_info['label'],
-                gender_info['is_male'],
-                gender_info['is_female'],
-                edu_info['code'],
-                edu_info['label'],
-                edu_info['has_degree'],
-                coding_years,
-                1 if coding_years > 0 else 0,
-                db_years,
-                1 if db_years > 0 else 0,
-                lang_info['language'],
-                lang_info['is_english'],
-                country_info['country'],
-                country_info['is_us'],
-                resolve_likert_val(thought_obj, 'clarity'),
-                resolve_likert_val(thought_obj, 'difficulty'),
-                resolve_likert_val(thought_obj, 'interface'),
-                resolve_likert_val(thought_obj, 'experience'),
-                thought_obj.get('durationExpectation', thought_obj.get('duration_expectation', '')),
-                thought_obj.get('thoughts', '')
+                *tail_cols
             ])
+        f.flush()
         temp_name = f.name
-    os.replace(temp_name, CSV_FILE)
+    _safe_os_replace(temp_name, CSV_FILE)
 
 class TelemetryHandler(http.server.SimpleHTTPRequestHandler):
     directory = BASE_DIR
@@ -984,6 +1109,8 @@ if __name__ == '__main__':
     else:
         class ThreadingHTTPServer(socketserver.ThreadingMixIn, http.server.HTTPServer): pass
         ServerClass = ThreadingHTTPServer
+    ServerClass.daemon_threads = True
+    ServerClass.allow_reuse_address = True
 
     migrate_legacy_txt_emails()
     with db_lock:
