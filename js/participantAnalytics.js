@@ -717,22 +717,31 @@ class ParticipantAnalytics {
       const res = await fetch(endpoint, { headers });
       if (res.ok) {
         const text = await res.text();
+        if (this._lastDiskSyncRawText === text) {
+          return;
+        }
         let diskData = null;
         try { diskData = JSON.parse(text); } catch (e) {}
 
         if (diskData && typeof diskData === 'object') {
+          this._lastDiskSyncRawText = text;
           let changed = false;
 
           if (diskData.responses && Array.isArray(diskData.responses)) {
             const map = new Map();
             this.responses.forEach(r => { if (r.id) map.set(r.id, r); });
             diskData.responses.forEach(r => {
-              if (r.id && !map.has(r.id)) {
-                map.set(r.id, r);
-                changed = true;
+              if (r && r.id) {
+                const prev = map.get(r.id);
+                if (!prev || prev.timestamp !== r.timestamp || prev.selectedKey !== r.selectedKey) {
+                  map.set(r.id, r);
+                  changed = true;
+                }
               }
             });
-            this.responses = Array.from(map.values());
+            if (changed) {
+              this.responses = Array.from(map.values());
+            }
           }
 
           if (diskData.trainingResponses && Array.isArray(diskData.trainingResponses)) {
@@ -745,33 +754,59 @@ class ParticipantAnalytics {
                 tMap.set(`${tr.participantId}_t${tr.questionNumber}`, tr);
               }
             });
+            let trainChanged = false;
             diskData.trainingResponses.forEach(tr => {
               if (tr && tr.participantId && tr.questionNumber !== undefined) {
                 const key = `${tr.participantId}_t${tr.questionNumber}`;
-                if (!tMap.has(key)) {
+                const prev = tMap.get(key);
+                if (!prev || prev.timestamp !== tr.timestamp || prev.selectedKey !== tr.selectedKey) {
+                  tMap.set(key, tr);
+                  trainChanged = true;
                   changed = true;
                 }
-                tMap.set(key, tr);
               }
             });
-            this.trainingResponses = Array.from(tMap.values());
-            try {
-              localStorage.setItem(this.trainingStorageKey, JSON.stringify(this.trainingResponses));
-            } catch (e) {}
+            if (trainChanged) {
+              this.trainingResponses = Array.from(tMap.values());
+              try {
+                localStorage.setItem(this.trainingStorageKey, JSON.stringify(this.trainingResponses));
+              } catch (e) {}
+            }
           }
 
           if (diskData.demographics && typeof diskData.demographics === 'object') {
-            Object.assign(this.demographics, diskData.demographics);
-            localStorage.setItem(this.demographicsKey, JSON.stringify(this.demographics));
+            let demoChanged = false;
+            for (const [pid, dVal] of Object.entries(diskData.demographics)) {
+              const cur = this.demographics[pid];
+              if (!cur || cur.timestamp !== dVal.timestamp || JSON.stringify(cur) !== JSON.stringify(dVal)) {
+                this.demographics[pid] = dVal;
+                demoChanged = true;
+                changed = true;
+              }
+            }
+            if (demoChanged) {
+              try {
+                localStorage.setItem(this.demographicsKey, JSON.stringify(this.demographics));
+              } catch (e) {}
+            }
           }
 
           if (diskData.finalThoughts && typeof diskData.finalThoughts === 'object') {
-            Object.assign(this.finalThoughts, diskData.finalThoughts);
-            localStorage.setItem(this.finalThoughtsKey, JSON.stringify(this.finalThoughts));
+            let ftChanged = false;
+            for (const [pid, ftVal] of Object.entries(diskData.finalThoughts)) {
+              const cur = this.finalThoughts[pid];
+              if (!cur || cur.timestamp !== ftVal.timestamp || JSON.stringify(cur) !== JSON.stringify(ftVal)) {
+                this.finalThoughts[pid] = ftVal;
+                ftChanged = true;
+                changed = true;
+              }
+            }
+            if (ftChanged) {
+              try {
+                localStorage.setItem(this.finalThoughtsKey, JSON.stringify(this.finalThoughts));
+              } catch (e) {}
+            }
           }
-
-          if (diskData.demographics && Object.keys(diskData.demographics).length > 0) changed = true;
-          if (diskData.finalThoughts && Object.keys(diskData.finalThoughts).length > 0) changed = true;
 
           if (changed) {
             this.saveResponsesLocally();
@@ -2457,6 +2492,7 @@ class ParticipantAnalytics {
   async deleteUserResponses(participantId) {
     if (!participantId) return;
     if (confirm(`Are you sure you want to permanently delete all telemetry records for User ID: ${participantId}?`)) {
+      this._lastDiskSyncRawText = null;
       this.responses = this.responses.filter(r => (r.participantId || 'Anonymous') !== participantId);
       if (Array.isArray(this.trainingResponses)) {
         this.trainingResponses = this.trainingResponses.filter(r => (r.participantId || 'Anonymous') !== participantId);
@@ -2488,6 +2524,7 @@ class ParticipantAnalytics {
   }
 
   async clearAllResponsesWithoutConfirm() {
+    this._lastDiskSyncRawText = null;
     this.responses = [];
     this.trainingResponses = [];
     this.demographics = {};

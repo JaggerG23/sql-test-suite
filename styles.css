@@ -508,6 +508,8 @@ input[type="range"] {
   max-height: 380px;
   overflow-x: auto !important;
   overflow-y: auto !important;
+  overscroll-behavior: contain;
+  overflow-anchor: none;
   width: 100% !important;
   max-width: 100% !important;
   min-width: 0 !important;
@@ -515,7 +517,7 @@ input[type="range"] {
   display: block;
   border: 1px solid rgba(255, 255, 255, 0.08);
   border-radius: 6px;
-  background: rgba(10, 14, 26, 0.7);
+  background: #0a0e1a;
   scrollbar-color: rgba(99, 102, 241, 0.6) rgba(0, 0, 0, 0.4);
   scrollbar-width: thin;
   -webkit-overflow-scrolling: touch;
@@ -641,6 +643,7 @@ table.data-table tr:nth-child(even) {
   position: sticky;
   top: 0;
   z-index: 2;
+  transform: translateZ(0);
   border-bottom: 1px solid rgba(255, 255, 255, 0.1);
   box-shadow: 0 1px 2px rgba(0, 0, 0, 0.4);
   white-space: nowrap;
@@ -663,10 +666,15 @@ table.data-table tr:nth-child(even) {
 }
 
 /* User Folder Accordion & Width Bounds */
+#tab-analytics .card {
+  backdrop-filter: none;
+}
+
 .user-folder-card {
   min-width: 0 !important;
   max-width: 100% !important;
   box-sizing: border-box !important;
+  overflow-anchor: none;
 }
 
 .user-folder-header {
@@ -679,12 +687,14 @@ table.data-table tr:nth-child(even) {
   min-width: 0 !important;
   max-width: 100% !important;
   box-sizing: border-box !important;
+  overflow-anchor: none;
 }
 
 #analytics-user-folders-container {
   min-width: 0 !important;
   max-width: 100% !important;
   box-sizing: border-box !important;
+  overflow-anchor: none;
 }
 
 .text-muted { color: var(--text-muted); }

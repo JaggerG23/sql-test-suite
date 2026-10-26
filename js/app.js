@@ -1604,6 +1604,18 @@ class QueryExperimentApp {
       }
     }
 
+    // Track active scrolling in Admin Dashboard so background syncs never interrupt or reset scroll
+    if (!this.isParticipantView() && typeof window !== 'undefined') {
+      this._lastAdminScrollTs = 0;
+      this._deferredDashboardRenderTimer = null;
+      const markScrolling = () => {
+        this._lastAdminScrollTs = Date.now();
+      };
+      window.addEventListener('scroll', markScrolling, { passive: true, capture: true });
+      window.addEventListener('wheel', markScrolling, { passive: true, capture: true });
+      window.addEventListener('touchmove', markScrolling, { passive: true, capture: true });
+    }
+
     // Subscribe to real-time telemetry updates across tabs/windows
     if (this.analytics) {
       this.analytics.subscribe((payload) => {
@@ -1866,6 +1878,20 @@ class QueryExperimentApp {
   }
 
   renderAnalyticsDashboard(payload) {
+    // If a background sync arrives while the admin is actively scrolling, defer the DOM update
+    // until scrolling stops so momentum scrolling is never interrupted or jumped to top
+    const isBackgroundSync = payload && !['DELETE_USER', 'CLEAR_LOGS', 'IMPORT_SYNC'].includes(payload.type);
+    if (isBackgroundSync && this._lastAdminScrollTs && (Date.now() - this._lastAdminScrollTs < 450)) {
+      if (this._deferredDashboardRenderTimer) {
+        clearTimeout(this._deferredDashboardRenderTimer);
+      }
+      this._deferredDashboardRenderTimer = setTimeout(() => {
+        this._deferredDashboardRenderTimer = null;
+        this.renderAnalyticsDashboard(payload);
+      }, 460);
+      return;
+    }
+
     const summary = this.analytics.getAnalyticsSummary();
     const responses = this.analytics.getAllResponses();
 
@@ -1928,11 +1954,25 @@ class QueryExperimentApp {
     // Raw Event Logs Grouped by User ID Folders
     const foldersContainer = document.getElementById('analytics-user-folders-container');
     if (foldersContainer) {
-      // Capture currently open folders to preserve state across re-renders
+      foldersContainer.style.overflowAnchor = 'none';
+
+      // Capture window scroll and currently open folders + inner table scroll positions
+      const savedWinScrollX = typeof window !== 'undefined' ? window.scrollX : 0;
+      const savedWinScrollY = typeof window !== 'undefined' ? window.scrollY : 0;
       const openFolders = new Set();
+      const savedTableScrolls = new Map();
+
       foldersContainer.querySelectorAll('.user-folder-body').forEach(body => {
+        const safeId = body.id.replace('folder-body-', '');
         if (body.style.display === 'block') {
-          openFolders.add(body.id.replace('folder-body-', ''));
+          openFolders.add(safeId);
+        }
+        const tableWrap = body.querySelector('.table-responsive');
+        if (tableWrap) {
+          savedTableScrolls.set(safeId, {
+            top: tableWrap.scrollTop,
+            left: tableWrap.scrollLeft
+          });
         }
       });
 
@@ -2005,18 +2045,22 @@ class QueryExperimentApp {
           </div>
         `;
       } else {
-        foldersContainer.innerHTML = uids.map(uid => {
-          const group = userGroups[uid];
-          const safeUidId = uid.replace(/[^a-zA-Z0-9_-]/g, '_');
-          const isLatestUser = payload && payload.type === 'NEW_RESPONSE' && (payload.record || payload.response) && (payload.record || payload.response).participantId === uid;
-          
-          const isOpen = openFolders.has(safeUidId);
+        // Remove empty placeholder if present
+        Array.from(foldersContainer.children).forEach(child => {
+          if (!child.classList || !child.classList.contains('user-folder-card')) {
+            child.remove();
+          }
+        });
+
+        const validCardIds = new Set();
+
+        const buildFolderCardHTML = (uid, group, safeUidId, isOpen, isLatestUser, renderSig) => {
           const displayStyle = isOpen ? 'block' : 'none';
           const folderIcon = isOpen ? 'fa-folder-open' : 'fa-folder-closed';
           const chevronIcon = isOpen ? 'fa-chevron-up' : 'fa-chevron-down';
 
           return `
-            <div class="user-folder-card mb-2" style="border: 1px solid ${isLatestUser ? 'var(--color-accent)' : 'rgba(255,255,255,0.1)'}; border-radius: 8px; background: rgba(14, 18, 28, 0.85); overflow: hidden; box-shadow: 0 4px 12px rgba(0,0,0,0.25); max-width: 100%; min-width: 0;">
+            <div class="user-folder-card mb-2" id="user-folder-card-${safeUidId}" data-render-sig="${this.escapeHTML(renderSig)}" style="border: 1px solid ${isLatestUser ? 'var(--color-accent)' : 'rgba(255,255,255,0.1)'}; border-radius: 8px; background: rgba(14, 18, 28, 0.85); overflow: hidden; box-shadow: 0 4px 12px rgba(0,0,0,0.25); max-width: 100%; min-width: 0; overflow-anchor: none;">
               <!-- Folder Header Bar -->
               <div class="user-folder-header p-2 px-3 d-flex justify-between align-center" style="background: rgba(0,0,0,0.4); cursor: pointer; border-bottom: 1px solid rgba(255,255,255,0.08); display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px; min-width: 0;" onclick="window.app.toggleUserFolder('${safeUidId}')">
                 <div class="d-flex align-center gap-2 flex-wrap" style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap; flex: 1; min-width: 0;">
@@ -2041,7 +2085,7 @@ class QueryExperimentApp {
               </div>
 
               <!-- Folder Body (Table of Event Logs for this User) -->
-              <div class="user-folder-body p-2" id="folder-body-${safeUidId}" style="display: ${displayStyle}; background: rgba(10, 14, 26, 0.95); width: 100%; max-width: 100%; min-width: 0; box-sizing: border-box; overflow: hidden;">
+              <div class="user-folder-body p-2" id="folder-body-${safeUidId}" style="display: ${displayStyle}; background: rgba(10, 14, 26, 0.95); width: 100%; max-width: 100%; min-width: 0; box-sizing: border-box; overflow: hidden; overflow-anchor: none;">
                 ${group.demographics || group.finalThoughts ? `
                   <div class="user-demo-bar p-2 mb-2" style="background: rgba(99, 102, 241, 0.08); border: 1px solid rgba(99, 102, 241, 0.2); border-radius: 6px; font-size: 11px;">
                     ${group.demographics ? `
@@ -2092,7 +2136,7 @@ class QueryExperimentApp {
                     })() : ''}
                   </div>
                 ` : ''}
-                <div class="table-responsive" style="max-height: 380px; overflow-x: auto; overflow-y: auto; width: 100%; max-width: 100%; min-width: 0; box-sizing: border-box; border: 1px solid rgba(255,255,255,0.08); border-radius: 6px;">
+                <div class="table-responsive" id="folder-table-scroll-${safeUidId}" style="max-height: 380px; overflow-x: auto; overflow-y: auto; overscroll-behavior: contain; overflow-anchor: none; -webkit-overflow-scrolling: touch; width: 100%; max-width: 100%; min-width: 0; box-sizing: border-box; border: 1px solid rgba(255,255,255,0.08); border-radius: 6px;">
                   <table class="batch-results-table" style="width: max-content; min-width: 100%; border-collapse: collapse; white-space: nowrap; font-size: 11px;">
                     <thead>
                       <tr style="position: sticky; top: 0; background: #111520; z-index: 2;">
@@ -2157,7 +2201,72 @@ class QueryExperimentApp {
               </div>
             </div>
           `;
-        }).join('');
+        };
+
+        uids.forEach((uid, targetIndex) => {
+          const group = userGroups[uid];
+          const safeUidId = uid.replace(/[^a-zA-Z0-9_-]/g, '_');
+          const cardDomId = `user-folder-card-${safeUidId}`;
+          validCardIds.add(cardDomId);
+
+          const isLatestUser = Boolean(
+            payload && payload.type === 'NEW_RESPONSE' &&
+            (payload.record || payload.response) &&
+            (payload.record || payload.response).participantId === uid
+          );
+          const isOpen = openFolders.has(safeUidId);
+          const demoTs = (group.demographics && group.demographics.timestamp) || '';
+          const ftTs = (group.finalThoughts && group.finalThoughts.timestamp) || '';
+          const renderSig = `${group.totalAnswers}_${group.correctCount}_${group.totalTimeMs}_${group.focusLostCount}_${group.totalAnswerChanges}_${getGroupLatestTime(group)}_${demoTs}_${ftTs}`;
+
+          let cardEl = document.getElementById(cardDomId);
+          if (!cardEl) {
+            const temp = document.createElement('div');
+            temp.innerHTML = buildFolderCardHTML(uid, group, safeUidId, isOpen, isLatestUser, renderSig).trim();
+            cardEl = temp.firstElementChild;
+            const refNode = foldersContainer.children[targetIndex] || null;
+            foldersContainer.insertBefore(cardEl, refNode);
+          } else if (cardEl.getAttribute('data-render-sig') !== renderSig) {
+            const temp = document.createElement('div');
+            temp.innerHTML = buildFolderCardHTML(uid, group, safeUidId, isOpen, isLatestUser, renderSig).trim();
+            const newCardEl = temp.firstElementChild;
+            cardEl.replaceWith(newCardEl);
+            cardEl = newCardEl;
+          } else {
+            // Card content unchanged; only update highlight border if needed without touching inner DOM
+            cardEl.style.borderColor = isLatestUser ? 'var(--color-accent)' : 'rgba(255,255,255,0.1)';
+          }
+
+          // Only reposition card in DOM if no user folders are currently open for review,
+          // because moving a DOM node in browsers resets internal scrollbars
+          if (openFolders.size === 0) {
+            const currentAtTarget = foldersContainer.children[targetIndex];
+            if (currentAtTarget && currentAtTarget !== cardEl) {
+              foldersContainer.insertBefore(cardEl, currentAtTarget);
+            }
+          }
+        });
+
+        // Remove cards for deleted users
+        Array.from(foldersContainer.querySelectorAll('.user-folder-card')).forEach(card => {
+          if (!validCardIds.has(card.id)) {
+            card.remove();
+          }
+        });
+
+        // Restore inner table scroll positions for any open folder that was updated
+        savedTableScrolls.forEach((pos, safeId) => {
+          const tableWrap = document.getElementById(`folder-table-scroll-${safeId}`);
+          if (tableWrap && (tableWrap.scrollTop !== pos.top || tableWrap.scrollLeft !== pos.left)) {
+            tableWrap.scrollTop = pos.top;
+            tableWrap.scrollLeft = pos.left;
+          }
+        });
+
+        // Restore window scroll position if layout shifted
+        if (typeof window !== 'undefined' && (window.scrollY !== savedWinScrollY || window.scrollX !== savedWinScrollX)) {
+          window.scrollTo(savedWinScrollX, savedWinScrollY);
+        }
       }
     }
   }
