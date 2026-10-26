@@ -544,7 +544,7 @@ class QuizGenerator {
         if (isQuorum) {
           blocks.push(`query = query.replace('"orders"', '"users"')\nquery = query.replace('"amount > 15"', '"id <= 3"')\nquery = query.replace('query:AddColumn("SUM(amount)", "sum_amt")', 'query:AddColumn("id")\\nquery:AddColumn("name")')\nquery = query.replace('query:AddColumn("AVG(amount)", "avg_amt")', 'query:AddColumn("rating")')`);
         } else {
-          blocks.push(`query = query.replace("orders", "users")\nquery = query.replace("amount > 15", "id <= 3")\nquery = query.replace("SUM(amount) AS sum_amt, AVG(amount) AS avg_amt", "id, name, rating")`);
+          blocks.push(`query = query.replace("orders", "users")\nquery = query.replace("amount > 15", "id <= 3")\nquery = query.replace("AGGREGATE SUM(amount) AS sum_amt, AVG(amount) AS avg_amt", "SELECT id, name, rating")`);
         }
         blocks.push(`query = """\n${finalDialectSql}\n"""`);
         blocks.push(`result_table = db.execute(query)`);
@@ -553,7 +553,7 @@ class QuizGenerator {
         if (isQuorum) {
           blocks.push(`query = query.replace('"orders"', '"users"');\nquery = query.replace('"amount > 15"', '"id <= 3"');\nquery = query.replace('query:AddColumn("SUM(amount)", "sum_amt")', 'query:AddColumn("id")\\nquery:AddColumn("name")');\nquery = query.replace('query:AddColumn("AVG(amount)", "avg_amt")', 'query:AddColumn("rating")');`);
         } else {
-          blocks.push(`query = query.replace("orders", "users");\nquery = query.replace("amount > 15", "id <= 3");\nquery = query.replace("SUM(amount) AS sum_amt, AVG(amount) AS avg_amt", "id, name, rating");`);
+          blocks.push(`query = query.replace("orders", "users");\nquery = query.replace("amount > 15", "id <= 3");\nquery = query.replace("AGGREGATE SUM(amount) AS sum_amt, AVG(amount) AS avg_amt", "SELECT id, name, rating");`);
         }
         blocks.push(`query = \`\n${finalDialectSql}\n\`;`);
         blocks.push(`const resultTable = db.execute(query);`);
@@ -603,12 +603,12 @@ class QuizGenerator {
     if (spec.manipulation === 'delete_second_execute' || origQ === 7) {
       if (isPython) {
         blocks.push(`query = """\n${initialDialectSql}\n"""`);
-        blocks.push(`query_clauses = ["SELECT", "WHERE", "GROUP BY"]\nactive_clauses = [c for c in query_clauses if c in query]`);
+        blocks.push(`query_clauses = ["AGGREGATE", "WHERE", "GROUP BY"]\nactive_clauses = [c for c in query_clauses if c in query]`);
         blocks.push(`query = """\n${finalDialectSql}\n"""`);
         blocks.push(`result_table = db.execute(query)`);
       } else {
         blocks.push(`let query = \`\n${initialDialectSql}\n\`;`);
-        blocks.push(`let queryClauses = ["SELECT", "WHERE", "GROUP BY"];\nlet activeClauses = queryClauses.filter(c => query.includes(c));`);
+        blocks.push(`let queryClauses = ["AGGREGATE", "WHERE", "GROUP BY"];\nlet activeClauses = queryClauses.filter(c => query.includes(c));`);
         blocks.push(`query = \`\n${finalDialectSql}\n\`;`);
         blocks.push(`const resultTable = db.execute(query);`);
       }
