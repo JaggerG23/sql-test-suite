@@ -3,8 +3,6 @@ services:
     image: postgres:16-alpine
     container_name: sql_study_postgres
     restart: unless-stopped
-    mem_limit: 128m
-    memswap_limit: 256m
     command: postgres -c shared_buffers=32MB -c work_mem=2MB -c max_connections=25
     environment:
       POSTGRES_USER: ${POSTGRES_USER:-sqlstudy}
