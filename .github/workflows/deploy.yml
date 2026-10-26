@@ -16,6 +16,7 @@ jobs:
           host: ${{ secrets.LIGHTSAIL_HOST }}
           username: ${{ secrets.LIGHTSAIL_USERNAME }}
           key: ${{ secrets.LIGHTSAIL_KEY }}
+          command_timeout: 30m
           script_stop: true
           script: |
             set -e
@@ -50,10 +51,13 @@ jobs:
               "$REPO_DIR/google_apps_script.js" \
               "$REPO_DIR/nginx.conf"
 
+            # Ensure container config files are world-readable for non-root container UIDs (pgadmin UID 5050, postgres UID 70)
+            chmod -R a+rX "$REPO_DIR/db" "$REPO_DIR/pgadmin"
+
             # Ensure python3-psycopg2 and Docker are installed on the Lightsail host
             if ! python3 -c "import psycopg2" >/dev/null 2>&1; then
-              sudo apt-get update
-              sudo apt-get install -y python3-psycopg2
+              sudo DEBIAN_FRONTEND=noninteractive apt-get update
+              sudo DEBIAN_FRONTEND=noninteractive apt-get install -y python3-psycopg2
             fi
 
             if ! command -v docker >/dev/null 2>&1; then
@@ -62,8 +66,19 @@ jobs:
               sudo usermod -aG docker "$USER" || true
             fi
 
-            # Start PostgreSQL 16 and pgAdmin 4 containers via Docker Compose
+            # Pull images quietly (avoids flooding SSH stderr with layer extraction progress) and start containers
+            sudo docker compose pull --quiet
             sudo docker compose up -d
+
+            # Wait until PostgreSQL is ready to accept connections before restarting server.py
+            echo "Waiting for PostgreSQL container to become ready..."
+            for i in $(seq 1 30); do
+              if sudo docker exec sql_study_postgres pg_isready -U sqlstudy -d sql_study >/dev/null 2>&1; then
+                echo "PostgreSQL is ready."
+                break
+              fi
+              sleep 1
+            done
 
             # Sync updated static web files to Nginx web root (/var/www/html/), excluding backend/Docker files
             sudo rsync -av --delete \

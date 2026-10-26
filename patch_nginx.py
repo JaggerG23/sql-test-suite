@@ -3,7 +3,7 @@ import os
 
 NGINX_CONF = "/etc/nginx/sites-available/default"
 
-new_config = """
+new_config = r"""
 server {
     root /var/www/html;
     index participant.html index.html index.htm;
@@ -40,7 +40,7 @@ server {
         return 404;
     }
 
-    location ~* ^/js/(?!(study|admin)\\.bundle\\.min\\.js$).*\\.js$ {
+    location ~* ^/js/(?!(study|admin)\.bundle\.min\.js$).*\.js$ {
         deny all;
         return 404;
     }
