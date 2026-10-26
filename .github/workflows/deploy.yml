@@ -66,11 +66,11 @@ jobs:
               sudo usermod -aG docker "$USER" || true
             fi
 
-            # Pull images quietly (avoids flooding SSH stderr with layer extraction progress) and start containers
+            # Pull images quietly and start containers
             sudo docker compose pull --quiet
             sudo docker compose up -d
 
-            # Wait until PostgreSQL is ready to accept connections before restarting server.py
+            # Wait until PostgreSQL is ready to accept connections
             echo "Waiting for PostgreSQL container to become ready..."
             for i in $(seq 1 30); do
               if sudo docker exec sql_study_postgres pg_isready -U sqlstudy -d sql_study >/dev/null 2>&1; then
@@ -80,11 +80,46 @@ jobs:
               sleep 1
             done
 
+            # Wait for pgAdmin (127.0.0.1:5050/misc/ping); if volume was left in an uninitialized state from a prior run, reset pgadmin volume once
+            echo "Waiting for pgAdmin container on 127.0.0.1:5050..."
+            PGADMIN_READY=0
+            for i in $(seq 1 45); do
+              if curl -sSf http://127.0.0.1:5050/misc/ping >/dev/null 2>&1; then
+                echo "pgAdmin is ready on 127.0.0.1:5050."
+                PGADMIN_READY=1
+                break
+              fi
+              sleep 2
+            done
+
+            if [ "$PGADMIN_READY" -eq 0 ]; then
+              echo "pgAdmin did not respond; inspecting logs and recreating pgadmin volume..."
+              sudo docker logs --tail 50 sql_study_pgadmin || true
+              sudo docker rm -f sql_study_pgadmin || true
+              for vol in $(sudo docker volume ls -q | grep pgadmin_data || true); do
+                sudo docker volume rm -f "$vol" || true
+              done
+              sudo docker compose up -d pgadmin
+              for i in $(seq 1 45); do
+                if curl -sSf http://127.0.0.1:5050/misc/ping >/dev/null 2>&1; then
+                  echo "pgAdmin is ready on 127.0.0.1:5050 after volume reset."
+                  PGADMIN_READY=1
+                  break
+                fi
+                sleep 2
+              done
+              if [ "$PGADMIN_READY" -eq 0 ]; then
+                echo "pgAdmin logs after retry:"
+                sudo docker logs --tail 100 sql_study_pgadmin || true
+              fi
+            fi
+
             # Sync updated static web files to Nginx web root (/var/www/html/), excluding backend/Docker files
             sudo rsync -av --delete \
               --exclude='.git/' \
               --exclude='.github/' \
               --exclude='.gitignore' \
+              --exclude='.gitattributes' \
               --exclude='.env' \
               --exclude='.env.example' \
               --exclude='db/' \
