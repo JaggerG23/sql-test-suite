@@ -1,0 +1,13 @@
+{
+  "Servers": {
+    "1": {
+      "Name": "SQL Study PostgreSQL",
+      "Group": "Servers",
+      "Host": "postgres",
+      "Port": 5432,
+      "MaintenanceDB": "sql_study",
+      "Username": "sqlstudy",
+      "SSLMode": "prefer"
+    }
+  }
+}

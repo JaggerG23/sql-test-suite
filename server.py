@@ -1,7 +1,9 @@
 """
 Backend Telemetry & Study Configuration Server (25-Question SQL Readability Study)
-Serves API endpoints (/api/telemetry, /api/group-assign, /api/config, /api/admin/*,
-/api/export-csv, /api/export-extra-credit) behind Nginx on AWS Lightsail or standalone locally.
+Backed 100% by PostgreSQL 16 (modeled after KushaRohani/division_counting:
+extra_credit, experiment_data, experiment_per_question, training_per_question,
+questionnaire, and anova_export_view).
+Serves API endpoints behind Nginx on AWS Lightsail or standalone locally.
 """
 import http.server
 import socketserver
@@ -9,11 +11,10 @@ import json
 import os
 import sys
 import csv
+import io
 import hashlib
 import hmac
-import tempfile
 import threading
-import time
 import urllib.parse
 import re
 import math
@@ -22,152 +23,201 @@ from http.cookies import SimpleCookie
 from datetime import datetime
 from zoneinfo import ZoneInfo
 
+try:
+    import psycopg2
+    from psycopg2.extras import RealDictCursor, Json
+except ImportError:
+    psycopg2 = None
+    RealDictCursor = None
+    Json = None
+
 PORT = 8000
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-LOG_FILE = os.path.join(BASE_DIR, "telemetry_events.jsonl")
-DB_FILE = os.path.join(BASE_DIR, "participant_responses_db.json")
-CSV_FILE = os.path.join(BASE_DIR, "participant_responses_export.csv")
-EXTRA_CREDIT_FILE = os.path.join(BASE_DIR, "extra_credit_emails.csv")
-CONFIG_FILE = os.path.join(BASE_DIR, "study_config.json")
-GROUP_ROTATION_FILE = os.path.join(BASE_DIR, "group_rotation.json")
+INIT_SQL_FILE = os.path.join(BASE_DIR, "db", "init.sql")
 NUM_STUDY_GROUPS = 4
 
-config_lock = threading.Lock()
-rotation_lock = threading.Lock()
-
-def _safe_os_replace(temp_name, target_path, retries=6, delay=0.02):
-    """Atomically replaces target_path with temp_name, retrying briefly on transient Windows/OS file locks."""
-    last_err = None
-    for attempt in range(retries):
-        try:
-            os.replace(temp_name, target_path)
-            return True
-        except PermissionError as err:
-            last_err = err
-            time.sleep(delay * (attempt + 1))
-        except Exception as err:
-            last_err = err
-            break
-    try:
-        if os.path.exists(temp_name):
-            os.remove(temp_name)
-    except Exception:
-        pass
-    if last_err:
-        raise last_err
-    return False
-
-def _default_group_pool():
-    return list(range(NUM_STUDY_GROUPS))
-
-def _load_rotation_state():
-    """Caller must hold rotation_lock."""
-    if os.path.exists(GROUP_ROTATION_FILE):
-        try:
-            with open(GROUP_ROTATION_FILE, 'r', encoding='utf-8') as f:
-                state = json.load(f)
-                if isinstance(state, dict):
-                    raw_pool = state.get("available_groups")
-                    if isinstance(raw_pool, list):
-                        clean_pool = []
-                        for g in raw_pool:
-                            if isinstance(g, int) and 0 <= g < NUM_STUDY_GROUPS and g not in clean_pool:
-                                clean_pool.append(g)
-                        state["available_groups"] = clean_pool if clean_pool else _default_group_pool()
-                    else:
-                        state["available_groups"] = _default_group_pool()
-                    if not isinstance(state.get("assignments"), dict):
-                        state["assignments"] = {}
-                    state.pop("next_index", None)
-                    return state
-        except Exception:
-            pass
-    return {"available_groups": _default_group_pool(), "assignments": {}}
-
-def _save_rotation_state(state):
-    """Caller must hold rotation_lock. Writes atomically via temp file."""
-    with tempfile.NamedTemporaryFile('w', dir=BASE_DIR, delete=False, encoding='utf-8') as f:
-        json.dump(state, f, indent=2)
-        f.flush()
-        temp_name = f.name
-    _safe_os_replace(temp_name, GROUP_ROTATION_FILE)
-
-def assign_rotating_group(participant_id):
-    """Random sampling without replacement in blocks of 4 (4 -> 3 -> 2 -> 1 -> reset).
-
-    Starts with all 4 groups [0, 1, 2, 3]. Randomly picks one for a participant
-    and removes it from consideration temporarily (leaving 3, then 2, then 1).
-    When only 1 group remains, assigns it to the participant and resets the
-    consideration pool back to all 4 groups [0, 1, 2, 3]. Re-requests for an
-    already assigned participant return their existing group.
-    """
-    with rotation_lock:
-        state = _load_rotation_state()
-        existing = state["assignments"].get(participant_id)
-        if isinstance(existing, int) and 0 <= existing < NUM_STUDY_GROUPS:
-            return existing
-
-        available = state.get("available_groups")
-        if not isinstance(available, list) or len(available) == 0:
-            available = _default_group_pool()
-
-        if len(available) == 1:
-            idx = available[0]
-            state["available_groups"] = _default_group_pool()
-        else:
-            idx = secrets.choice(available)
-            state["available_groups"] = [g for g in available if g != idx]
-
-        state["assignments"][participant_id] = idx
-        _save_rotation_state(state)
-        return idx
-
-def reset_group_rotation():
-    with rotation_lock:
-        _save_rotation_state({"available_groups": _default_group_pool(), "assignments": {}})
-
-def load_study_config():
-    with config_lock:
-        if os.path.exists(CONFIG_FILE):
-            try:
-                with open(CONFIG_FILE, 'r', encoding='utf-8') as f:
-                    cfg = json.load(f)
-                    if isinstance(cfg, dict):
-                        cfg["questions_21_30_enabled"] = True
-                        cfg["total_questions"] = 25
-                        return cfg
-            except Exception:
-                pass
-        return {"questions_21_30_enabled": True, "total_questions": 25}
-
-def save_study_config(cfg):
-    with config_lock:
-        try:
-            with open(CONFIG_FILE, 'w', encoding='utf-8') as f:
-                json.dump(cfg, f, indent=2)
-        except Exception as e:
-            print(f"Error saving study_config: {e}")
-
-ADMIN_PASSWORD = os.environ.get("ADMIN_PASSWORD", "")
-if not ADMIN_PASSWORD:
-    # Load from .env file if present
+def _load_dotenv():
+    """Loads key=value pairs from .env into os.environ if not already set."""
     env_file = os.path.join(BASE_DIR, ".env")
     if os.path.exists(env_file):
         try:
             with open(env_file, "r", encoding="utf-8") as ef:
                 for line in ef:
                     line = line.strip()
-                    if line.startswith("ADMIN_PASSWORD="):
-                        ADMIN_PASSWORD = line.split("=", 1)[1].strip().strip('"').strip("'")
-                        break
-        except Exception:
-            pass
+                    if line and not line.startswith("#") and "=" in line:
+                        k, v = line.split("=", 1)
+                        k = k.strip()
+                        v = v.strip().strip('"').strip("'")
+                        if k and k not in os.environ:
+                            os.environ[k] = v
+        except Exception as e:
+            print(f"Notice: could not read .env file: {e}", file=sys.stderr)
+
+_load_dotenv()
+
+POSTGRES_HOST = os.environ.get("POSTGRES_HOST", "127.0.0.1")
+POSTGRES_PORT = int(os.environ.get("POSTGRES_PORT", "5432"))
+POSTGRES_DB = os.environ.get("POSTGRES_DB", "sql_study")
+POSTGRES_USER = os.environ.get("POSTGRES_USER", "sqlstudy")
+POSTGRES_PASSWORD = os.environ.get("POSTGRES_PASSWORD", "sqlstudy_secret")
+DATABASE_URL = os.environ.get("DATABASE_URL", "")
+
+ADMIN_PASSWORD = os.environ.get("ADMIN_PASSWORD", "")
 if not ADMIN_PASSWORD:
     print("WARNING: ADMIN_PASSWORD environment variable is not set. Using fallback password from environment default.", file=sys.stderr)
     ADMIN_PASSWORD = "StefiksLabRootPassword"
 
 auth_lock = threading.Lock()
 ACTIVE_ADMIN_TOKENS = set()
+db_lock = threading.Lock()
+
+def get_db_connection():
+    """Creates a new PostgreSQL connection to the sql_study database."""
+    if psycopg2 is None:
+        raise RuntimeError(
+            "psycopg2 is required for PostgreSQL storage. "
+            "Install via 'sudo apt install -y python3-psycopg2' or 'pip install psycopg2-binary'."
+        )
+    if DATABASE_URL:
+        return psycopg2.connect(DATABASE_URL)
+    return psycopg2.connect(
+        host=POSTGRES_HOST,
+        port=POSTGRES_PORT,
+        dbname=POSTGRES_DB,
+        user=POSTGRES_USER,
+        password=POSTGRES_PASSWORD,
+        connect_timeout=5
+    )
+
+def init_postgres_schema():
+    """Runs db/init.sql on startup so all tables and views exist in PostgreSQL."""
+    try:
+        conn = get_db_connection()
+        with conn:
+            with conn.cursor() as cur:
+                if os.path.exists(INIT_SQL_FILE):
+                    with open(INIT_SQL_FILE, "r", encoding="utf-8") as f:
+                        cur.execute(f.read())
+        conn.close()
+        print(f"PostgreSQL schema verified on {POSTGRES_HOST}:{POSTGRES_PORT}/{POSTGRES_DB}", flush=True)
+    except Exception as e:
+        print(f"WARNING: Could not initialize PostgreSQL schema on startup: {e}", file=sys.stderr, flush=True)
+
+def _default_group_pool():
+    return list(range(NUM_STUDY_GROUPS))
+
+def assign_rotating_group(participant_id):
+    """Random sampling without replacement in blocks of 4 (4 -> 3 -> 2 -> 1 -> reset) stored in PostgreSQL."""
+    with db_lock:
+        conn = get_db_connection()
+        try:
+            with conn:
+                with conn.cursor() as cur:
+                    cur.execute(
+                        "SELECT group_index FROM participant_group_assignments WHERE participant_id = %s;",
+                        (participant_id,)
+                    )
+                    row = cur.fetchone()
+                    if row is not None and 0 <= int(row[0]) < NUM_STUDY_GROUPS:
+                        return int(row[0])
+
+                    cur.execute(
+                        "SELECT available_groups FROM group_rotation_state WHERE id = 1 FOR UPDATE;"
+                    )
+                    state_row = cur.fetchone()
+                    raw_pool = state_row[0] if (state_row and isinstance(state_row[0], list)) else _default_group_pool()
+                    available = [g for g in raw_pool if isinstance(g, int) and 0 <= g < NUM_STUDY_GROUPS]
+                    if not available:
+                        available = _default_group_pool()
+
+                    if len(available) == 1:
+                        idx = available[0]
+                        next_pool = _default_group_pool()
+                    else:
+                        idx = secrets.choice(available)
+                        next_pool = [g for g in available if g != idx]
+
+                    cur.execute(
+                        """
+                        INSERT INTO group_rotation_state (id, available_groups, updated_at)
+                        VALUES (1, %s, NOW())
+                        ON CONFLICT (id) DO UPDATE SET
+                            available_groups = EXCLUDED.available_groups,
+                            updated_at = NOW();
+                        """,
+                        (next_pool,)
+                    )
+                    cur.execute(
+                        """
+                        INSERT INTO participant_group_assignments (participant_id, group_index, assigned_at)
+                        VALUES (%s, %s, NOW())
+                        ON CONFLICT (participant_id) DO UPDATE SET
+                            group_index = EXCLUDED.group_index;
+                        """,
+                        (participant_id, idx)
+                    )
+                    return idx
+        finally:
+            conn.close()
+
+def reset_group_rotation():
+    """Resets the group rotation pool back to [0, 1, 2, 3] and clears assignments in PostgreSQL."""
+    conn = get_db_connection()
+    try:
+        with conn:
+            with conn.cursor() as cur:
+                cur.execute("DELETE FROM participant_group_assignments;")
+                cur.execute(
+                    """
+                    INSERT INTO group_rotation_state (id, available_groups, updated_at)
+                    VALUES (1, %s, NOW())
+                    ON CONFLICT (id) DO UPDATE SET
+                        available_groups = EXCLUDED.available_groups,
+                        updated_at = NOW();
+                    """,
+                    (_default_group_pool(),)
+                )
+    finally:
+        conn.close()
+
+def load_study_config():
+    try:
+        conn = get_db_connection()
+        try:
+            with conn.cursor() as cur:
+                cur.execute("SELECT questions_21_30_enabled, total_questions FROM study_config WHERE id = 1;")
+                row = cur.fetchone()
+                if row:
+                    return {
+                        "questions_21_30_enabled": True,
+                        "total_questions": 25
+                    }
+        finally:
+            conn.close()
+    except Exception:
+        pass
+    return {"questions_21_30_enabled": True, "total_questions": 25}
+
+def save_study_config(cfg):
+    try:
+        conn = get_db_connection()
+        try:
+            with conn:
+                with conn.cursor() as cur:
+                    cur.execute(
+                        """
+                        INSERT INTO study_config (id, questions_21_30_enabled, total_questions, updated_at)
+                        VALUES (1, TRUE, 25, NOW())
+                        ON CONFLICT (id) DO UPDATE SET
+                            questions_21_30_enabled = TRUE,
+                            total_questions = 25,
+                            updated_at = NOW();
+                        """
+                    )
+        finally:
+            conn.close()
+    except Exception as e:
+        print(f"Error saving study_config to PostgreSQL: {e}", file=sys.stderr)
 
 def create_admin_session_token():
     token = secrets.token_hex(32)
@@ -190,68 +240,36 @@ def revoke_admin_session_token(token):
     with auth_lock:
         ACTIVE_ADMIN_TOKENS.discard(token)
 
-db_lock = threading.Lock()
-email_lock = threading.Lock()
-
 def append_extra_credit_email(email, course=""):
-    """Appends an email and course identifier to a completely separate, isolated CSV file with zero linkage to telemetry."""
+    """Inserts an email and course identifier into the isolated extra_credit PostgreSQL table."""
     clean_email = email.strip().lower()
     clean_course = (course or "").strip().upper()
-    with email_lock:
-        file_exists = os.path.exists(EXTRA_CREDIT_FILE) and os.path.getsize(EXTRA_CREDIT_FILE) > 0
-        existing_entries = set()
-        needs_upgrade = False
-        existing_rows = []
-
-        if file_exists:
-            with open(EXTRA_CREDIT_FILE, 'r', encoding='utf-8') as f:
-                reader = csv.reader(f)
-                header = next(reader, None)
-                if header and (len(header) < 2 or 'course' not in [h.lower() for h in header]):
-                    needs_upgrade = True
-                for row in reader:
-                    if row and row[0].strip():
-                        em = row[0].strip().lower()
-                        cs = row[1].strip() if len(row) > 1 else ""
-                        existing_entries.add((em, cs))
-                        existing_rows.append([em, cs])
-
-        if needs_upgrade:
-            with open(EXTRA_CREDIT_FILE, 'w', encoding='utf-8', newline='') as f:
-                writer = csv.writer(f)
-                writer.writerow(['Email', 'Course'])
-                for r in existing_rows:
-                    writer.writerow(r)
-
-        if (clean_email, clean_course) not in existing_entries:
-            existing_entries.add((clean_email, clean_course))
-            sorted_rows = sorted(existing_entries, key=lambda x: (x[0], x[1]))
-            with tempfile.NamedTemporaryFile('w', dir=BASE_DIR, delete=False, encoding='utf-8', newline='') as f:
-                writer = csv.writer(f)
-                writer.writerow(['Email', 'Course'])
-                for em, cs in sorted_rows:
-                    writer.writerow([em, cs])
-                f.flush()
-                temp_name = f.name
-            _safe_os_replace(temp_name, EXTRA_CREDIT_FILE)
+    conn = get_db_connection()
+    try:
+        with conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    """
+                    INSERT INTO extra_credit (email, course)
+                    VALUES (%s, %s)
+                    ON CONFLICT (email, course) DO NOTHING;
+                    """,
+                    (clean_email, clean_course)
+                )
         return True
+    finally:
+        conn.close()
 
-def migrate_legacy_txt_emails():
-    """Migrates any legacy extra_credit_emails.txt into extra_credit_emails.csv safely."""
-    legacy_file = os.path.join(BASE_DIR, "extra_credit_emails.txt")
-    if os.path.exists(legacy_file) and os.path.getsize(legacy_file) > 0:
-        try:
-            with open(legacy_file, 'r', encoding='utf-8') as f:
-                for line in f:
-                    candidate = line.strip()
-                    if '@' in candidate and '.' in candidate:
-                        parts = candidate.split(',', 1)
-                        if len(parts) == 2:
-                            append_extra_credit_email(parts[0].strip(), parts[1].strip())
-                        else:
-                            append_extra_credit_email(parts[0].strip(), "")
-        except Exception as e:
-            print(f"Notice: legacy email migration exception: {e}")
+def get_extra_credit_records():
+    """Returns all extra-credit records sorted alphabetically by (email, course) from PostgreSQL."""
+    conn = get_db_connection()
+    try:
+        with conn.cursor() as cur:
+            cur.execute("SELECT email, course FROM extra_credit ORDER BY email ASC, course ASC;")
+            rows = cur.fetchall()
+            return [{"email": r[0], "course": r[1] or ""} for r in rows]
+    finally:
+        conn.close()
 
 CSV_HEADERS = [
     'response_id', 'participant_id', 'session_id', 'timestamp_iso',
@@ -286,23 +304,31 @@ TRAINING_CORRECT_KEY_BY_QUESTION = [1, 1, 4, 3]
 
 def get_structure_for_question(q_num):
     idx = (int(q_num) if q_num else 1) - 1
-    return STRUCTURE_BY_QUESTION[idx] if 0 <= idx < len(STRUCTURE_BY_QUESTION) else ''
+    return STRUCTURE_BY_QUESTION[idx] if 0 <= idx < len(STRUCTURE_BY_QUESTION) else None
 
 def get_operator_count_for_question(q_num):
     idx = (int(q_num) if q_num else 1) - 1
-    return OPERATOR_COUNT_BY_QUESTION[idx] if 0 <= idx < len(OPERATOR_COUNT_BY_QUESTION) else ''
+    return OPERATOR_COUNT_BY_QUESTION[idx] if 0 <= idx < len(OPERATOR_COUNT_BY_QUESTION) else None
 
 def get_correct_key_for_question(q_num):
     idx = (int(q_num) if q_num else 1) - 1
-    return CORRECT_KEY_BY_QUESTION[idx] if 0 <= idx < len(CORRECT_KEY_BY_QUESTION) else ''
+    return CORRECT_KEY_BY_QUESTION[idx] if 0 <= idx < len(CORRECT_KEY_BY_QUESTION) else None
 
 def get_training_correct_key_for_question(t_num):
     idx = (int(t_num) if t_num else 1) - 1
-    return TRAINING_CORRECT_KEY_BY_QUESTION[idx] if 0 <= idx < len(TRAINING_CORRECT_KEY_BY_QUESTION) else ''
+    return TRAINING_CORRECT_KEY_BY_QUESTION[idx] if 0 <= idx < len(TRAINING_CORRECT_KEY_BY_QUESTION) else None
+
+def _to_int_or_none(val):
+    if val is None or str(val).strip() == '':
+        return None
+    try:
+        return int(float(val))
+    except Exception:
+        return None
 
 def resolve_correct_key(r):
     if not isinstance(r, dict):
-        return ''
+        return None
     qn = r.get('questionNumber') or r.get('question_number')
     if qn is not None and not r.get('isTraining'):
         try:
@@ -332,19 +358,19 @@ def resolve_correct_key(r):
                 return sk
         except Exception:
             pass
-    return ''
+    return None
 
 def resolve_likert_val(thought_obj, short_key):
     if not isinstance(thought_obj, dict):
-        return ''
+        return None
     full_key = f'likert_{short_key}'
     lr = thought_obj.get('likertRatings') or {}
     if not isinstance(lr, dict):
         lr = {}
     for candidate in (thought_obj.get(full_key), thought_obj.get(short_key), lr.get(full_key), lr.get(short_key)):
         if candidate is not None and str(candidate).strip() != '':
-            return candidate
-    return ''
+            return _to_int_or_none(candidate)
+    return None
 
 def parse_num(val, default=0.0):
     if val is None or val == '':
@@ -366,9 +392,9 @@ def parse_num(val, default=0.0):
 
 def parse_age(val):
     if val is None or val == '':
-        return ''
+        return None
     match = re.search(r'\d+', str(val))
-    return int(match.group(0)) if match else ''
+    return int(match.group(0)) if match else None
 
 GENDER_LABELS = {
     0: 'Male',
@@ -390,7 +416,7 @@ EDUCATION_LABELS = {
 
 def parse_education_info(val):
     if val is None or val == '':
-        return {'code': '', 'label': '', 'has_degree': 0}
+        return {'code': None, 'label': '', 'has_degree': 0}
     s = str(val).strip().lower()
     if s.isdigit():
         code = int(s)
@@ -414,7 +440,7 @@ def parse_education_info(val):
 
 def parse_gender_info(val):
     if val is None or val == '':
-        return {'code': '', 'label': '', 'is_male': 0, 'is_female': 0}
+        return {'code': None, 'label': '', 'is_male': 0, 'is_female': 0}
     s = str(val).strip().lower()
     if s.isdigit():
         code = int(s)
@@ -442,142 +468,20 @@ def parse_country_info(val):
     is_us = 1 if ('united states' in s or s == 'usa' or s == 'us' or 'u.s.' in s) else 0
     return {'country': val or '', 'is_us': is_us}
 
-def parse_disability_info(val):
-    s = str(val or '').strip().lower()
-    has_dis = 1 if (s and 'none' not in s and s != 'no' and 'prefer not' not in s) else 0
-    return {'disability': val or '', 'has_disability': has_dis}
-
 def to_binary(val):
     if val is True or val == 1 or str(val).strip().upper() in ('TRUE', '1', 'T'):
         return 1
     return 0
 
 def parse_cookies(cookie_header):
-    if not cookie_header: return {}
+    if not cookie_header:
+        return {}
     cookie = SimpleCookie()
     try:
         cookie.load(cookie_header)
         return {k: v.value for k, v in cookie.items()}
-    except Exception: return {}
-
-# In-memory state cache protected by db_lock to avoid O(N^2) full-log disk scans on every POST
-_MEM_DB_CACHE = {
-    "initialized": False,
-    "log_size": -1,
-    "log_mtime_ns": -1,
-    "responses_map": {},
-    "training_map": {},
-    "demographics": {},
-    "finalThoughts": {}
-}
-
-def _get_log_file_stat():
-    if not os.path.exists(LOG_FILE):
-        return (0, 0)
-    try:
-        st = os.stat(LOG_FILE)
-        return (st.st_size, getattr(st, 'st_mtime_ns', int(st.st_mtime * 1e9)))
     except Exception:
-        return (-1, -1)
-
-def _apply_event_to_maps(etype, edata, responses_map, training_map, demographics, final_thoughts):
-    """Applies a single telemetry event to the state dictionaries in O(1) time."""
-    if not isinstance(edata, dict):
-        return
-    if etype == "RESPONSE":
-        pid = edata.get('participantId')
-        q_num = edata.get('questionNumber')
-        if pid and q_num is not None:
-            comp_key = f"pq::{pid}::{q_num}"
-            # If an older entry was stored by raw id, remove it once
-            rid = edata.get('id')
-            if rid and rid in responses_map and rid != comp_key:
-                del responses_map[rid]
-            responses_map[comp_key] = edata
-        else:
-            rid = edata.get('id') or f"{pid}_{q_num}"
-            responses_map[rid] = edata
-    elif etype == "TRAINING_RESPONSE":
-        pid = edata.get('participantId')
-        q_num = edata.get('questionNumber')
-        if pid and q_num is not None:
-            training_map[f"pt::{pid}::{q_num}"] = edata
-    elif etype == "DEMOGRAPHICS":
-        pid = edata.get('participantId')
-        if pid:
-            demographics[pid] = edata
-            # In live participant flow, demographics are submitted before training & Q1-Q25.
-            # Clear any earlier responses from prior sessions for this pid, while preserving
-            # responses from the same sessionId if demographics was retried out-of-order.
-            if not edata.get('_admin_import'):
-                demo_sid = edata.get('sessionId')
-                demo_ts = str(edata.get('timestamp') or '')
-                stale_keys = [
-                    k for k, v in responses_map.items()
-                    if v.get('participantId') == pid and not (
-                        (demo_sid and v.get('sessionId') == demo_sid) or
-                        (demo_ts and str(v.get('timestamp') or '') > demo_ts)
-                    )
-                ]
-                for sk in stale_keys:
-                    del responses_map[sk]
-                stale_t_keys = [
-                    k for k, v in training_map.items()
-                    if v.get('participantId') == pid and not (
-                        (demo_sid and v.get('sessionId') == demo_sid) or
-                        (demo_ts and str(v.get('timestamp') or '') > demo_ts)
-                    )
-                ]
-                for tk in stale_t_keys:
-                    del training_map[tk]
-    elif etype == "FINAL_THOUGHT":
-        pid = edata.get('participantId')
-        if pid:
-            final_thoughts[pid] = edata
-    elif etype == "DELETE_USER":
-        pid = edata.get("participantId")
-        if pid:
-            stale_keys = [k for k, v in responses_map.items() if v.get('participantId') == pid]
-            for sk in stale_keys:
-                del responses_map[sk]
-            stale_t_keys = [k for k, v in training_map.items() if v.get('participantId') == pid]
-            for tk in stale_t_keys:
-                del training_map[tk]
-            demographics.pop(pid, None)
-            final_thoughts.pop(pid, None)
-    elif etype == "CLEAR_ALL":
-        responses_map.clear()
-        training_map.clear()
-        demographics.clear()
-        final_thoughts.clear()
-
-def append_event(event_type, data):
-    """Appends an event to the append-only JSONL log file and updates in-memory cache. Caller must hold db_lock."""
-    pre_size, pre_mtime = _get_log_file_stat()
-    cache_was_synced = (
-        _MEM_DB_CACHE["initialized"] and
-        _MEM_DB_CACHE["log_size"] == pre_size and
-        _MEM_DB_CACHE["log_mtime_ns"] == pre_mtime
-    )
-
-    event = {"type": event_type, "data": data}
-    line_str = json.dumps(event) + '\n'
-    with open(LOG_FILE, 'a', encoding='utf-8') as f:
-        f.write(line_str)
-        f.flush()
-
-    if cache_was_synced:
-        _apply_event_to_maps(
-            event_type,
-            data,
-            _MEM_DB_CACHE["responses_map"],
-            _MEM_DB_CACHE["training_map"],
-            _MEM_DB_CACHE["demographics"],
-            _MEM_DB_CACHE["finalThoughts"]
-        )
-        post_size, post_mtime = _get_log_file_stat()
-        _MEM_DB_CACHE["log_size"] = post_size
-        _MEM_DB_CACHE["log_mtime_ns"] = post_mtime
+        return {}
 
 def is_legacy_response(r):
     """Returns True if a response object originates from an obsolete prototype version of the study."""
@@ -608,337 +512,565 @@ def is_legacy_demographic(d):
         return True
     return False
 
-def load_db_data():
-    """Returns reconstructed state from the in-memory cache or replays the append-only log if modified externally."""
-    if not os.path.exists(LOG_FILE):
-        _MEM_DB_CACHE["initialized"] = True
-        _MEM_DB_CACHE["log_size"] = 0
-        _MEM_DB_CACHE["log_mtime_ns"] = 0
-        _MEM_DB_CACHE["responses_map"].clear()
-        _MEM_DB_CACHE["training_map"].clear()
-        _MEM_DB_CACHE["demographics"].clear()
-        _MEM_DB_CACHE["finalThoughts"].clear()
-        return {"responses": [], "trainingResponses": [], "demographics": {}, "finalThoughts": {}}
+def _ensure_participant_exists(cur, pid, session_id="", assigned_group="", host_language="", syntax_dialect_id=""):
+    """Ensures a parent row exists in experiment_data before inserting child trial/questionnaire rows."""
+    cur.execute(
+        """
+        INSERT INTO experiment_data (
+            participant_id, session_id, assigned_group, host_language, syntax_dialect_id
+        ) VALUES (%s, %s, %s, %s, %s)
+        ON CONFLICT (participant_id) DO UPDATE SET
+            session_id = CASE WHEN EXCLUDED.session_id != '' THEN EXCLUDED.session_id ELSE experiment_data.session_id END,
+            assigned_group = CASE WHEN EXCLUDED.assigned_group != '' THEN EXCLUDED.assigned_group ELSE experiment_data.assigned_group END,
+            host_language = CASE WHEN EXCLUDED.host_language != '' THEN EXCLUDED.host_language ELSE experiment_data.host_language END,
+            syntax_dialect_id = CASE WHEN EXCLUDED.syntax_dialect_id != '' THEN EXCLUDED.syntax_dialect_id ELSE experiment_data.syntax_dialect_id END,
+            updated_at = NOW();
+        """,
+        (pid, session_id or "", assigned_group or "", host_language or "", syntax_dialect_id or "")
+    )
 
-    cur_size, cur_mtime = _get_log_file_stat()
-    if (
-        _MEM_DB_CACHE["initialized"] and
-        _MEM_DB_CACHE["log_size"] == cur_size and
-        _MEM_DB_CACHE["log_mtime_ns"] == cur_mtime
-    ):
-        return {
-            "responses": list(_MEM_DB_CACHE["responses_map"].values()),
-            "trainingResponses": list(_MEM_DB_CACHE["training_map"].values()),
-            "demographics": dict(_MEM_DB_CACHE["demographics"]),
-            "finalThoughts": dict(_MEM_DB_CACHE["finalThoughts"])
-        }
+def _recompute_participant_training_summary(cur, pid):
+    """Updates t1_*..t4_*, training_accuracy, and training_total_time_s on experiment_data."""
+    cur.execute(
+        """
+        SELECT question_number, selected_key, correct_option, is_correct, response_time_ms
+        FROM training_per_question
+        WHERE participant_id = %s
+        ORDER BY question_number ASC;
+        """,
+        (pid,)
+    )
+    rows = cur.fetchall()
+    by_t = {int(r[0]): r for r in rows if r and r[0] is not None}
 
-    responses_map = {}
-    training_map = {}
-    demographics = {}
-    final_thoughts = {}
+    t_vals = {}
+    answered_cnt = 0
+    correct_cnt = 0
+    total_ms = 0
 
-    try:
-        with open(LOG_FILE, 'r', encoding='utf-8') as f:
-            for line in f:
-                line = line.strip()
-                if not line:
-                    continue
-                try:
-                    event = json.loads(line)
-                    etype = event.get("type")
-                    edata = event.get("data", {})
-                    _apply_event_to_maps(etype, edata, responses_map, training_map, demographics, final_thoughts)
-                except Exception:
-                    continue
-    except Exception as e:
-        print(f"Error reading log: {e}")
+    for t_num in range(1, 5):
+        canon_ck = get_training_correct_key_for_question(t_num)
+        tr = by_t.get(t_num)
+        if tr:
+            sk = tr[1]
+            co = tr[2] if tr[2] is not None else canon_ck
+            ic = tr[3]
+            tm = tr[4]
+            t_vals[t_num] = (sk, co, ic, tm)
+            if ic is not None:
+                answered_cnt += 1
+                if int(ic) == 1:
+                    correct_cnt += 1
+            if tm is not None:
+                total_ms += max(0, int(tm))
+        else:
+            t_vals[t_num] = (None, None, None, None)
 
-    _MEM_DB_CACHE["initialized"] = True
-    _MEM_DB_CACHE["log_size"] = cur_size
-    _MEM_DB_CACHE["log_mtime_ns"] = cur_mtime
-    _MEM_DB_CACHE["responses_map"] = responses_map
-    _MEM_DB_CACHE["training_map"] = training_map
-    _MEM_DB_CACHE["demographics"] = demographics
-    _MEM_DB_CACHE["finalThoughts"] = final_thoughts
+    t_acc = round((correct_cnt / answered_cnt) * 100.0, 2) if answered_cnt > 0 else None
+    t_time_s = round(total_ms / 1000.0, 3) if answered_cnt > 0 else None
 
-    return {
-        "responses": list(responses_map.values()),
-        "trainingResponses": list(training_map.values()),
-        "demographics": dict(demographics),
-        "finalThoughts": dict(final_thoughts)
-    }
+    cur.execute(
+        """
+        UPDATE experiment_data SET
+            t1_selected_key = %s, t1_correct_option = %s, t1_is_correct = %s, t1_time_ms = %s,
+            t2_selected_key = %s, t2_correct_option = %s, t2_is_correct = %s, t2_time_ms = %s,
+            t3_selected_key = %s, t3_correct_option = %s, t3_is_correct = %s, t3_time_ms = %s,
+            t4_selected_key = %s, t4_correct_option = %s, t4_is_correct = %s, t4_time_ms = %s,
+            training_accuracy = COALESCE(%s, training_accuracy),
+            training_total_time_s = COALESCE(%s, training_total_time_s),
+            updated_at = NOW()
+        WHERE participant_id = %s;
+        """,
+        (
+            *t_vals[1], *t_vals[2], *t_vals[3], *t_vals[4],
+            t_acc, t_time_s, pid
+        )
+    )
 
-def export_csv(db_data):
-    """Exports reconstructed state to CSV formatted for immediate ANOVA / statistical analysis."""
-    responses = db_data.get('responses', [])
-    training_responses = db_data.get('trainingResponses', [])
-    demographics = db_data.get('demographics', {})
-    final_thoughts = db_data.get('finalThoughts', {})
+def _recompute_participant_trial_summary(cur, pid):
+    """Updates division_counting-style summary arrays (accuracy, task_accuracy, task_ids, total_time, per_task_time) on experiment_data."""
+    cur.execute(
+        """
+        SELECT question_number, is_correct, response_time_ms
+        FROM experiment_per_question
+        WHERE participant_id = %s
+        ORDER BY question_number ASC;
+        """,
+        (pid,)
+    )
+    rows = cur.fetchall()
+    task_ids = [str(r[0]) for r in rows]
+    task_acc = [bool(int(r[1] or 0) == 1) for r in rows]
+    per_task_time = [int(r[2] or 0) for r in rows]
+    total_time = sum(per_task_time)
+    overall_acc = round((sum(1 for a in task_acc if a) / len(task_acc)) * 100.0, 2) if task_acc else 0.0
 
-    if not responses:
-        if os.path.exists(CSV_FILE):
-            try: os.remove(CSV_FILE)
-            except: pass
+    cur.execute(
+        """
+        UPDATE experiment_data SET
+            accuracy = %s,
+            task_accuracy = %s,
+            task_ids = %s,
+            total_time = %s,
+            per_task_time = %s,
+            updated_at = NOW()
+        WHERE participant_id = %s;
+        """,
+        (overall_acc, task_acc, task_ids, total_time, per_task_time, pid)
+    )
+
+def upsert_demographic_pg(cur, d):
+    """Upserts a DEMOGRAPHICS event into experiment_data in PostgreSQL."""
+    if not isinstance(d, dict):
+        return
+    pid = str(d.get('participantId') or '').strip()
+    if not pid:
         return
 
-    # Group responses by participant and sort each participant's responses by question_number ascending (1..25)
-    by_pid_responses = {}
-    for r in responses:
-        if not isinstance(r, dict):
-            continue
-        pid_key = r.get('participantId', '')
-        by_pid_responses.setdefault(pid_key, []).append(r)
+    d = dict(d)
+    g_info = parse_gender_info(d.get('gender'))
+    if g_info['code'] is not None:
+        d['gender'] = g_info['code']
+        d['genderLabel'] = g_info['label']
+    e_info = parse_education_info(d.get('education') or d.get('highestEducation') or d.get('academicStanding'))
+    if e_info['code'] is not None:
+        d['education'] = e_info['code']
+        d['educationLabel'] = e_info['label']
 
-    sorted_responses = []
-    for pid_key, r_list in by_pid_responses.items():
-        r_list.sort(key=lambda x: int(x.get('questionNumber') or 0) if str(x.get('questionNumber') or '').isdigit() else 0)
-        sorted_responses.extend(r_list)
+    age_val = parse_age(d.get('age'))
+    coding_years = parse_num(d.get('codingExp', ''))
+    db_years = parse_num(d.get('dbExp', ''))
+    lang_info = parse_language_info(d.get('primaryLanguage', ''))
+    country_info = parse_country_info(d.get('countryOfOrigin', ''))
+    assigned_group = str(d.get('assignedGroupName') or d.get('assignedGroup') or '')
+    host_lang = str(d.get('hostLanguage') or '')
+    dialect_id = str(d.get('activeDialect') or d.get('syntaxDialect') or '')
+    session_id = str(d.get('sessionId') or '')
 
-    # Index standalone training responses by (pid, t_num)
-    training_records_by_pid = {}
-    for tr in training_responses:
-        if not isinstance(tr, dict):
-            continue
-        pid_key = tr.get('participantId', '')
-        if not pid_key:
-            continue
-        try:
-            t_num = int(tr.get('questionNumber') or 0)
-        except Exception:
-            t_num = 0
-        if 1 <= t_num <= 4:
-            training_records_by_pid.setdefault(pid_key, {})[t_num] = tr
-
-    # Pre-compute the 18 training columns (t1_* .. t4_*, training_accuracy, training_total_time_s) once per participant
-    parsed_training_cols = {}
-    def get_participant_training_cols(pid):
-        if pid in parsed_training_cols:
-            return parsed_training_cols[pid]
-
-        t_map = training_records_by_pid.get(pid, {})
-        user_resps = by_pid_responses.get(pid, [])
-
-        cols_16 = []
-        answered_cnt = 0
-        correct_cnt = 0
-        total_ms = 0
-
-        for t_num in range(1, 5):
-            canon_ck = get_training_correct_key_for_question(t_num)
-            tr = t_map.get(t_num)
-            sk_val = ''
-            ic_val = ''
-            tm_val = ''
-            co_val = ''
-
-            if tr:
-                raw_sk = tr.get('selectedKey')
-                raw_tm = tr.get('responseTimeMs', tr.get('time_ms', ''))
-                raw_ic = tr.get('isCorrect')
-                if raw_sk is not None and str(raw_sk).strip() != '':
-                    try:
-                        sk_val = int(raw_sk)
-                    except Exception:
-                        sk_val = str(raw_sk).strip()
-                if raw_tm is not None and str(raw_tm).strip() != '':
-                    try:
-                        tm_val = max(0, int(float(raw_tm)))
-                    except Exception:
-                        tm_val = ''
-                if sk_val != '' and canon_ck != '':
-                    ic_val = 1 if str(sk_val) == str(canon_ck) else 0
-                elif raw_ic is not None and str(raw_ic).strip() != '':
-                    ic_val = to_binary(raw_ic)
-                co_val = canon_ck
-            else:
-                # Fallback: check embedded t{N}_* fields on participant's study responses
-                for ur in user_resps:
-                    raw_sk = ur.get(f't{t_num}_selected_key', ur.get(f't{t_num}SelectedKey', ''))
-                    raw_tm = ur.get(f't{t_num}_time_ms', ur.get(f't{t_num}TimeMs', ''))
-                    raw_ic = ur.get(f't{t_num}_is_correct', ur.get(f't{t_num}IsCorrect', ''))
-                    if (raw_sk is not None and str(raw_sk).strip() != '') or (raw_tm is not None and str(raw_tm).strip() != ''):
-                        if raw_sk is not None and str(raw_sk).strip() != '':
-                            try:
-                                sk_val = int(raw_sk)
-                            except Exception:
-                                sk_val = str(raw_sk).strip()
-                        if raw_tm is not None and str(raw_tm).strip() != '':
-                            try:
-                                tm_val = max(0, int(float(raw_tm)))
-                            except Exception:
-                                tm_val = ''
-                        if sk_val != '' and canon_ck != '':
-                            ic_val = 1 if str(sk_val) == str(canon_ck) else 0
-                        elif raw_ic is not None and str(raw_ic).strip() != '':
-                            ic_val = to_binary(raw_ic)
-                        co_val = canon_ck
-                        break
-
-            cols_16.extend([sk_val, co_val, ic_val, tm_val])
-            if ic_val != '':
-                answered_cnt += 1
-                if ic_val == 1:
-                    correct_cnt += 1
-            if tm_val != '':
-                total_ms += tm_val
-
-        if answered_cnt > 0:
-            t_acc = round((correct_cnt / answered_cnt) * 100.0, 2)
-            if t_acc == int(t_acc):
-                t_acc = int(t_acc)
-            t_time_s = round(total_ms / 1000.0, 3)
-            if t_time_s == int(t_time_s):
-                t_time_s = int(t_time_s)
-            res = cols_16 + [t_acc, t_time_s]
-            parsed_training_cols[pid] = res
-            return res
-
-        # Legacy fallback when only summary training_accuracy / training_total_time_s exist
-        t_acc = ''
-        t_time_s = ''
-        for ur in user_resps:
-            cand_acc = ur.get('trainingAccuracy', ur.get('training_accuracy', ''))
-            cand_time = ur.get('trainingTotalTimeS', ur.get('training_total_time_s', ''))
-            if cand_acc is not None and str(cand_acc).strip() != '':
-                t_acc = cand_acc
-                t_time_s = cand_time if cand_time is not None else ''
-                break
-        res = cols_16 + [t_acc, t_time_s]
-        parsed_training_cols[pid] = res
-        return res
-
-    # Pre-compute parsed demographic and final-thought columns once per participant (O(P) instead of O(25*P))
-    parsed_participant_cols = {}
-    def get_participant_meta_cols(pid):
-        if pid in parsed_participant_cols:
-            return parsed_participant_cols[pid]
-        demo = demographics.get(pid, {})
-        thought_obj = final_thoughts.get(pid, {})
-        age_val = parse_age(demo.get('age', ''))
-        gender_info = parse_gender_info(demo.get('gender', ''))
-        edu_info = parse_education_info(demo.get('education', demo.get('highestEducation', demo.get('academicStanding', ''))))
-        coding_years = parse_num(demo.get('codingExp', ''))
-        db_years = parse_num(demo.get('dbExp', ''))
-        lang_info = parse_language_info(demo.get('primaryLanguage', ''))
-        country_info = parse_country_info(demo.get('countryOfOrigin', ''))
-        cols = (
-            demo,
-            [
-                age_val,
-                gender_info['code'],
-                gender_info['label'],
-                gender_info['is_male'],
-                gender_info['is_female'],
-                edu_info['code'],
-                edu_info['label'],
-                edu_info['has_degree'],
-                coding_years,
-                1 if coding_years > 0 else 0,
-                db_years,
-                1 if db_years > 0 else 0,
-                lang_info['language'],
-                lang_info['is_english'],
-                country_info['country'],
-                country_info['is_us'],
-                resolve_likert_val(thought_obj, 'clarity'),
-                resolve_likert_val(thought_obj, 'difficulty'),
-                resolve_likert_val(thought_obj, 'interface'),
-                resolve_likert_val(thought_obj, 'experience'),
-                thought_obj.get('durationExpectation', thought_obj.get('duration_expectation', '')),
-                thought_obj.get('thoughts', '')
-            ]
+    cur.execute(
+        """
+        INSERT INTO experiment_data (
+            participant_id, session_id, assigned_group, host_language, syntax_dialect_id,
+            age, gender, gender_label, gender_male, gender_female,
+            education, education_label, has_college_degree,
+            coding_exp_years, has_coding_exp, db_exp_years, has_db_exp,
+            primary_language, is_english_primary, country_of_origin, is_country_us,
+            raw_demographic, updated_at
+        ) VALUES (
+            %s, %s, %s, %s, %s,
+            %s, %s, %s, %s, %s,
+            %s, %s, %s,
+            %s, %s, %s, %s,
+            %s, %s, %s, %s,
+            %s, NOW()
         )
-        parsed_participant_cols[pid] = cols
-        return cols
+        ON CONFLICT (participant_id) DO UPDATE SET
+            session_id = CASE WHEN EXCLUDED.session_id != '' THEN EXCLUDED.session_id ELSE experiment_data.session_id END,
+            assigned_group = CASE WHEN EXCLUDED.assigned_group != '' THEN EXCLUDED.assigned_group ELSE experiment_data.assigned_group END,
+            host_language = CASE WHEN EXCLUDED.host_language != '' THEN EXCLUDED.host_language ELSE experiment_data.host_language END,
+            syntax_dialect_id = CASE WHEN EXCLUDED.syntax_dialect_id != '' THEN EXCLUDED.syntax_dialect_id ELSE experiment_data.syntax_dialect_id END,
+            age = EXCLUDED.age,
+            gender = EXCLUDED.gender,
+            gender_label = EXCLUDED.gender_label,
+            gender_male = EXCLUDED.gender_male,
+            gender_female = EXCLUDED.gender_female,
+            education = EXCLUDED.education,
+            education_label = EXCLUDED.education_label,
+            has_college_degree = EXCLUDED.has_college_degree,
+            coding_exp_years = EXCLUDED.coding_exp_years,
+            has_coding_exp = EXCLUDED.has_coding_exp,
+            db_exp_years = EXCLUDED.db_exp_years,
+            has_db_exp = EXCLUDED.has_db_exp,
+            primary_language = EXCLUDED.primary_language,
+            is_english_primary = EXCLUDED.is_english_primary,
+            country_of_origin = EXCLUDED.country_of_origin,
+            is_country_us = EXCLUDED.is_country_us,
+            raw_demographic = EXCLUDED.raw_demographic,
+            updated_at = NOW();
+        """,
+        (
+            pid, session_id, assigned_group, host_lang, dialect_id,
+            age_val, g_info['code'], g_info['label'], g_info['is_male'], g_info['is_female'],
+            e_info['code'], e_info['label'], e_info['has_degree'],
+            coding_years, 1 if coding_years > 0 else 0,
+            db_years, 1 if db_years > 0 else 0,
+            lang_info['language'], lang_info['is_english'],
+            country_info['country'], country_info['is_us'],
+            Json(d)
+        )
+    )
 
-    with tempfile.NamedTemporaryFile('w', dir=BASE_DIR, delete=False, newline='', encoding='utf-8') as f:
-        writer = csv.writer(f)
-        writer.writerow(CSV_HEADERS)
-        for r in sorted_responses:
-            pid = r.get('participantId', '')
-            demo, tail_cols = get_participant_meta_cols(pid)
-            training_cols = get_participant_training_cols(pid)
+    # Clear stale prior-session responses if a live participant restarts the study
+    if not d.get('_admin_import'):
+        demo_sid = str(d.get('sessionId') or '')
+        demo_ts = str(d.get('timestamp') or '')
+        if demo_sid or demo_ts:
+            cur.execute(
+                """
+                DELETE FROM experiment_per_question
+                WHERE participant_id = %s
+                  AND NOT (
+                      (%s != '' AND session_id = %s) OR
+                      (%s != '' AND timestamp_iso > %s)
+                  );
+                """,
+                (pid, demo_sid, demo_sid, demo_ts, demo_ts)
+            )
+            cur.execute(
+                """
+                DELETE FROM training_per_question
+                WHERE participant_id = %s
+                  AND NOT (
+                      (%s != '' AND session_id = %s) OR
+                      (%s != '' AND timestamp_iso > %s)
+                  );
+                """,
+                (pid, demo_sid, demo_sid, demo_ts, demo_ts)
+            )
+            _recompute_participant_training_summary(cur, pid)
+            _recompute_participant_trial_summary(cur, pid)
 
-            # Trial sequence & block (5 blocks of 5 questions for 25-question study)
-            raw_q_num = r.get('questionNumber', 1)
-            try:
-                q_num = int(raw_q_num)
-            except:
-                q_num = 1
-            trial_block = ((max(1, q_num) - 1) // 5) + 1
-            code_structure = r.get('codeStructure') or r.get('code_structure') or get_structure_for_question(q_num)
-            raw_op_cnt = r.get('operatorCount', r.get('operator_count', ''))
-            operator_count = raw_op_cnt if (raw_op_cnt is not None and str(raw_op_cnt).strip() != '') else get_operator_count_for_question(q_num)
+def upsert_training_response_pg(cur, tr):
+    """Upserts a TRAINING_RESPONSE event (T1-T4) into training_per_question and updates experiment_data."""
+    if not isinstance(tr, dict):
+        return
+    pid = str(tr.get('participantId') or '').strip()
+    if not pid:
+        return
+    try:
+        tq_int = int(tr.get('questionNumber') or 1)
+    except Exception:
+        return
+    if not (1 <= tq_int <= 4):
+        return
 
-            # Authoritative server-side correctness grading against canonical key
-            canonical_ck = get_correct_key_for_question(q_num)
-            sel_key = r.get('selectedKey')
-            if canonical_ck != '' and sel_key is not None and str(sel_key).strip() != '':
-                is_correct_val = 1 if str(sel_key).strip() == str(canonical_ck) else 0
-            else:
-                is_correct_val = to_binary(r.get('isCorrect'))
+    tr = dict(tr)
+    tck = get_training_correct_key_for_question(tq_int)
+    sel_key = _to_int_or_none(tr.get('selectedKey'))
+    if tck is not None:
+        tr['correctKey'] = tck
+        is_corr = 1 if (sel_key is not None and sel_key == tck) else 0
+        tr['isCorrect'] = is_corr
+    else:
+        is_corr = to_binary(tr.get('isCorrect'))
 
-            raw_rt_ms = r.get('responseTimeMs', 0)
-            try:
-                rt_ms = int(raw_rt_ms) if raw_rt_ms is not None else 0
-            except:
-                rt_ms = 0
-            rt_s = round(rt_ms / 1000.0, 3)
-            log_rt = round(math.log(max(rt_ms, 1)), 4)
+    rt_ms = max(0, _to_int_or_none(tr.get('responseTimeMs', tr.get('time_ms', 0))) or 0)
+    session_id = str(tr.get('sessionId') or '')
+    ts_iso = str(tr.get('timestamp') or '')
 
-            raw_first_sel = r.get('timeToFirstSelectMs', r.get('time_to_first_select_ms', ''))
-            first_select_ms = int(raw_first_sel) if (raw_first_sel is not None and str(raw_first_sel).strip() != '') else ''
-            raw_confirm_ms = r.get('decisionConfirmMs', r.get('decision_confirm_ms', ''))
-            decision_confirm_ms = int(raw_confirm_ms) if (raw_confirm_ms is not None and str(raw_confirm_ms).strip() != '') else ''
-            input_method = r.get('inputMethod', r.get('input_method', ''))
+    _ensure_participant_exists(cur, pid, session_id=session_id)
 
-            # Focus and trial validity (1s and 0s)
-            tab_focus_lost_val = to_binary(r.get('tabFocusLost'))
-            valid_trial_val = 1 if tab_focus_lost_val == 0 else 0
+    cur.execute(
+        """
+        INSERT INTO training_per_question (
+            participant_id, session_id, timestamp_iso, question_number,
+            selected_key, correct_option, is_correct, response_time_ms, raw_training_response
+        ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+        ON CONFLICT (participant_id, question_number) DO UPDATE SET
+            session_id = EXCLUDED.session_id,
+            timestamp_iso = EXCLUDED.timestamp_iso,
+            selected_key = EXCLUDED.selected_key,
+            correct_option = EXCLUDED.correct_option,
+            is_correct = EXCLUDED.is_correct,
+            response_time_ms = EXCLUDED.response_time_ms,
+            raw_training_response = EXCLUDED.raw_training_response;
+        """,
+        (pid, session_id, ts_iso, tq_int, sel_key, tck, is_corr, rt_ms, Json(tr))
+    )
+    _recompute_participant_training_summary(cur, pid)
 
-            # Answer change count
-            try:
-                ans_change_cnt = int(r.get('answerChangeCount', 0))
-            except:
-                ans_change_cnt = 0
+def upsert_response_pg(cur, r):
+    """Upserts a RESPONSE event (Q1-Q25) into experiment_per_question and updates experiment_data."""
+    if not isinstance(r, dict) or is_legacy_response(r):
+        return
+    pid = str(r.get('participantId') or '').strip()
+    if not pid:
+        return
 
-            # Group and Dialect
-            assigned_group = r.get('assignedGroupName', r.get('assignedGroup', demo.get('assignedGroupName', demo.get('assignedGroup', ''))))
+    r = dict(r)
+    r.pop('seed', None)
+    r.pop('random_seed', None)
 
-            writer.writerow([
-                r.get('id', ''),
-                pid,
-                r.get('sessionId', ''),
-                r.get('timestamp', ''),
-                q_num,
-                trial_block,
-                r.get('questionCategory', ''),
-                code_structure,
-                operator_count,
-                assigned_group,
-                r.get('hostLanguage', demo.get('hostLanguage', '')),
-                r.get('activeDialect', ''),
-                is_correct_val,
-                rt_ms,
-                rt_s,
-                log_rt,
-                first_select_ms,
-                decision_confirm_ms,
-                input_method,
-                tab_focus_lost_val,
-                valid_trial_val,
-                r.get('tabSwitchCount', 0),
-                r.get('focusLostDurationMs', 0),
-                ans_change_cnt,
-                r.get('selectedKey', ''),
-                resolve_correct_key(r),
-                *training_cols,
-                *tail_cols
-            ])
-        f.flush()
-        temp_name = f.name
-    _safe_os_replace(temp_name, CSV_FILE)
+    try:
+        q_num = int(r.get('questionNumber') or 1)
+    except Exception:
+        q_num = 1
+
+    canonical_ck = get_correct_key_for_question(q_num)
+    sel_key = _to_int_or_none(r.get('selectedKey'))
+    if canonical_ck is not None:
+        r['correctKey'] = canonical_ck
+        is_correct_val = 1 if (sel_key is not None and sel_key == canonical_ck) else 0
+        r['isCorrect'] = is_correct_val
+    else:
+        is_correct_val = to_binary(r.get('isCorrect'))
+        canonical_ck = resolve_correct_key(r)
+
+    trial_block = ((max(1, q_num) - 1) // 5) + 1
+    code_structure = _to_int_or_none(r.get('codeStructure') or r.get('code_structure')) or get_structure_for_question(q_num)
+    operator_count = _to_int_or_none(r.get('operatorCount', r.get('operator_count'))) or get_operator_count_for_question(q_num)
+
+    rt_ms = max(0, _to_int_or_none(r.get('responseTimeMs', 0)) or 0)
+    rt_s = round(rt_ms / 1000.0, 3)
+    log_rt = round(math.log(max(rt_ms, 1)), 4)
+
+    first_select_ms = _to_int_or_none(r.get('timeToFirstSelectMs', r.get('time_to_first_select_ms')))
+    decision_confirm_ms = _to_int_or_none(r.get('decisionConfirmMs', r.get('decision_confirm_ms')))
+    input_method = str(r.get('inputMethod', r.get('input_method', '')) or '')
+
+    tab_focus_lost_val = to_binary(r.get('tabFocusLost'))
+    valid_trial_val = 1 if tab_focus_lost_val == 0 else 0
+    tab_switch_cnt = _to_int_or_none(r.get('tabSwitchCount', 0)) or 0
+    focus_lost_dur = _to_int_or_none(r.get('focusLostDurationMs', 0)) or 0
+    ans_change_cnt = _to_int_or_none(r.get('answerChangeCount', 0)) or 0
+
+    assigned_group = str(r.get('assignedGroupName') or r.get('assignedGroup') or '')
+    host_lang = str(r.get('hostLanguage') or '')
+    dialect_id = str(r.get('activeDialect') or '')
+    session_id = str(r.get('sessionId') or '')
+    ts_iso = str(r.get('timestamp') or '')
+    resp_id = str(r.get('id') or f"{pid}_q{q_num}")
+    q_cat = str(r.get('questionCategory') or '')
+
+    _ensure_participant_exists(
+        cur, pid,
+        session_id=session_id,
+        assigned_group=assigned_group,
+        host_language=host_lang,
+        syntax_dialect_id=dialect_id
+    )
+
+    cur.execute(
+        """
+        INSERT INTO experiment_per_question (
+            response_id, participant_id, session_id, timestamp_iso,
+            question_number, trial_block, question_category,
+            code_structure, operator_count, assigned_group,
+            host_language, syntax_dialect_id, is_correct,
+            response_time_ms, response_time_s, log_response_time,
+            time_to_first_select_ms, decision_confirm_ms, input_method,
+            tab_focus_lost, valid_trial, tab_switch_count,
+            focus_lost_duration_ms, answer_change_count,
+            selected_key, correct_option, raw_response
+        ) VALUES (
+            %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s,
+            %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s
+        )
+        ON CONFLICT (participant_id, question_number) DO UPDATE SET
+            response_id = EXCLUDED.response_id,
+            session_id = EXCLUDED.session_id,
+            timestamp_iso = EXCLUDED.timestamp_iso,
+            trial_block = EXCLUDED.trial_block,
+            question_category = EXCLUDED.question_category,
+            code_structure = EXCLUDED.code_structure,
+            operator_count = EXCLUDED.operator_count,
+            assigned_group = EXCLUDED.assigned_group,
+            host_language = EXCLUDED.host_language,
+            syntax_dialect_id = EXCLUDED.syntax_dialect_id,
+            is_correct = EXCLUDED.is_correct,
+            response_time_ms = EXCLUDED.response_time_ms,
+            response_time_s = EXCLUDED.response_time_s,
+            log_response_time = EXCLUDED.log_response_time,
+            time_to_first_select_ms = EXCLUDED.time_to_first_select_ms,
+            decision_confirm_ms = EXCLUDED.decision_confirm_ms,
+            input_method = EXCLUDED.input_method,
+            tab_focus_lost = EXCLUDED.tab_focus_lost,
+            valid_trial = EXCLUDED.valid_trial,
+            tab_switch_count = EXCLUDED.tab_switch_count,
+            focus_lost_duration_ms = EXCLUDED.focus_lost_duration_ms,
+            answer_change_count = EXCLUDED.answer_change_count,
+            selected_key = EXCLUDED.selected_key,
+            correct_option = EXCLUDED.correct_option,
+            raw_response = EXCLUDED.raw_response;
+        """,
+        (
+            resp_id, pid, session_id, ts_iso,
+            q_num, trial_block, q_cat,
+            code_structure, operator_count, assigned_group,
+            host_lang, dialect_id, is_correct_val,
+            rt_ms, rt_s, log_rt,
+            first_select_ms, decision_confirm_ms, input_method,
+            tab_focus_lost_val, valid_trial_val, tab_switch_cnt,
+            focus_lost_dur, ans_change_cnt,
+            sel_key, canonical_ck, Json(r)
+        )
+    )
+    _recompute_participant_trial_summary(cur, pid)
+
+def upsert_final_thought_pg(cur, ft):
+    """Upserts a FINAL_THOUGHT event into the questionnaire table in PostgreSQL."""
+    if not isinstance(ft, dict):
+        return
+    pid = str(ft.get('participantId') or '').strip()
+    if not pid:
+        return
+
+    _ensure_participant_exists(cur, pid)
+
+    l_clarity = resolve_likert_val(ft, 'clarity')
+    l_difficulty = resolve_likert_val(ft, 'difficulty')
+    l_interface = resolve_likert_val(ft, 'interface')
+    l_experience = resolve_likert_val(ft, 'experience')
+    dur_exp = str(ft.get('durationExpectation', ft.get('duration_expectation', '')) or '')
+    thoughts_txt = str(ft.get('thoughts', '') or '')
+
+    cur.execute(
+        """
+        INSERT INTO questionnaire (
+            participant_id, likert_clarity, likert_difficulty,
+            likert_interface, likert_experience,
+            duration_expectation, final_thoughts, raw_final_thought
+        ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+        ON CONFLICT (participant_id) DO UPDATE SET
+            likert_clarity = EXCLUDED.likert_clarity,
+            likert_difficulty = EXCLUDED.likert_difficulty,
+            likert_interface = EXCLUDED.likert_interface,
+            likert_experience = EXCLUDED.likert_experience,
+            duration_expectation = EXCLUDED.duration_expectation,
+            final_thoughts = EXCLUDED.final_thoughts,
+            raw_final_thought = EXCLUDED.raw_final_thought;
+        """,
+        (pid, l_clarity, l_difficulty, l_interface, l_experience, dur_exp, thoughts_txt, Json(ft))
+    )
+
+def load_db_data():
+    """Loads responses, trainingResponses, demographics, and finalThoughts directly from PostgreSQL."""
+    conn = get_db_connection()
+    try:
+        with conn.cursor(cursor_factory=RealDictCursor) as cur:
+            # 1. Trial responses (Q1-Q25)
+            cur.execute(
+                """
+                SELECT * FROM experiment_per_question
+                ORDER BY participant_id ASC, question_number ASC;
+                """
+            )
+            responses = []
+            for row in cur.fetchall():
+                raw = row.get('raw_response')
+                if isinstance(raw, dict) and raw.get('participantId'):
+                    responses.append(raw)
+                else:
+                    responses.append({
+                        "id": row.get("response_id") or f"{row['participant_id']}_q{row['question_number']}",
+                        "participantId": row["participant_id"],
+                        "sessionId": row.get("session_id") or "",
+                        "timestamp": row.get("timestamp_iso") or "",
+                        "questionNumber": row["question_number"],
+                        "questionCategory": row.get("question_category") or "",
+                        "codeStructure": row.get("code_structure"),
+                        "operatorCount": row.get("operator_count"),
+                        "assignedGroupName": row.get("assigned_group") or "",
+                        "hostLanguage": row.get("host_language") or "",
+                        "activeDialect": row.get("syntax_dialect_id") or "",
+                        "isCorrect": row.get("is_correct"),
+                        "responseTimeMs": row.get("response_time_ms"),
+                        "timeToFirstSelectMs": row.get("time_to_first_select_ms"),
+                        "decisionConfirmMs": row.get("decision_confirm_ms"),
+                        "inputMethod": row.get("input_method") or "",
+                        "tabFocusLost": bool(row.get("tab_focus_lost")),
+                        "tabSwitchCount": row.get("tab_switch_count") or 0,
+                        "focusLostDurationMs": row.get("focus_lost_duration_ms") or 0,
+                        "answerChangeCount": row.get("answer_change_count") or 0,
+                        "selectedKey": row.get("selected_key"),
+                        "correctKey": row.get("correct_option")
+                    })
+
+            # 2. Training responses (T1-T4)
+            cur.execute(
+                """
+                SELECT * FROM training_per_question
+                ORDER BY participant_id ASC, question_number ASC;
+                """
+            )
+            training_responses = []
+            for row in cur.fetchall():
+                raw = row.get('raw_training_response')
+                if isinstance(raw, dict) and raw.get('participantId'):
+                    training_responses.append(raw)
+                else:
+                    training_responses.append({
+                        "participantId": row["participant_id"],
+                        "sessionId": row.get("session_id") or "",
+                        "timestamp": row.get("timestamp_iso") or "",
+                        "questionNumber": row["question_number"],
+                        "selectedKey": row.get("selected_key"),
+                        "correctKey": row.get("correct_option"),
+                        "isCorrect": row.get("is_correct"),
+                        "responseTimeMs": row.get("response_time_ms"),
+                        "isTraining": True
+                    })
+
+            # 3. Demographics from experiment_data
+            cur.execute("SELECT * FROM experiment_data ORDER BY id ASC;")
+            demographics = {}
+            for row in cur.fetchall():
+                pid = row["participant_id"]
+                raw = row.get("raw_demographic")
+                if isinstance(raw, dict) and raw.get("participantId"):
+                    demographics[pid] = raw
+                elif row.get("age") is not None or row.get("gender") is not None or row.get("education") is not None:
+                    demographics[pid] = {
+                        "participantId": pid,
+                        "sessionId": row.get("session_id") or "",
+                        "assignedGroupName": row.get("assigned_group") or "",
+                        "hostLanguage": row.get("host_language") or "",
+                        "age": row.get("age"),
+                        "gender": row.get("gender"),
+                        "genderLabel": row.get("gender_label") or "",
+                        "education": row.get("education"),
+                        "educationLabel": row.get("education_label") or "",
+                        "codingExp": row.get("coding_exp_years"),
+                        "dbExp": row.get("db_exp_years"),
+                        "primaryLanguage": row.get("primary_language") or "",
+                        "countryOfOrigin": row.get("country_of_origin") or ""
+                    }
+
+            # 4. Questionnaire / Final Thoughts
+            cur.execute("SELECT * FROM questionnaire ORDER BY id ASC;")
+            final_thoughts = {}
+            for row in cur.fetchall():
+                pid = row["participant_id"]
+                raw = row.get("raw_final_thought")
+                if isinstance(raw, dict) and raw.get("participantId"):
+                    final_thoughts[pid] = raw
+                else:
+                    final_thoughts[pid] = {
+                        "participantId": pid,
+                        "likertRatings": {
+                            "clarity": row.get("likert_clarity"),
+                            "difficulty": row.get("likert_difficulty"),
+                            "interface": row.get("likert_interface"),
+                            "experience": row.get("likert_experience")
+                        },
+                        "durationExpectation": row.get("duration_expectation") or "",
+                        "thoughts": row.get("final_thoughts") or ""
+                    }
+
+            return {
+                "responses": responses,
+                "trainingResponses": training_responses,
+                "demographics": demographics,
+                "finalThoughts": final_thoughts
+            }
+    finally:
+        conn.close()
+
+def generate_anova_csv_bytes():
+    """Queries anova_export_view directly in PostgreSQL and formats the 66-column ANOVA CSV in memory."""
+    conn = get_db_connection()
+    try:
+        with conn.cursor() as cur:
+            cur.execute("SELECT * FROM anova_export_view;")
+            rows = cur.fetchall()
+            buf = io.StringIO()
+            writer = csv.writer(buf)
+            writer.writerow(CSV_HEADERS)
+            for row in rows:
+                writer.writerow(["" if val is None else val for val in row])
+            return buf.getvalue().encode("utf-8")
+    finally:
+        conn.close()
 
 class TelemetryHandler(http.server.SimpleHTTPRequestHandler):
     directory = BASE_DIR
@@ -1006,14 +1138,34 @@ class TelemetryHandler(http.server.SimpleHTTPRequestHandler):
             if not self.is_admin_authenticated():
                 self.send_json(401, {"status": "error", "message": "Unauthorized"})
                 return
-
-            with db_lock:
-                data = load_db_data()
-            self.send_json(200, data)
+            try:
+                with db_lock:
+                    data = load_db_data()
+                self.send_json(200, data)
+            except Exception as e:
+                self.send_json(500, {"status": "error", "message": str(e)})
             return
 
-        if parsed_path.startswith('/.') or parsed_path in (
-            '/server.py', '/patch_nginx.py', '/sql-study.service', '/nginx.conf', '/nginx_lightsail.conf', '/build_bundle.js'
+        if parsed_path in ('/participant_responses_export.csv', '/api/export-csv'):
+            if not self.is_admin_authenticated():
+                self.send_json(401, {"status": "error", "message": "Unauthorized"})
+                return
+            try:
+                with db_lock:
+                    csv_bytes = generate_anova_csv_bytes()
+                self.send_response(200)
+                self.send_header('Content-Type', 'text/csv; charset=utf-8')
+                self.send_header('Content-Disposition', 'attachment; filename="participant_responses_export.csv"')
+                self.send_header('Content-Length', str(len(csv_bytes)))
+                self.end_headers()
+                self.wfile.write(csv_bytes)
+            except Exception as e:
+                self.send_json(500, {"status": "error", "message": str(e)})
+            return
+
+        if parsed_path.startswith('/.') or parsed_path.startswith('/db/') or parsed_path.startswith('/pgadmin/') or parsed_path in (
+            '/server.py', '/patch_nginx.py', '/sql-study.service', '/nginx_lightsail.conf',
+            '/build_bundle.js', '/docker-compose.yml', '/DOCKER.md', '/STUDY_QUESTIONS_REFERENCE.md'
         ):
             self.send_json(403, {"status": "error", "message": "Forbidden"})
             return
@@ -1024,52 +1176,38 @@ class TelemetryHandler(http.server.SimpleHTTPRequestHandler):
                 self.send_json(403, {"status": "error", "message": "Forbidden"})
                 return
 
-        if parsed_path in (
-            '/extra_credit_emails.csv', '/extra_credit_emails.txt',
-            '/telemetry_events.jsonl', '/participant_responses_db.json',
-            '/participant_responses_export.csv', '/group_rotation.json', '/study_config.json'
-        ):
-            if not self.is_admin_authenticated():
-                self.send_json(401, {"status": "error", "message": "Unauthorized"})
-                return
-
         if parsed_path == '/api/admin/extra-credit-emails':
             if not self.is_admin_authenticated():
                 self.send_json(401, {"status": "error", "message": "Unauthorized"})
                 return
-            records = []
-            emails = []
-            with email_lock:
-                if os.path.exists(EXTRA_CREDIT_FILE):
-                    with open(EXTRA_CREDIT_FILE, 'r', encoding='utf-8') as f:
-                        reader = csv.reader(f)
-                        header = next(reader, None)
-                        for row in reader:
-                            if row and row[0].strip():
-                                em = row[0].strip()
-                                cs = row[1].strip() if len(row) > 1 else ""
-                                emails.append(em)
-                                records.append({"email": em, "course": cs})
-            self.send_json(200, {"status": "success", "records": records, "emails": emails, "count": len(records)})
+            try:
+                records = get_extra_credit_records()
+                emails = [r["email"] for r in records]
+                self.send_json(200, {"status": "success", "records": records, "emails": emails, "count": len(records)})
+            except Exception as e:
+                self.send_json(500, {"status": "error", "message": str(e)})
             return
 
         if parsed_path == '/api/admin/download-extra-credit-emails':
             if not self.is_admin_authenticated():
                 self.send_json(401, {"status": "error", "message": "Unauthorized"})
                 return
-            content = b""
-            with email_lock:
-                if os.path.exists(EXTRA_CREDIT_FILE):
-                    with open(EXTRA_CREDIT_FILE, 'rb') as f:
-                        content = f.read()
-                else:
-                    content = b"Email,Course\r\n"
-            self.send_response(200)
-            self.send_header('Content-Type', 'text/csv; charset=utf-8')
-            self.send_header('Content-Disposition', 'attachment; filename="extra_credit_emails.csv"')
-            self.send_header('Content-Length', str(len(content)))
-            self.end_headers()
-            self.wfile.write(content)
+            try:
+                records = get_extra_credit_records()
+                buf = io.StringIO()
+                writer = csv.writer(buf)
+                writer.writerow(['Email', 'Course'])
+                for r in records:
+                    writer.writerow([r['email'], r['course']])
+                content = buf.getvalue().encode('utf-8')
+                self.send_response(200)
+                self.send_header('Content-Type', 'text/csv; charset=utf-8')
+                self.send_header('Content-Disposition', 'attachment; filename="extra_credit_emails.csv"')
+                self.send_header('Content-Length', str(len(content)))
+                self.end_headers()
+                self.wfile.write(content)
+            except Exception as e:
+                self.send_json(500, {"status": "error", "message": str(e)})
             return
 
         return super().do_GET()
@@ -1105,106 +1243,67 @@ class TelemetryHandler(http.server.SimpleHTTPRequestHandler):
             try:
                 payload = json.loads(body.decode('utf-8'))
                 is_admin = self.is_admin_authenticated()
-                
+
                 with db_lock:
                     pst_now = datetime.now(ZoneInfo('America/Los_Angeles')).strftime('%Y-%m-%d %I:%M:%S %p PST')
-                    # Handle incremental payloads from live study participants
-                    if payload.get('newResponse'):
-                        r = payload['newResponse']
-                        if is_legacy_response(r):
-                            print(f"[{pst_now}] Rejected legacy response from Participant={r.get('participantId')} Q={r.get('questionNumber')}", flush=True)
-                        else:
-                            r.pop('seed', None)
-                            r.pop('random_seed', None)
-                            try:
-                                q_int = int(r.get('questionNumber') or 1)
-                                ck = get_correct_key_for_question(q_int)
-                                if ck != '':
-                                    r['correctKey'] = ck
-                                    r['isCorrect'] = 1 if str(r.get('selectedKey', '')).strip() == str(ck) else 0
-                            except Exception:
-                                pass
-                            print(f"[{pst_now}] Response logged: Participant={r.get('participantId')} Q={r.get('questionNumber')} Correct={r.get('isCorrect')}", flush=True)
-                            append_event("RESPONSE", r)
-                    if payload.get('newTrainingResponse'):
-                        tr = payload['newTrainingResponse']
-                        if isinstance(tr, dict) and tr.get('participantId'):
-                            try:
-                                tq_int = int(tr.get('questionNumber') or 1)
-                                if 1 <= tq_int <= 4:
-                                    tck = get_training_correct_key_for_question(tq_int)
-                                    if tck != '':
-                                        tr['correctKey'] = tck
-                                        tr['isCorrect'] = 1 if str(tr.get('selectedKey', '')).strip() == str(tck) else 0
-                                    append_event("TRAINING_RESPONSE", tr)
-                            except Exception:
-                                pass
-                    if payload.get('newDemographic'):
-                        d = payload['newDemographic']
-                        if is_legacy_demographic(d):
-                            print(f"[{pst_now}] Rejected legacy demographic from Participant={d.get('participantId')}", flush=True)
-                        else:
-                            g_info = parse_gender_info(d.get('gender'))
-                            if g_info['code'] != '':
-                                d['gender'] = g_info['code']
-                                d['genderLabel'] = g_info['label']
-                            e_info = parse_education_info(d.get('education') or d.get('highestEducation') or d.get('academicStanding'))
-                            if e_info['code'] != '':
-                                d['education'] = e_info['code']
-                                d['educationLabel'] = e_info['label']
-                            append_event("DEMOGRAPHICS", d)
-                    if payload.get('newFinalThought'):
-                        append_event("FINAL_THOUGHT", payload['newFinalThought'])
+                    conn = get_db_connection()
+                    try:
+                        with conn:
+                            with conn.cursor() as cur:
+                                # Handle incremental payloads from live study participants
+                                if payload.get('newDemographic'):
+                                    d = payload['newDemographic']
+                                    if is_legacy_demographic(d):
+                                        print(f"[{pst_now}] Rejected legacy demographic from Participant={d.get('participantId')}", flush=True)
+                                    else:
+                                        upsert_demographic_pg(cur, d)
 
-                    # Only allow batch arrays (responses, demographics, finalThoughts) from authenticated Admin imports.
-                    # Never accept unauthenticated batch dumps from stale cached client localStorage!
-                    if is_admin:
-                        for tr in payload.get('trainingResponses', []):
-                            if isinstance(tr, dict) and tr.get('participantId'):
-                                try:
-                                    tq_int = int(tr.get('questionNumber') or 1)
-                                    if 1 <= tq_int <= 4:
-                                        tck = get_training_correct_key_for_question(tq_int)
-                                        if tck != '':
-                                            tr['correctKey'] = tck
-                                            tr['isCorrect'] = 1 if str(tr.get('selectedKey', '')).strip() == str(tck) else 0
-                                        append_event("TRAINING_RESPONSE", tr)
-                                except Exception:
-                                    pass
-                        for r in payload.get('responses', []):
-                            if isinstance(r, dict) and not is_legacy_response(r):
-                                r.pop('seed', None)
-                                r.pop('random_seed', None)
-                                print(f"[{pst_now}] Response logged (admin batch): Participant={r.get('participantId')} Q={r.get('questionNumber')} Correct={r.get('isCorrect')}", flush=True)
-                                append_event("RESPONSE", r)
-                        if payload.get('demographics') and isinstance(payload['demographics'], dict):
-                            for k, v in payload['demographics'].items():
-                                if isinstance(v, dict) and not is_legacy_demographic(v):
-                                    v = dict(v)
-                                    v['_admin_import'] = True
-                                    g_info = parse_gender_info(v.get('gender'))
-                                    if g_info['code'] != '':
-                                        v['gender'] = g_info['code']
-                                        v['genderLabel'] = g_info['label']
-                                    e_info = parse_education_info(v.get('education') or v.get('highestEducation') or v.get('academicStanding'))
-                                    if e_info['code'] != '':
-                                        v['education'] = e_info['code']
-                                        v['educationLabel'] = e_info['label']
-                                    append_event("DEMOGRAPHICS", v)
-                        if payload.get('finalThoughts') and isinstance(payload['finalThoughts'], dict):
-                            for k, v in payload['finalThoughts'].items():
-                                if isinstance(v, dict):
-                                    append_event("FINAL_THOUGHT", v)
-                    elif payload.get('responses') or payload.get('demographics') or payload.get('finalThoughts'):
-                        print(f"[{pst_now}] Ignored unauthenticated batch localStorage dump on /api/save-telemetry", flush=True)
+                                if payload.get('newTrainingResponse'):
+                                    tr = payload['newTrainingResponse']
+                                    if isinstance(tr, dict) and tr.get('participantId'):
+                                        upsert_training_response_pg(cur, tr)
 
-                    # Export CSV
-                    db_data = load_db_data()
-                    export_csv(db_data)
+                                if payload.get('newResponse'):
+                                    r = payload['newResponse']
+                                    if is_legacy_response(r):
+                                        print(f"[{pst_now}] Rejected legacy response from Participant={r.get('participantId')} Q={r.get('questionNumber')}", flush=True)
+                                    else:
+                                        upsert_response_pg(cur, r)
+                                        print(f"[{pst_now}] Response logged (PostgreSQL): Participant={r.get('participantId')} Q={r.get('questionNumber')}", flush=True)
 
-                self.send_json(200, {"status": "success", "count": len(db_data['responses'])})
+                                if payload.get('newFinalThought'):
+                                    upsert_final_thought_pg(cur, payload['newFinalThought'])
+
+                                # Only allow batch arrays from authenticated Admin imports
+                                if is_admin:
+                                    if payload.get('demographics') and isinstance(payload['demographics'], dict):
+                                        for _, v in payload['demographics'].items():
+                                            if isinstance(v, dict) and not is_legacy_demographic(v):
+                                                v_copy = dict(v)
+                                                v_copy['_admin_import'] = True
+                                                upsert_demographic_pg(cur, v_copy)
+                                    for tr in payload.get('trainingResponses', []):
+                                        if isinstance(tr, dict) and tr.get('participantId'):
+                                            upsert_training_response_pg(cur, tr)
+                                    for r in payload.get('responses', []):
+                                        if isinstance(r, dict) and not is_legacy_response(r):
+                                            upsert_response_pg(cur, r)
+                                            print(f"[{pst_now}] Response logged (admin batch -> PostgreSQL): Participant={r.get('participantId')} Q={r.get('questionNumber')}", flush=True)
+                                    if payload.get('finalThoughts') and isinstance(payload['finalThoughts'], dict):
+                                        for _, v in payload['finalThoughts'].items():
+                                            if isinstance(v, dict):
+                                                upsert_final_thought_pg(cur, v)
+                                elif payload.get('responses') or payload.get('demographics') or payload.get('finalThoughts'):
+                                    print(f"[{pst_now}] Ignored unauthenticated batch localStorage dump on /api/save-telemetry", flush=True)
+
+                                cur.execute("SELECT COUNT(*) FROM experiment_per_question;")
+                                total_count = cur.fetchone()[0]
+                    finally:
+                        conn.close()
+
+                self.send_json(200, {"status": "success", "count": total_count})
             except Exception as e:
-                print("Error saving telemetry:", e)
+                print("Error saving telemetry to PostgreSQL:", e, file=sys.stderr, flush=True)
                 self.send_json(400, {"status": "error", "message": str(e)})
             return
 
@@ -1217,7 +1316,7 @@ class TelemetryHandler(http.server.SimpleHTTPRequestHandler):
                     return
                 idx = assign_rotating_group(pid)
                 pst_now = datetime.now(ZoneInfo('America/Los_Angeles')).strftime('%Y-%m-%d %I:%M:%S %p PST')
-                print(f"[{pst_now}] Group assigned: Participant={pid} Group={idx + 1}", flush=True)
+                print(f"[{pst_now}] Group assigned (PostgreSQL): Participant={pid} Group={idx + 1}", flush=True)
                 self.send_json(200, {"status": "success", "groupIndex": idx, "groupNumber": idx + 1})
             except Exception as e:
                 self.send_json(400, {"status": "error", "message": str(e)})
@@ -1249,9 +1348,14 @@ class TelemetryHandler(http.server.SimpleHTTPRequestHandler):
                     return
 
                 with db_lock:
-                    append_event("DELETE_USER", {"participantId": pid})
-                    db_data = load_db_data()
-                    export_csv(db_data)
+                    conn = get_db_connection()
+                    try:
+                        with conn:
+                            with conn.cursor() as cur:
+                                cur.execute("DELETE FROM experiment_data WHERE participant_id = %s;", (pid,))
+                                cur.execute("DELETE FROM participant_group_assignments WHERE participant_id = %s;", (pid,))
+                    finally:
+                        conn.close()
                 self.send_json(200, {"status": "success", "deletedParticipantId": pid})
             except Exception as e:
                 self.send_json(400, {"status": "error", "message": str(e)})
@@ -1263,11 +1367,14 @@ class TelemetryHandler(http.server.SimpleHTTPRequestHandler):
                 return
             try:
                 with db_lock:
-                    append_event("CLEAR_ALL", {})
-                    if os.path.exists(CSV_FILE):
-                        os.remove(CSV_FILE)
-                # Fresh study: next participant starts the rotation at a new random group
-                reset_group_rotation()
+                    conn = get_db_connection()
+                    try:
+                        with conn:
+                            with conn.cursor() as cur:
+                                cur.execute("DELETE FROM experiment_data;")
+                    finally:
+                        conn.close()
+                    reset_group_rotation()
                 self.send_json(200, {"status": "success"})
             except Exception as e:
                 self.send_json(500, {"status": "error", "message": str(e)})
@@ -1278,10 +1385,7 @@ class TelemetryHandler(http.server.SimpleHTTPRequestHandler):
                 self.send_json(401, {"status": "error", "message": "Unauthorized"})
                 return
             try:
-                payload = json.loads(body.decode('utf-8'))
-                current_config = load_study_config()
-                current_config['questions_21_30_enabled'] = True
-                current_config['total_questions'] = 25
+                current_config = {"questions_21_30_enabled": True, "total_questions": 25}
                 save_study_config(current_config)
                 self.send_json(200, {"status": "success", "config": current_config})
             except Exception as e:
@@ -1293,24 +1397,23 @@ class TelemetryHandler(http.server.SimpleHTTPRequestHandler):
 if __name__ == '__main__':
     port = int(sys.argv[1]) if len(sys.argv) > 1 else PORT
     server_address = ('', port)
-    
+
     if hasattr(http.server, 'ThreadingHTTPServer'):
         ServerClass = http.server.ThreadingHTTPServer
     else:
-        class ThreadingHTTPServer(socketserver.ThreadingMixIn, http.server.HTTPServer): pass
+        class ThreadingHTTPServer(socketserver.ThreadingMixIn, http.server.HTTPServer):
+            pass
         ServerClass = ThreadingHTTPServer
     ServerClass.daemon_threads = True
     ServerClass.allow_reuse_address = True
 
-    migrate_legacy_txt_emails()
-    with db_lock:
-        export_csv(load_db_data())
+    init_postgres_schema()
     httpd = ServerClass(server_address, TelemetryHandler)
-    print(f"=========================================================")
-    print(f"   SQL Test Suite Telemetry Server Started at:")
+    print("=========================================================")
+    print("   SQL Test Suite Telemetry Server Started at:")
     print(f"   http://localhost:{port} (Threaded)")
-    print(f"   APPEND-ONLY LOG: {os.path.abspath(LOG_FILE)}")
-    print(f"=========================================================", flush=True)
+    print(f"   POSTGRESQL DB: {POSTGRES_USER}@{POSTGRES_HOST}:{POSTGRES_PORT}/{POSTGRES_DB}")
+    print("=========================================================", flush=True)
     try:
         httpd.serve_forever()
     except KeyboardInterrupt:

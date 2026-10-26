@@ -32,51 +32,62 @@ jobs:
             echo "Target repository directory: $REPO_DIR"
             cd "$REPO_DIR"
 
-            # Preserve existing server telemetry & state files if present in repo dir
-            mkdir -p "$HOME/sql_telemetry_backup"
-            [ -f "$REPO_DIR/participant_responses_db.json" ] && cp "$REPO_DIR/participant_responses_db.json" "$HOME/sql_telemetry_backup/" || true
-            [ -f "$REPO_DIR/participant_responses_export.csv" ] && cp "$REPO_DIR/participant_responses_export.csv" "$HOME/sql_telemetry_backup/" || true
-            [ -f "$REPO_DIR/telemetry_events.jsonl" ] && cp "$REPO_DIR/telemetry_events.jsonl" "$HOME/sql_telemetry_backup/" || true
-            [ -f "$REPO_DIR/extra_credit_emails.csv" ] && cp "$REPO_DIR/extra_credit_emails.csv" "$HOME/sql_telemetry_backup/" || true
-            [ -f "$REPO_DIR/extra_credit_emails.txt" ] && cp "$REPO_DIR/extra_credit_emails.txt" "$HOME/sql_telemetry_backup/" || true
-            [ -f "$REPO_DIR/group_rotation.json" ] && cp "$REPO_DIR/group_rotation.json" "$HOME/sql_telemetry_backup/" || true
-
-            # Forcefully fetch and reset to latest origin/master to eliminate merge conflicts on tracked files
+            # Forcefully fetch and reset to latest origin/master
             git fetch origin master
             git reset --hard origin/master
 
-            # Restore telemetry and rotation state files so participant data is never lost
-            [ -f "$HOME/sql_telemetry_backup/participant_responses_db.json" ] && cp "$HOME/sql_telemetry_backup/participant_responses_db.json" "$REPO_DIR/" || true
-            [ -f "$HOME/sql_telemetry_backup/participant_responses_export.csv" ] && cp "$HOME/sql_telemetry_backup/participant_responses_export.csv" "$REPO_DIR/" || true
-            [ -f "$HOME/sql_telemetry_backup/telemetry_events.jsonl" ] && cp "$HOME/sql_telemetry_backup/telemetry_events.jsonl" "$REPO_DIR/" || true
-            [ -f "$HOME/sql_telemetry_backup/extra_credit_emails.csv" ] && cp "$HOME/sql_telemetry_backup/extra_credit_emails.csv" "$REPO_DIR/" || true
-            [ -f "$HOME/sql_telemetry_backup/extra_credit_emails.txt" ] && cp "$HOME/sql_telemetry_backup/extra_credit_emails.txt" "$REPO_DIR/" || true
-            [ -f "$HOME/sql_telemetry_backup/group_rotation.json" ] && cp "$HOME/sql_telemetry_backup/group_rotation.json" "$REPO_DIR/" || true
+            # Remove obsolete local JSON/JSONL/CSV files and backup folder from Lightsail
+            rm -rf "$HOME/sql_telemetry_backup" \
+              "$REPO_DIR/scratch" \
+              "$REPO_DIR/__pycache__" \
+              "$REPO_DIR/telemetry_events.jsonl" \
+              "$REPO_DIR/participant_responses_db.json" \
+              "$REPO_DIR/participant_responses_export.csv" \
+              "$REPO_DIR/extra_credit_emails.csv" \
+              "$REPO_DIR/extra_credit_emails.txt" \
+              "$REPO_DIR/group_rotation.json" \
+              "$REPO_DIR/study_config.json" \
+              "$REPO_DIR/google_apps_script.js" \
+              "$REPO_DIR/nginx.conf"
 
-            # Sync updated static web files to Nginx web root (/var/www/html/), excluding backend/sensitive files
+            # Ensure python3-psycopg2 and Docker are installed on the Lightsail host
+            if ! python3 -c "import psycopg2" >/dev/null 2>&1; then
+              sudo apt-get update
+              sudo apt-get install -y python3-psycopg2
+            fi
+
+            if ! command -v docker >/dev/null 2>&1; then
+              curl -fsSL https://get.docker.com -o /tmp/get-docker.sh
+              sudo sh /tmp/get-docker.sh
+              sudo usermod -aG docker "$USER" || true
+            fi
+
+            # Start PostgreSQL 16 and pgAdmin 4 containers via Docker Compose
+            sudo docker compose up -d
+
+            # Sync updated static web files to Nginx web root (/var/www/html/), excluding backend/Docker files
             sudo rsync -av --delete \
               --exclude='.git/' \
               --exclude='.github/' \
               --exclude='.gitignore' \
               --exclude='.env' \
-              --exclude='participant_responses_db.json' \
-              --exclude='participant_responses_export.csv' \
-              --exclude='telemetry_events.jsonl' \
-              --exclude='extra_credit_emails.csv' \
-              --exclude='extra_credit_emails.txt' \
-              --exclude='group_rotation.json' \
-              --exclude='study_config.json' \
+              --exclude='.env.example' \
+              --exclude='db/' \
+              --exclude='pgadmin/' \
+              --exclude='docker-compose.yml' \
+              --exclude='DOCKER.md' \
+              --exclude='STUDY_QUESTIONS_REFERENCE.md' \
               --exclude='server.py' \
               --exclude='patch_nginx.py' \
+              --exclude='build_bundle.js' \
               --exclude='sql-study.service' \
-              --exclude='nginx.conf' \
               --exclude='nginx_lightsail.conf' \
               "$REPO_DIR/" /var/www/html/
 
             # Remove any legacy public debug dumps
             sudo rm -f /var/www/html/nginx_debug.txt
 
-            # Run patch_nginx.py
+            # Run patch_nginx.py to configure /api/ and /pgadmin/ reverse proxies
             if [ -f "$REPO_DIR/patch_nginx.py" ]; then
               sudo python3 "$REPO_DIR/patch_nginx.py"
             fi

@@ -1,11 +1,5 @@
-*.jsonl
-participant_responses_export.csv
-participant_responses_db.json
-extra_credit_emails.csv
-extra_credit_emails.txt
-group_rotation.json
-nginx_debug.txt
 .env
-scratch/
 __pycache__/
 *.pyc
+scratch/
+nginx_debug.txt
