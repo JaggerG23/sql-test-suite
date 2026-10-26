@@ -1,54 +1,53 @@
-# Docker & pgAdmin Deployment Guide (AWS Lightsail)
+# Docker PostgreSQL 16 & Local pgAdmin 4 Guide (AWS Lightsail 512MB VPS)
 
-This project uses **PostgreSQL 16** and **pgAdmin 4** running via Docker Compose (`docker-compose.yml`), while `server.py` (systemd `sql-study.service`) and Nginx run on the AWS Lightsail host (`jagger.cx`).
+This project runs **PostgreSQL 16** (`postgres:16-alpine`, ~35 MB RAM) inside Docker Compose on the AWS Lightsail VPS (`100.22.81.170` / `jagger.cx`), while **pgAdmin 4** runs locally on your desktop PC and connects securely over an SSH tunnel (using **0 MB of RAM** on the 512 MB VPS, just like `KushaRohani/division_counting`).
 
-## Quick Start on AWS Lightsail
+## 1. Server Setup on AWS Lightsail
 
 1. **Configure `.env` on the Lightsail server** (`/home/ubuntu/sql-randomized-test-suite/.env`):
    ```bash
    cp .env.example .env
    nano .env
    ```
-   Set `ADMIN_PASSWORD`, `POSTGRES_PASSWORD`, `PGADMIN_DEFAULT_EMAIL`, and `PGADMIN_DEFAULT_PASSWORD`.
+   Set `ADMIN_PASSWORD` and `POSTGRES_PASSWORD`.
 
-2. **Start PostgreSQL 16 and pgAdmin 4**:
+2. **Start PostgreSQL 16**:
    ```bash
-   docker compose up -d
+   sudo docker compose up -d --remove-orphans
    ```
 
-3. **Restart the backend service & reload Nginx**:
+3. **Restart `sql-study.service`**:
    ```bash
-   sudo python3 patch_nginx.py
    sudo systemctl restart sql-study
    ```
 
-## Services & Ports
+## 2. Connecting pgAdmin 4 Desktop (from Your Windows PC) to Lightsail
 
-| Service | Host Binding | Description |
-| :--- | :--- | :--- |
-| `postgres` | `127.0.0.1:5432` | PostgreSQL 16 (`sql_study` database, initialized with `db/init.sql`) |
-| `pgadmin` | `127.0.0.1:5050` | pgAdmin 4 web interface (proxied at `https://jagger.cx/pgadmin/` and accessible via SSH tunnel) |
-| `sql-study` | `127.0.0.1:8000` | Python `server.py` systemd service connected directly to PostgreSQL |
+1. Download and open **[pgAdmin 4 Desktop](https://www.pgadmin.org/download/pgadmin-4-windows/)** on your computer.
+2. Right-click **Servers** → **Register** → **Server...**
+3. **General tab**:
+   - **Name**: `SQL Study Lightsail`
+4. **Connection tab**:
+   - **Host name/address**: `127.0.0.1`
+   - **Port**: `5432`
+   - **Maintenance database**: `sql_study`
+   - **Username**: `sqlstudy`
+   - **Password**: `sqlstudy_secret` *(or the `POSTGRES_PASSWORD` set in your `.env`)*
+   - **Save password?**: Enable toggle
+5. **SSH Tunnel tab**:
+   - **Use SSH tunneling?**: Enable toggle (`Yes`)
+   - **Tunnel host**: `100.22.81.170` *(or `jagger.cx`)*
+   - **Tunnel port**: `22`
+   - **Username**: `ubuntu`
+   - **Authentication**: Select **Identity file**
+   - **Identity file**: Select your AWS Lightsail `.pem` private key file
+6. Click **Save**!
 
-## Accessing pgAdmin 4
-
-### Option A: Browser via HTTPS Reverse Proxy
-Open **`https://jagger.cx/pgadmin/`** and sign in with `PGADMIN_DEFAULT_EMAIL` and `PGADMIN_DEFAULT_PASSWORD` from `.env`.
-
-### Option B: Local SSH Tunnel
-From your local machine, run:
-```bash
-ssh -i /path/to/lightsail-key.pem -L 5050:127.0.0.1:5050 ubuntu@jagger.cx
-```
-Then open **`http://localhost:5050`** in your browser.
-
-## Database Tables (`sql_study`)
-
-When you expand **Servers → SQL Study PostgreSQL → Databases → `sql_study` → Schemas → `public`**, you will find:
+## 3. Database Tables (`sql_study` → `Schemas` → `public`)
 
 - **`extra_credit`**: Isolated student extra-credit entries (`email`, `course`, `created_at`), unlinked from participant IDs for IRB anonymity.
 - **`experiment_data`**: 1 row per participant (`participant_id`, demographics, assigned group, host language, dialect, T1–T4 training results, overall `accuracy`, `total_time`, and arrays `task_ids`, `task_accuracy`, `per_task_time`).
-- **`experiment_per_question`**: 1 row per study question (`Q1`–`Q25`) per participant (`question_number`, `trial_block`, `code_structure`, `operator_count`, `is_correct`, `response_time_ms`, focus-loss metrics, `selected_key`, `correct_option`).
+- **`experiment_per_question`**: 1 row per study question (`Q1`–`Q25`) per participant.
 - **`training_per_question`**: 1 row per training question (`T1`–`T4`) per participant.
 - **`questionnaire`**: 1-to-1 post-study survey responses (`likert_clarity`, `likert_difficulty`, `likert_interface`, `likert_experience`, `duration_expectation`, `final_thoughts`).
 - **`anova_export_view`** *(View)*: Joins `experiment_per_question`, `experiment_data`, and `questionnaire` into the exact 66-column ANOVA dataset.

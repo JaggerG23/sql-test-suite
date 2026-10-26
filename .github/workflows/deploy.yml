@@ -21,11 +21,17 @@ jobs:
           script: |
             set -e
 
-            # 1. Immediately pause pgadmin if running without swap, then provision 2GB swap file on AWS Lightsail
+            # 1. Remove any leftover pgAdmin container/image to free RAM & disk on the 512MB Lightsail VPS
+            sudo docker rm -f sql_study_pgadmin 2>/dev/null || true
+            sudo docker rmi dpage/pgadmin4:latest 2>/dev/null || true
+            for vol in $(sudo docker volume ls -q 2>/dev/null | grep pgadmin_data || true); do
+              sudo docker volume rm -f "$vol" 2>/dev/null || true
+            done
+
+            # 2. Provision 1GB swap file on the 512MB Lightsail VPS if not active
             if ! sudo swapon --show | grep -q '/swapfile'; then
-              sudo docker stop sql_study_pgadmin 2>/dev/null || true
-              echo "Provisioning 2GB /swapfile on Lightsail..."
-              sudo fallocate -l 2G /swapfile || sudo dd if=/dev/zero of=/swapfile bs=1M count=2048
+              echo "Provisioning 1GB /swapfile on Lightsail..."
+              sudo fallocate -l 1G /swapfile || sudo dd if=/dev/zero of=/swapfile bs=1M count=1024
               sudo chmod 600 /swapfile
               sudo mkswap /swapfile
               sudo swapon /swapfile
@@ -34,7 +40,7 @@ jobs:
               fi
             fi
 
-            # 2. Resolve repository directory on Lightsail
+            # 3. Resolve repository directory on Lightsail
             if [ -d "$HOME/sql-test-suite/.git" ]; then
               REPO_DIR="$HOME/sql-test-suite"
             elif [ -d "$HOME/sql-randomized-test-suite/.git" ]; then
@@ -54,6 +60,7 @@ jobs:
             rm -rf "$HOME/sql_telemetry_backup" \
               "$REPO_DIR/scratch" \
               "$REPO_DIR/__pycache__" \
+              "$REPO_DIR/pgadmin" \
               "$REPO_DIR/telemetry_events.jsonl" \
               "$REPO_DIR/participant_responses_db.json" \
               "$REPO_DIR/participant_responses_export.csv" \
@@ -64,8 +71,7 @@ jobs:
               "$REPO_DIR/google_apps_script.js" \
               "$REPO_DIR/nginx.conf"
 
-            # Ensure container config files are world-readable for non-root container UIDs (pgadmin UID 5050, postgres UID 70)
-            chmod -R a+rX "$REPO_DIR/db" "$REPO_DIR/pgadmin"
+            chmod -R a+rX "$REPO_DIR/db"
 
             # Ensure python3-psycopg2 and Docker are installed on the Lightsail host
             if ! python3 -c "import psycopg2" >/dev/null 2>&1; then
@@ -79,9 +85,9 @@ jobs:
               sudo usermod -aG docker "$USER" || true
             fi
 
-            # Pull images quietly and start containers
+            # Start PostgreSQL 16 container quietly
             sudo docker compose pull --quiet
-            sudo docker compose up -d
+            sudo docker compose up -d --remove-orphans
 
             # Wait until PostgreSQL is ready to accept connections
             echo "Waiting for PostgreSQL container to become ready..."
@@ -93,40 +99,6 @@ jobs:
               sleep 1
             done
 
-            # Wait for pgAdmin (127.0.0.1:5050/misc/ping); if volume was left in an uninitialized state from a prior run, reset pgadmin volume once
-            echo "Waiting for pgAdmin container on 127.0.0.1:5050..."
-            PGADMIN_READY=0
-            for i in $(seq 1 45); do
-              if curl -sSf http://127.0.0.1:5050/misc/ping >/dev/null 2>&1; then
-                echo "pgAdmin is ready on 127.0.0.1:5050."
-                PGADMIN_READY=1
-                break
-              fi
-              sleep 2
-            done
-
-            if [ "$PGADMIN_READY" -eq 0 ]; then
-              echo "pgAdmin did not respond; inspecting logs and recreating pgadmin volume..."
-              sudo docker logs --tail 50 sql_study_pgadmin || true
-              sudo docker rm -f sql_study_pgadmin || true
-              for vol in $(sudo docker volume ls -q | grep pgadmin_data || true); do
-                sudo docker volume rm -f "$vol" || true
-              done
-              sudo docker compose up -d pgadmin
-              for i in $(seq 1 45); do
-                if curl -sSf http://127.0.0.1:5050/misc/ping >/dev/null 2>&1; then
-                  echo "pgAdmin is ready on 127.0.0.1:5050 after volume reset."
-                  PGADMIN_READY=1
-                  break
-                fi
-                sleep 2
-              done
-              if [ "$PGADMIN_READY" -eq 0 ]; then
-                echo "pgAdmin logs after retry:"
-                sudo docker logs --tail 100 sql_study_pgadmin || true
-              fi
-            fi
-
             # Sync updated static web files to Nginx web root (/var/www/html/), excluding backend/Docker files
             sudo rsync -av --delete \
               --exclude='.git/' \
@@ -136,7 +108,6 @@ jobs:
               --exclude='.env' \
               --exclude='.env.example' \
               --exclude='db/' \
-              --exclude='pgadmin/' \
               --exclude='docker-compose.yml' \
               --exclude='DOCKER.md' \
               --exclude='STUDY_QUESTIONS_REFERENCE.md' \
@@ -150,7 +121,7 @@ jobs:
             # Remove any legacy public debug dumps
             sudo rm -f /var/www/html/nginx_debug.txt
 
-            # Run patch_nginx.py to configure /api/ and /pgadmin/ reverse proxies
+            # Run patch_nginx.py to configure Nginx
             if [ -f "$REPO_DIR/patch_nginx.py" ]; then
               sudo python3 "$REPO_DIR/patch_nginx.py"
             fi

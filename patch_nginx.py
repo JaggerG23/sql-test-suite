@@ -18,23 +18,6 @@ server {
         proxy_read_timeout 30s;
     }
 
-    location = /pgadmin {
-        return 301 /pgadmin/;
-    }
-
-    location ^~ /pgadmin/ {
-        proxy_set_header X-Script-Name /pgadmin;
-        proxy_set_header X-Scheme $scheme;
-        proxy_set_header Host $host;
-        proxy_set_header X-Real-IP $remote_addr;
-        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto $scheme;
-        proxy_pass http://127.0.0.1:5050/;
-        proxy_redirect off;
-        proxy_http_version 1.1;
-        proxy_read_timeout 60s;
-    }
-
     location ~* (server\.py|patch_nginx\.py|build_bundle\.js|sql-study\.service|docker-compose\.yml|DOCKER\.md|nginx_lightsail\.conf|\.env|\.git) {
         deny all;
         return 404;
