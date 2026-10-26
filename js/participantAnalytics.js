@@ -37,7 +37,9 @@ class ParticipantAnalytics {
 
     this.initRealtimeChannel();
     if (this.isParticipantView()) {
-      this.prefetchRotatingGroupIndex(this.participantId);
+      if (this.hasCompletedDemographics(this.participantId)) {
+        this.prefetchRotatingGroupIndex(this.participantId);
+      }
       if (this.pendingOutbox.length > 0) {
         this.flushPendingOutbox();
       }
@@ -151,9 +153,6 @@ class ParticipantAnalytics {
       try {
         sessionStorage.removeItem('sql_study_training_completed_' + pid);
       } catch (e) {}
-      if (this.isParticipantView()) {
-        this.prefetchRotatingGroupIndex(pid);
-      }
     } catch (e) {
       console.warn('Reset participant attempt state error:', e);
     }
@@ -420,29 +419,52 @@ class ParticipantAnalytics {
       }
     } catch (e) {}
 
-    // 3. Round-robin assignment across the 4 groups.
-    //    The server keeps a shared counter: the first participant gets a random
-    //    group (1-4), each following participant gets the next group, wrapping 4 -> 1.
+    // 3. Random sampling without replacement in blocks of 4 (4 -> 3 -> 2 -> 1 -> reset).
+    //    Starts with all 4 groups, randomly picks one and removes it from consideration
+    //    temporarily (leaving 3, then 2, then 1). When 1 remains, assigns it and resets to all 4.
     const groups = ParticipantAnalytics.STUDY_GROUPS;
     let assignedIdx = this.requestRotatingGroupIndex(targetPid);
 
     if (assignedIdx === null) {
-      // Fallback (backend unreachable / static hosting): per-browser rotation
-      // using the same random-start + cycle rule.
-      const rotationKey = 'sql_study_group_rotation_next_index';
-      let nextIdx = NaN;
-      try { nextIdx = parseInt(localStorage.getItem(rotationKey), 10); } catch (e) {}
-      if (isNaN(nextIdx) || nextIdx < 0 || nextIdx >= groups.length) {
+      // Fallback (backend unreachable / static hosting): per-browser 4 -> 3 -> 2 -> 1 -> reset pool
+      const poolKey = 'sql_study_available_group_pool';
+      const defaultPool = groups.map((_, i) => i);
+      let pool = [];
+      try {
+        const rawPool = JSON.parse(localStorage.getItem(poolKey) || '[]');
+        if (Array.isArray(rawPool)) {
+          rawPool.forEach(g => {
+            const gInt = parseInt(g, 10);
+            if (!isNaN(gInt) && gInt >= 0 && gInt < groups.length && !pool.includes(gInt)) {
+              pool.push(gInt);
+            }
+          });
+        }
+      } catch (e) {}
+      if (pool.length === 0) {
+        pool = [...defaultPool];
+      }
+
+      if (pool.length === 1) {
+        assignedIdx = pool[0];
+        pool = [...defaultPool];
+      } else {
+        let pickPos = 0;
         if (typeof window !== 'undefined' && window.crypto && window.crypto.getRandomValues) {
           const array = new Uint32Array(1);
           window.crypto.getRandomValues(array);
-          nextIdx = array[0] % groups.length;
+          pickPos = array[0] % pool.length;
         } else {
-          nextIdx = Math.floor(Math.random() * groups.length);
+          pickPos = Math.floor(Math.random() * pool.length);
         }
+        assignedIdx = pool[pickPos];
+        pool.splice(pickPos, 1);
       }
-      assignedIdx = nextIdx;
-      try { localStorage.setItem(rotationKey, String((nextIdx + 1) % groups.length)); } catch (e) {}
+
+      try {
+        localStorage.setItem(poolKey, JSON.stringify(pool));
+        localStorage.removeItem('sql_study_group_rotation_next_index');
+      } catch (e) {}
     }
 
     const assigned = groups[assignedIdx];

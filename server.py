@@ -57,6 +57,9 @@ def _safe_os_replace(temp_name, target_path, retries=6, delay=0.02):
         raise last_err
     return False
 
+def _default_group_pool():
+    return list(range(NUM_STUDY_GROUPS))
+
 def _load_rotation_state():
     """Caller must hold rotation_lock."""
     if os.path.exists(GROUP_ROTATION_FILE):
@@ -64,12 +67,22 @@ def _load_rotation_state():
             with open(GROUP_ROTATION_FILE, 'r', encoding='utf-8') as f:
                 state = json.load(f)
                 if isinstance(state, dict):
-                    state.setdefault("next_index", None)
-                    state.setdefault("assignments", {})
+                    raw_pool = state.get("available_groups")
+                    if isinstance(raw_pool, list):
+                        clean_pool = []
+                        for g in raw_pool:
+                            if isinstance(g, int) and 0 <= g < NUM_STUDY_GROUPS and g not in clean_pool:
+                                clean_pool.append(g)
+                        state["available_groups"] = clean_pool if clean_pool else _default_group_pool()
+                    else:
+                        state["available_groups"] = _default_group_pool()
+                    if not isinstance(state.get("assignments"), dict):
+                        state["assignments"] = {}
+                    state.pop("next_index", None)
                     return state
         except Exception:
             pass
-    return {"next_index": None, "assignments": {}}
+    return {"available_groups": _default_group_pool(), "assignments": {}}
 
 def _save_rotation_state(state):
     """Caller must hold rotation_lock. Writes atomically via temp file."""
@@ -80,12 +93,13 @@ def _save_rotation_state(state):
     _safe_os_replace(temp_name, GROUP_ROTATION_FILE)
 
 def assign_rotating_group(participant_id):
-    """Round-robin group assignment.
+    """Random sampling without replacement in blocks of 4 (4 -> 3 -> 2 -> 1 -> reset).
 
-    The very first participant gets a random group (0-3 => groups 1-4). Every
-    subsequent new participant gets the next group in order, wrapping 4 -> 1,
-    so group sizes never differ by more than one. Re-requests for an already
-    assigned participant return the same group.
+    Starts with all 4 groups [0, 1, 2, 3]. Randomly picks one for a participant
+    and removes it from consideration temporarily (leaving 3, then 2, then 1).
+    When only 1 group remains, assigns it to the participant and resets the
+    consideration pool back to all 4 groups [0, 1, 2, 3]. Re-requests for an
+    already assigned participant return their existing group.
     """
     with rotation_lock:
         state = _load_rotation_state()
@@ -93,18 +107,24 @@ def assign_rotating_group(participant_id):
         if isinstance(existing, int) and 0 <= existing < NUM_STUDY_GROUPS:
             return existing
 
-        idx = state.get("next_index")
-        if not isinstance(idx, int) or not (0 <= idx < NUM_STUDY_GROUPS):
-            idx = secrets.randbelow(NUM_STUDY_GROUPS)
+        available = state.get("available_groups")
+        if not isinstance(available, list) or len(available) == 0:
+            available = _default_group_pool()
+
+        if len(available) == 1:
+            idx = available[0]
+            state["available_groups"] = _default_group_pool()
+        else:
+            idx = secrets.choice(available)
+            state["available_groups"] = [g for g in available if g != idx]
 
         state["assignments"][participant_id] = idx
-        state["next_index"] = (idx + 1) % NUM_STUDY_GROUPS
         _save_rotation_state(state)
         return idx
 
 def reset_group_rotation():
     with rotation_lock:
-        _save_rotation_state({"next_index": None, "assignments": {}})
+        _save_rotation_state({"available_groups": _default_group_pool(), "assignments": {}})
 
 def load_study_config():
     with config_lock:
