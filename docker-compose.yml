@@ -3,6 +3,7 @@ services:
     image: postgres:16-alpine
     container_name: sql_study_postgres
     restart: unless-stopped
+    command: postgres -c shared_buffers=64MB -c work_mem=4MB -c max_connections=30
     environment:
       POSTGRES_USER: ${POSTGRES_USER:-sqlstudy}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-sqlstudy_secret}
@@ -28,6 +29,7 @@ services:
       PGADMIN_CONFIG_SERVER_MODE: "True"
       PGADMIN_CONFIG_CHECK_EMAIL_DELIVERABILITY: "False"
       PGADMIN_CONFIG_ENHANCED_COOKIE_PROTECTION: "False"
+      GUNICORN_THREADS: "4"
     ports:
       - "127.0.0.1:5050:80"
     volumes:
