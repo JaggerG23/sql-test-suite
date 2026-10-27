@@ -5,6 +5,10 @@ on:
     branches:
       - master
 
+concurrency:
+  group: deploy-lightsail
+  cancel-in-progress: false
+
 jobs:
   deploy:
     runs-on: ubuntu-latest
@@ -52,8 +56,9 @@ jobs:
             echo "Target repository directory: $REPO_DIR"
             cd "$REPO_DIR"
 
-            # Forcefully fetch and reset to latest origin/master
-            git fetch origin master
+            # Forcefully fetch and reset to latest origin/master (with retry if ref lock was just updated)
+            rm -f .git/index.lock .git/refs/remotes/origin/master.lock 2>/dev/null || true
+            git fetch origin master || (sleep 2 && git fetch origin master)
             git reset --hard origin/master
 
             # Remove obsolete local JSON/JSONL/CSV files and backup folder from Lightsail
