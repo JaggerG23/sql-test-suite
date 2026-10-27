@@ -1,8 +1,9 @@
 """
 Backend Telemetry & Study Configuration Server (25-Question SQL Readability Study)
-Backed 100% by PostgreSQL 16 (modeled after KushaRohani/division_counting:
-extra_credit, experiment_data, experiment_per_question, training_per_question,
-questionnaire, and anova_export_view).
+Backed 100% by PostgreSQL 16 with a clean 3-table public layout in pgAdmin 4:
+  1. public.participant_results       (Per-participant summary, demographics, training, questionnaire)
+  2. public.all_participant_responses (Giant 66-column master table of all question responses)
+  3. public.extra_credit_emails       (Isolated anonymous extra-credit email & course table)
 Serves API endpoints behind Nginx on AWS Lightsail or standalone locally.
 """
 import http.server
@@ -89,8 +90,153 @@ def get_db_connection():
         connect_timeout=5
     )
 
+def _migrate_legacy_8_tables_if_present(cur):
+    """Automatically migrates data from the earlier 8-table layout into the 3-table layout and removes old tables."""
+    cur.execute(
+        """
+        SELECT EXISTS (
+            SELECT 1 FROM information_schema.tables
+            WHERE table_schema = 'public' AND table_name = 'experiment_data'
+        );
+        """
+    )
+    has_old = cur.fetchone()[0]
+    if not has_old:
+        return
+
+    # 1. Migrate extra_credit -> extra_credit_emails
+    cur.execute(
+        """
+        INSERT INTO public.extra_credit_emails (email, course, created_at)
+        SELECT email, course, created_at FROM public.extra_credit
+        ON CONFLICT (email, course) DO NOTHING;
+        """
+    )
+
+    # 2. Migrate experiment_data + questionnaire -> participant_results
+    cur.execute(
+        """
+        INSERT INTO public.participant_results (
+            participant_id, session_id, assigned_group, host_language, syntax_dialect_id,
+            questions_completed, accuracy, total_time_ms, total_time_s,
+            training_accuracy, training_total_time_s,
+            t1_selected_key, t1_correct_option, t1_is_correct, t1_time_ms,
+            t2_selected_key, t2_correct_option, t2_is_correct, t2_time_ms,
+            t3_selected_key, t3_correct_option, t3_is_correct, t3_time_ms,
+            t4_selected_key, t4_correct_option, t4_is_correct, t4_time_ms,
+            age, gender, gender_label, gender_male, gender_female,
+            education, education_label, has_college_degree,
+            coding_exp_years, has_coding_exp, db_exp_years, has_db_exp,
+            primary_language, is_english_primary, country_of_origin, is_country_us,
+            likert_clarity, likert_difficulty, likert_interface, likert_experience,
+            duration_expectation, final_thoughts,
+            task_ids, task_accuracy, per_task_time,
+            raw_demographic, raw_final_thought, created_at, updated_at
+        )
+        SELECT
+            d.participant_id, d.session_id, d.assigned_group, d.host_language, d.syntax_dialect_id,
+            COALESCE(array_length(d.task_ids, 1), 0),
+            d.accuracy,
+            d.total_time,
+            ROUND((d.total_time / 1000.0)::numeric, 3)::double precision,
+            d.training_accuracy, d.training_total_time_s,
+            d.t1_selected_key, d.t1_correct_option, d.t1_is_correct, d.t1_time_ms,
+            d.t2_selected_key, d.t2_correct_option, d.t2_is_correct, d.t2_time_ms,
+            d.t3_selected_key, d.t3_correct_option, d.t3_is_correct, d.t3_time_ms,
+            d.t4_selected_key, d.t4_correct_option, d.t4_is_correct, d.t4_time_ms,
+            d.age, d.gender, d.gender_label, d.gender_male, d.gender_female,
+            d.education, d.education_label, d.has_college_degree,
+            d.coding_exp_years, d.has_coding_exp, d.db_exp_years, d.has_db_exp,
+            d.primary_language, d.is_english_primary, d.country_of_origin, d.is_country_us,
+            s.likert_clarity, s.likert_difficulty, s.likert_interface, s.likert_experience,
+            COALESCE(s.duration_expectation, ''),
+            COALESCE(s.final_thoughts, ''),
+            d.task_ids, d.task_accuracy, d.per_task_time,
+            d.raw_demographic,
+            COALESCE(s.raw_final_thought, '{}'::jsonb),
+            d.created_at, d.updated_at
+        FROM public.experiment_data d
+        LEFT JOIN public.questionnaire s ON s.participant_id = d.participant_id
+        ON CONFLICT (participant_id) DO NOTHING;
+        """
+    )
+
+    # 3. Migrate experiment_per_question + joined columns -> all_participant_responses
+    cur.execute(
+        """
+        INSERT INTO public.all_participant_responses (
+            response_id, participant_id, session_id, timestamp_iso,
+            question_number, trial_block, question_category,
+            code_structure, operator_count,
+            assigned_group, host_language, syntax_dialect_id,
+            is_correct, response_time_ms, response_time_s, log_response_time,
+            time_to_first_select_ms, decision_confirm_ms, input_method,
+            tab_focus_lost, valid_trial, tab_switch_count, focus_lost_duration_ms,
+            answer_change_count, selected_key, correct_option,
+            t1_selected_key, t1_correct_option, t1_is_correct, t1_time_ms,
+            t2_selected_key, t2_correct_option, t2_is_correct, t2_time_ms,
+            t3_selected_key, t3_correct_option, t3_is_correct, t3_time_ms,
+            t4_selected_key, t4_correct_option, t4_is_correct, t4_time_ms,
+            training_accuracy, training_total_time_s,
+            age, gender, gender_label, gender_male, gender_female,
+            education, education_label, has_college_degree,
+            coding_exp_years, has_coding_exp, db_exp_years, has_db_exp,
+            primary_language, is_english_primary, country_of_origin, is_country_us,
+            likert_clarity, likert_difficulty, likert_interface, likert_experience,
+            duration_expectation, final_thoughts,
+            raw_response, created_at
+        )
+        SELECT
+            q.response_id, q.participant_id, q.session_id, q.timestamp_iso,
+            q.question_number, q.trial_block, q.question_category,
+            q.code_structure, q.operator_count,
+            COALESCE(NULLIF(q.assigned_group, ''), p.assigned_group),
+            COALESCE(NULLIF(q.host_language, ''), p.host_language),
+            COALESCE(NULLIF(q.syntax_dialect_id, ''), p.syntax_dialect_id),
+            q.is_correct, q.response_time_ms, q.response_time_s, q.log_response_time,
+            q.time_to_first_select_ms, q.decision_confirm_ms, q.input_method,
+            q.tab_focus_lost, q.valid_trial, q.tab_switch_count, q.focus_lost_duration_ms,
+            q.answer_change_count, q.selected_key, q.correct_option,
+            p.t1_selected_key, p.t1_correct_option, p.t1_is_correct, p.t1_time_ms,
+            p.t2_selected_key, p.t2_correct_option, p.t2_is_correct, p.t2_time_ms,
+            p.t3_selected_key, p.t3_correct_option, p.t3_is_correct, p.t3_time_ms,
+            p.t4_selected_key, p.t4_correct_option, p.t4_is_correct, p.t4_time_ms,
+            p.training_accuracy, p.training_total_time_s,
+            p.age, p.gender, p.gender_label, p.gender_male, p.gender_female,
+            p.education, p.education_label, p.has_college_degree,
+            p.coding_exp_years, p.has_coding_exp, p.db_exp_years, p.has_db_exp,
+            p.primary_language, p.is_english_primary, p.country_of_origin, p.is_country_us,
+            p.likert_clarity, p.likert_difficulty, p.likert_interface, p.likert_experience,
+            p.duration_expectation, p.final_thoughts,
+            q.raw_response, q.created_at
+        FROM public.experiment_per_question q
+        JOIN public.participant_results p ON p.participant_id = q.participant_id
+        ON CONFLICT (participant_id, question_number) DO NOTHING;
+        """
+    )
+
+    # 4. Migrate internal state tables into `_internal`
+    cur.execute(
+        """
+        INSERT INTO _internal.participant_group_assignments (participant_id, group_index, assigned_at)
+        SELECT participant_id, group_index, assigned_at FROM public.participant_group_assignments
+        ON CONFLICT (participant_id) DO NOTHING;
+        """
+    )
+
+    # 5. Drop the old 8 tables and view from `public` so pgAdmin only shows the 3 clean tables
+    cur.execute("DROP VIEW IF EXISTS public.anova_export_view CASCADE;")
+    cur.execute("DROP TABLE IF EXISTS public.experiment_per_question CASCADE;")
+    cur.execute("DROP TABLE IF EXISTS public.training_per_question CASCADE;")
+    cur.execute("DROP TABLE IF EXISTS public.questionnaire CASCADE;")
+    cur.execute("DROP TABLE IF EXISTS public.experiment_data CASCADE;")
+    cur.execute("DROP TABLE IF EXISTS public.extra_credit CASCADE;")
+    cur.execute("DROP TABLE IF EXISTS public.group_rotation_state CASCADE;")
+    cur.execute("DROP TABLE IF EXISTS public.participant_group_assignments CASCADE;")
+    cur.execute("DROP TABLE IF EXISTS public.study_config CASCADE;")
+
 def init_postgres_schema():
-    """Runs db/init.sql on startup so all tables and views exist in PostgreSQL."""
+    """Runs db/init.sql on startup and migrates any legacy 8-table schema into the 3-table schema."""
     try:
         conn = get_db_connection()
         with conn:
@@ -98,8 +244,9 @@ def init_postgres_schema():
                 if os.path.exists(INIT_SQL_FILE):
                     with open(INIT_SQL_FILE, "r", encoding="utf-8") as f:
                         cur.execute(f.read())
+                _migrate_legacy_8_tables_if_present(cur)
         conn.close()
-        print(f"PostgreSQL schema verified on {POSTGRES_HOST}:{POSTGRES_PORT}/{POSTGRES_DB}", flush=True)
+        print(f"PostgreSQL 3-table schema verified on {POSTGRES_HOST}:{POSTGRES_PORT}/{POSTGRES_DB}", flush=True)
     except Exception as e:
         print(f"WARNING: Could not initialize PostgreSQL schema on startup: {e}", file=sys.stderr, flush=True)
 
@@ -114,7 +261,7 @@ def assign_rotating_group(participant_id):
             with conn:
                 with conn.cursor() as cur:
                     cur.execute(
-                        "SELECT group_index FROM participant_group_assignments WHERE participant_id = %s;",
+                        "SELECT group_index FROM _internal.participant_group_assignments WHERE participant_id = %s;",
                         (participant_id,)
                     )
                     row = cur.fetchone()
@@ -122,7 +269,7 @@ def assign_rotating_group(participant_id):
                         return int(row[0])
 
                     cur.execute(
-                        "SELECT available_groups FROM group_rotation_state WHERE id = 1 FOR UPDATE;"
+                        "SELECT available_groups FROM _internal.group_rotation_state WHERE id = 1 FOR UPDATE;"
                     )
                     state_row = cur.fetchone()
                     raw_pool = state_row[0] if (state_row and isinstance(state_row[0], list)) else _default_group_pool()
@@ -139,7 +286,7 @@ def assign_rotating_group(participant_id):
 
                     cur.execute(
                         """
-                        INSERT INTO group_rotation_state (id, available_groups, updated_at)
+                        INSERT INTO _internal.group_rotation_state (id, available_groups, updated_at)
                         VALUES (1, %s, NOW())
                         ON CONFLICT (id) DO UPDATE SET
                             available_groups = EXCLUDED.available_groups,
@@ -149,7 +296,7 @@ def assign_rotating_group(participant_id):
                     )
                     cur.execute(
                         """
-                        INSERT INTO participant_group_assignments (participant_id, group_index, assigned_at)
+                        INSERT INTO _internal.participant_group_assignments (participant_id, group_index, assigned_at)
                         VALUES (%s, %s, NOW())
                         ON CONFLICT (participant_id) DO UPDATE SET
                             group_index = EXCLUDED.group_index;
@@ -166,10 +313,10 @@ def reset_group_rotation():
     try:
         with conn:
             with conn.cursor() as cur:
-                cur.execute("DELETE FROM participant_group_assignments;")
+                cur.execute("DELETE FROM _internal.participant_group_assignments;")
                 cur.execute(
                     """
-                    INSERT INTO group_rotation_state (id, available_groups, updated_at)
+                    INSERT INTO _internal.group_rotation_state (id, available_groups, updated_at)
                     VALUES (1, %s, NOW())
                     ON CONFLICT (id) DO UPDATE SET
                         available_groups = EXCLUDED.available_groups,
@@ -185,7 +332,7 @@ def load_study_config():
         conn = get_db_connection()
         try:
             with conn.cursor() as cur:
-                cur.execute("SELECT questions_21_30_enabled, total_questions FROM study_config WHERE id = 1;")
+                cur.execute("SELECT questions_21_30_enabled, total_questions FROM _internal.study_config WHERE id = 1;")
                 row = cur.fetchone()
                 if row:
                     return {
@@ -206,7 +353,7 @@ def save_study_config(cfg):
                 with conn.cursor() as cur:
                     cur.execute(
                         """
-                        INSERT INTO study_config (id, questions_21_30_enabled, total_questions, updated_at)
+                        INSERT INTO _internal.study_config (id, questions_21_30_enabled, total_questions, updated_at)
                         VALUES (1, TRUE, 25, NOW())
                         ON CONFLICT (id) DO UPDATE SET
                             questions_21_30_enabled = TRUE,
@@ -241,7 +388,7 @@ def revoke_admin_session_token(token):
         ACTIVE_ADMIN_TOKENS.discard(token)
 
 def append_extra_credit_email(email, course=""):
-    """Inserts an email and course identifier into the isolated extra_credit PostgreSQL table."""
+    """Inserts an email and course identifier into the isolated public.extra_credit_emails table."""
     clean_email = email.strip().lower()
     clean_course = (course or "").strip().upper()
     conn = get_db_connection()
@@ -250,7 +397,7 @@ def append_extra_credit_email(email, course=""):
             with conn.cursor() as cur:
                 cur.execute(
                     """
-                    INSERT INTO extra_credit (email, course)
+                    INSERT INTO public.extra_credit_emails (email, course)
                     VALUES (%s, %s)
                     ON CONFLICT (email, course) DO NOTHING;
                     """,
@@ -265,7 +412,7 @@ def get_extra_credit_records():
     conn = get_db_connection()
     try:
         with conn.cursor() as cur:
-            cur.execute("SELECT email, course FROM extra_credit ORDER BY email ASC, course ASC;")
+            cur.execute("SELECT email, course FROM public.extra_credit_emails ORDER BY email ASC, course ASC;")
             rows = cur.fetchall()
             return [{"email": r[0], "course": r[1] or ""} for r in rows]
     finally:
@@ -513,86 +660,83 @@ def is_legacy_demographic(d):
     return False
 
 def _ensure_participant_exists(cur, pid, session_id="", assigned_group="", host_language="", syntax_dialect_id=""):
-    """Ensures a parent row exists in experiment_data before inserting child trial/questionnaire rows."""
+    """Ensures a parent row exists in public.participant_results before inserting child response rows."""
     cur.execute(
         """
-        INSERT INTO experiment_data (
+        INSERT INTO public.participant_results (
             participant_id, session_id, assigned_group, host_language, syntax_dialect_id
         ) VALUES (%s, %s, %s, %s, %s)
         ON CONFLICT (participant_id) DO UPDATE SET
-            session_id = CASE WHEN EXCLUDED.session_id != '' THEN EXCLUDED.session_id ELSE experiment_data.session_id END,
-            assigned_group = CASE WHEN EXCLUDED.assigned_group != '' THEN EXCLUDED.assigned_group ELSE experiment_data.assigned_group END,
-            host_language = CASE WHEN EXCLUDED.host_language != '' THEN EXCLUDED.host_language ELSE experiment_data.host_language END,
-            syntax_dialect_id = CASE WHEN EXCLUDED.syntax_dialect_id != '' THEN EXCLUDED.syntax_dialect_id ELSE experiment_data.syntax_dialect_id END,
+            session_id = CASE WHEN EXCLUDED.session_id != '' THEN EXCLUDED.session_id ELSE public.participant_results.session_id END,
+            assigned_group = CASE WHEN EXCLUDED.assigned_group != '' THEN EXCLUDED.assigned_group ELSE public.participant_results.assigned_group END,
+            host_language = CASE WHEN EXCLUDED.host_language != '' THEN EXCLUDED.host_language ELSE public.participant_results.host_language END,
+            syntax_dialect_id = CASE WHEN EXCLUDED.syntax_dialect_id != '' THEN EXCLUDED.syntax_dialect_id ELSE public.participant_results.syntax_dialect_id END,
             updated_at = NOW();
         """,
         (pid, session_id or "", assigned_group or "", host_language or "", syntax_dialect_id or "")
     )
 
-def _recompute_participant_training_summary(cur, pid):
-    """Updates t1_*..t4_*, training_accuracy, and training_total_time_s on experiment_data."""
+def _sync_participant_columns_to_all_responses(cur, pid):
+    """Copies participant-level demographic, training, and questionnaire columns onto all rows of that participant in public.all_participant_responses."""
     cur.execute(
         """
-        SELECT question_number, selected_key, correct_option, is_correct, response_time_ms
-        FROM training_per_question
-        WHERE participant_id = %s
-        ORDER BY question_number ASC;
+        UPDATE public.all_participant_responses r SET
+            assigned_group = COALESCE(NULLIF(r.assigned_group, ''), p.assigned_group),
+            host_language = COALESCE(NULLIF(r.host_language, ''), p.host_language),
+            syntax_dialect_id = COALESCE(NULLIF(r.syntax_dialect_id, ''), p.syntax_dialect_id),
+            t1_selected_key = p.t1_selected_key,
+            t1_correct_option = p.t1_correct_option,
+            t1_is_correct = p.t1_is_correct,
+            t1_time_ms = p.t1_time_ms,
+            t2_selected_key = p.t2_selected_key,
+            t2_correct_option = p.t2_correct_option,
+            t2_is_correct = p.t2_is_correct,
+            t2_time_ms = p.t2_time_ms,
+            t3_selected_key = p.t3_selected_key,
+            t3_correct_option = p.t3_correct_option,
+            t3_is_correct = p.t3_is_correct,
+            t3_time_ms = p.t3_time_ms,
+            t4_selected_key = p.t4_selected_key,
+            t4_correct_option = p.t4_correct_option,
+            t4_is_correct = p.t4_is_correct,
+            t4_time_ms = p.t4_time_ms,
+            training_accuracy = p.training_accuracy,
+            training_total_time_s = p.training_total_time_s,
+            age = p.age,
+            gender = p.gender,
+            gender_label = p.gender_label,
+            gender_male = p.gender_male,
+            gender_female = p.gender_female,
+            education = p.education,
+            education_label = p.education_label,
+            has_college_degree = p.has_college_degree,
+            coding_exp_years = p.coding_exp_years,
+            has_coding_exp = p.has_coding_exp,
+            db_exp_years = p.db_exp_years,
+            has_db_exp = p.has_db_exp,
+            primary_language = p.primary_language,
+            is_english_primary = p.is_english_primary,
+            country_of_origin = p.country_of_origin,
+            is_country_us = p.is_country_us,
+            likert_clarity = p.likert_clarity,
+            likert_difficulty = p.likert_difficulty,
+            likert_interface = p.likert_interface,
+            likert_experience = p.likert_experience,
+            duration_expectation = p.duration_expectation,
+            final_thoughts = p.final_thoughts
+        FROM public.participant_results p
+        WHERE r.participant_id = p.participant_id
+          AND r.participant_id = %s;
         """,
         (pid,)
     )
-    rows = cur.fetchall()
-    by_t = {int(r[0]): r for r in rows if r and r[0] is not None}
-
-    t_vals = {}
-    answered_cnt = 0
-    correct_cnt = 0
-    total_ms = 0
-
-    for t_num in range(1, 5):
-        canon_ck = get_training_correct_key_for_question(t_num)
-        tr = by_t.get(t_num)
-        if tr:
-            sk = tr[1]
-            co = tr[2] if tr[2] is not None else canon_ck
-            ic = tr[3]
-            tm = tr[4]
-            t_vals[t_num] = (sk, co, ic, tm)
-            if ic is not None:
-                answered_cnt += 1
-                if int(ic) == 1:
-                    correct_cnt += 1
-            if tm is not None:
-                total_ms += max(0, int(tm))
-        else:
-            t_vals[t_num] = (None, None, None, None)
-
-    t_acc = round((correct_cnt / answered_cnt) * 100.0, 2) if answered_cnt > 0 else None
-    t_time_s = round(total_ms / 1000.0, 3) if answered_cnt > 0 else None
-
-    cur.execute(
-        """
-        UPDATE experiment_data SET
-            t1_selected_key = %s, t1_correct_option = %s, t1_is_correct = %s, t1_time_ms = %s,
-            t2_selected_key = %s, t2_correct_option = %s, t2_is_correct = %s, t2_time_ms = %s,
-            t3_selected_key = %s, t3_correct_option = %s, t3_is_correct = %s, t3_time_ms = %s,
-            t4_selected_key = %s, t4_correct_option = %s, t4_is_correct = %s, t4_time_ms = %s,
-            training_accuracy = COALESCE(%s, training_accuracy),
-            training_total_time_s = COALESCE(%s, training_total_time_s),
-            updated_at = NOW()
-        WHERE participant_id = %s;
-        """,
-        (
-            *t_vals[1], *t_vals[2], *t_vals[3], *t_vals[4],
-            t_acc, t_time_s, pid
-        )
-    )
 
 def _recompute_participant_trial_summary(cur, pid):
-    """Updates division_counting-style summary arrays (accuracy, task_accuracy, task_ids, total_time, per_task_time) on experiment_data."""
+    """Updates summary totals (questions_completed, accuracy, total_time_ms, total_time_s, task_ids, task_accuracy, per_task_time) on public.participant_results."""
     cur.execute(
         """
         SELECT question_number, is_correct, response_time_ms
-        FROM experiment_per_question
+        FROM public.all_participant_responses
         WHERE participant_id = %s
         ORDER BY question_number ASC;
         """,
@@ -602,25 +746,28 @@ def _recompute_participant_trial_summary(cur, pid):
     task_ids = [str(r[0]) for r in rows]
     task_acc = [bool(int(r[1] or 0) == 1) for r in rows]
     per_task_time = [int(r[2] or 0) for r in rows]
-    total_time = sum(per_task_time)
+    total_time_ms = sum(per_task_time)
+    total_time_s = round(total_time_ms / 1000.0, 3)
     overall_acc = round((sum(1 for a in task_acc if a) / len(task_acc)) * 100.0, 2) if task_acc else 0.0
 
     cur.execute(
         """
-        UPDATE experiment_data SET
+        UPDATE public.participant_results SET
+            questions_completed = %s,
             accuracy = %s,
-            task_accuracy = %s,
+            total_time_ms = %s,
+            total_time_s = %s,
             task_ids = %s,
-            total_time = %s,
+            task_accuracy = %s,
             per_task_time = %s,
             updated_at = NOW()
         WHERE participant_id = %s;
         """,
-        (overall_acc, task_acc, task_ids, total_time, per_task_time, pid)
+        (len(task_ids), overall_acc, total_time_ms, total_time_s, task_ids, task_acc, per_task_time, pid)
     )
 
 def upsert_demographic_pg(cur, d):
-    """Upserts a DEMOGRAPHICS event into experiment_data in PostgreSQL."""
+    """Upserts a DEMOGRAPHICS event into public.participant_results and syncs to public.all_participant_responses."""
     if not isinstance(d, dict):
         return
     pid = str(d.get('participantId') or '').strip()
@@ -644,12 +791,12 @@ def upsert_demographic_pg(cur, d):
     country_info = parse_country_info(d.get('countryOfOrigin', ''))
     assigned_group = str(d.get('assignedGroupName') or d.get('assignedGroup') or '')
     host_lang = str(d.get('hostLanguage') or '')
-    dialect_id = str(d.get('activeDialect') or d.get('syntaxDialect') or '')
+    dialect_id = str(d.get('activeDialect') or d.get('syntaxDialect') or d.get('sqlDialect') or '')
     session_id = str(d.get('sessionId') or '')
 
     cur.execute(
         """
-        INSERT INTO experiment_data (
+        INSERT INTO public.participant_results (
             participant_id, session_id, assigned_group, host_language, syntax_dialect_id,
             age, gender, gender_label, gender_male, gender_female,
             education, education_label, has_college_degree,
@@ -665,10 +812,10 @@ def upsert_demographic_pg(cur, d):
             %s, NOW()
         )
         ON CONFLICT (participant_id) DO UPDATE SET
-            session_id = CASE WHEN EXCLUDED.session_id != '' THEN EXCLUDED.session_id ELSE experiment_data.session_id END,
-            assigned_group = CASE WHEN EXCLUDED.assigned_group != '' THEN EXCLUDED.assigned_group ELSE experiment_data.assigned_group END,
-            host_language = CASE WHEN EXCLUDED.host_language != '' THEN EXCLUDED.host_language ELSE experiment_data.host_language END,
-            syntax_dialect_id = CASE WHEN EXCLUDED.syntax_dialect_id != '' THEN EXCLUDED.syntax_dialect_id ELSE experiment_data.syntax_dialect_id END,
+            session_id = CASE WHEN EXCLUDED.session_id != '' THEN EXCLUDED.session_id ELSE public.participant_results.session_id END,
+            assigned_group = CASE WHEN EXCLUDED.assigned_group != '' THEN EXCLUDED.assigned_group ELSE public.participant_results.assigned_group END,
+            host_language = CASE WHEN EXCLUDED.host_language != '' THEN EXCLUDED.host_language ELSE public.participant_results.host_language END,
+            syntax_dialect_id = CASE WHEN EXCLUDED.syntax_dialect_id != '' THEN EXCLUDED.syntax_dialect_id ELSE public.participant_results.syntax_dialect_id END,
             age = EXCLUDED.age,
             gender = EXCLUDED.gender,
             gender_label = EXCLUDED.gender_label,
@@ -700,14 +847,13 @@ def upsert_demographic_pg(cur, d):
         )
     )
 
-    # Clear stale prior-session responses if a live participant restarts the study
     if not d.get('_admin_import'):
         demo_sid = str(d.get('sessionId') or '')
         demo_ts = str(d.get('timestamp') or '')
         if demo_sid or demo_ts:
             cur.execute(
                 """
-                DELETE FROM experiment_per_question
+                DELETE FROM public.all_participant_responses
                 WHERE participant_id = %s
                   AND NOT (
                       (%s != '' AND session_id = %s) OR
@@ -716,22 +862,12 @@ def upsert_demographic_pg(cur, d):
                 """,
                 (pid, demo_sid, demo_sid, demo_ts, demo_ts)
             )
-            cur.execute(
-                """
-                DELETE FROM training_per_question
-                WHERE participant_id = %s
-                  AND NOT (
-                      (%s != '' AND session_id = %s) OR
-                      (%s != '' AND timestamp_iso > %s)
-                  );
-                """,
-                (pid, demo_sid, demo_sid, demo_ts, demo_ts)
-            )
-            _recompute_participant_training_summary(cur, pid)
             _recompute_participant_trial_summary(cur, pid)
 
+    _sync_participant_columns_to_all_responses(cur, pid)
+
 def upsert_training_response_pg(cur, tr):
-    """Upserts a TRAINING_RESPONSE event (T1-T4) into training_per_question and updates experiment_data."""
+    """Upserts a TRAINING_RESPONSE event (T1-T4) into public.participant_results and syncs to public.all_participant_responses."""
     if not isinstance(tr, dict):
         return
     pid = str(tr.get('participantId') or '').strip()
@@ -756,31 +892,70 @@ def upsert_training_response_pg(cur, tr):
 
     rt_ms = max(0, _to_int_or_none(tr.get('responseTimeMs', tr.get('time_ms', 0))) or 0)
     session_id = str(tr.get('sessionId') or '')
-    ts_iso = str(tr.get('timestamp') or '')
 
     _ensure_participant_exists(cur, pid, session_id=session_id)
 
     cur.execute(
-        """
-        INSERT INTO training_per_question (
-            participant_id, session_id, timestamp_iso, question_number,
-            selected_key, correct_option, is_correct, response_time_ms, raw_training_response
-        ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
-        ON CONFLICT (participant_id, question_number) DO UPDATE SET
-            session_id = EXCLUDED.session_id,
-            timestamp_iso = EXCLUDED.timestamp_iso,
-            selected_key = EXCLUDED.selected_key,
-            correct_option = EXCLUDED.correct_option,
-            is_correct = EXCLUDED.is_correct,
-            response_time_ms = EXCLUDED.response_time_ms,
-            raw_training_response = EXCLUDED.raw_training_response;
-        """,
-        (pid, session_id, ts_iso, tq_int, sel_key, tck, is_corr, rt_ms, Json(tr))
+        "SELECT raw_training_responses FROM public.participant_results WHERE participant_id = %s FOR UPDATE;",
+        (pid,)
     )
-    _recompute_participant_training_summary(cur, pid)
+    row = cur.fetchone()
+    existing_list = row[0] if (row and isinstance(row[0], list)) else []
+    by_t = {}
+    for item in existing_list:
+        if isinstance(item, dict) and item.get('questionNumber') is not None:
+            try:
+                by_t[int(item['questionNumber'])] = item
+            except Exception:
+                pass
+    by_t[tq_int] = tr
+    merged_list = [by_t[k] for k in sorted(by_t.keys())]
+
+    t_vals = {}
+    answered_cnt = 0
+    correct_cnt = 0
+    total_ms = 0
+    for t_num in range(1, 5):
+        canon_ck = get_training_correct_key_for_question(t_num)
+        item = by_t.get(t_num)
+        if item:
+            sk = _to_int_or_none(item.get('selectedKey'))
+            co = _to_int_or_none(item.get('correctKey')) or canon_ck
+            ic = to_binary(item.get('isCorrect'))
+            tm = max(0, _to_int_or_none(item.get('responseTimeMs', item.get('time_ms', 0))) or 0)
+            t_vals[t_num] = (sk, co, ic, tm)
+            answered_cnt += 1
+            if ic == 1:
+                correct_cnt += 1
+            total_ms += tm
+        else:
+            t_vals[t_num] = (None, None, None, None)
+
+    t_acc = round((correct_cnt / answered_cnt) * 100.0, 2) if answered_cnt > 0 else None
+    t_time_s = round(total_ms / 1000.0, 3) if answered_cnt > 0 else None
+
+    cur.execute(
+        """
+        UPDATE public.participant_results SET
+            t1_selected_key = %s, t1_correct_option = %s, t1_is_correct = %s, t1_time_ms = %s,
+            t2_selected_key = %s, t2_correct_option = %s, t2_is_correct = %s, t2_time_ms = %s,
+            t3_selected_key = %s, t3_correct_option = %s, t3_is_correct = %s, t3_time_ms = %s,
+            t4_selected_key = %s, t4_correct_option = %s, t4_is_correct = %s, t4_time_ms = %s,
+            training_accuracy = COALESCE(%s, training_accuracy),
+            training_total_time_s = COALESCE(%s, training_total_time_s),
+            raw_training_responses = %s,
+            updated_at = NOW()
+        WHERE participant_id = %s;
+        """,
+        (
+            *t_vals[1], *t_vals[2], *t_vals[3], *t_vals[4],
+            t_acc, t_time_s, Json(merged_list), pid
+        )
+    )
+    _sync_participant_columns_to_all_responses(cur, pid)
 
 def upsert_response_pg(cur, r):
-    """Upserts a RESPONSE event (Q1-Q25) into experiment_per_question and updates experiment_data."""
+    """Upserts a RESPONSE event (Q1-Q25) into public.all_participant_responses and updates public.participant_results."""
     if not isinstance(r, dict) or is_legacy_response(r):
         return
     pid = str(r.get('participantId') or '').strip()
@@ -842,7 +1017,7 @@ def upsert_response_pg(cur, r):
 
     cur.execute(
         """
-        INSERT INTO experiment_per_question (
+        INSERT INTO public.all_participant_responses (
             response_id, participant_id, session_id, timestamp_iso,
             question_number, trial_block, question_category,
             code_structure, operator_count, assigned_group,
@@ -895,10 +1070,11 @@ def upsert_response_pg(cur, r):
             sel_key, canonical_ck, Json(r)
         )
     )
+    _sync_participant_columns_to_all_responses(cur, pid)
     _recompute_participant_trial_summary(cur, pid)
 
 def upsert_final_thought_pg(cur, ft):
-    """Upserts a FINAL_THOUGHT event into the questionnaire table in PostgreSQL."""
+    """Upserts a FINAL_THOUGHT event into public.participant_results and syncs to public.all_participant_responses."""
     if not isinstance(ft, dict):
         return
     pid = str(ft.get('participantId') or '').strip()
@@ -916,32 +1092,30 @@ def upsert_final_thought_pg(cur, ft):
 
     cur.execute(
         """
-        INSERT INTO questionnaire (
-            participant_id, likert_clarity, likert_difficulty,
-            likert_interface, likert_experience,
-            duration_expectation, final_thoughts, raw_final_thought
-        ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
-        ON CONFLICT (participant_id) DO UPDATE SET
-            likert_clarity = EXCLUDED.likert_clarity,
-            likert_difficulty = EXCLUDED.likert_difficulty,
-            likert_interface = EXCLUDED.likert_interface,
-            likert_experience = EXCLUDED.likert_experience,
-            duration_expectation = EXCLUDED.duration_expectation,
-            final_thoughts = EXCLUDED.final_thoughts,
-            raw_final_thought = EXCLUDED.raw_final_thought;
+        UPDATE public.participant_results SET
+            likert_clarity = %s,
+            likert_difficulty = %s,
+            likert_interface = %s,
+            likert_experience = %s,
+            duration_expectation = %s,
+            final_thoughts = %s,
+            raw_final_thought = %s,
+            updated_at = NOW()
+        WHERE participant_id = %s;
         """,
-        (pid, l_clarity, l_difficulty, l_interface, l_experience, dur_exp, thoughts_txt, Json(ft))
+        (l_clarity, l_difficulty, l_interface, l_experience, dur_exp, thoughts_txt, Json(ft), pid)
     )
+    _sync_participant_columns_to_all_responses(cur, pid)
 
 def load_db_data():
-    """Loads responses, trainingResponses, demographics, and finalThoughts directly from PostgreSQL."""
+    """Loads responses, trainingResponses, demographics, and finalThoughts directly from the 3 PostgreSQL tables."""
     conn = get_db_connection()
     try:
         with conn.cursor(cursor_factory=RealDictCursor) as cur:
-            # 1. Trial responses (Q1-Q25)
+            # 1. Trial responses (Q1-Q25) from public.all_participant_responses
             cur.execute(
                 """
-                SELECT * FROM experiment_per_question
+                SELECT * FROM public.all_participant_responses
                 ORDER BY participant_id ASC, question_number ASC;
                 """
             )
@@ -976,40 +1150,20 @@ def load_db_data():
                         "correctKey": row.get("correct_option")
                     })
 
-            # 2. Training responses (T1-T4)
-            cur.execute(
-                """
-                SELECT * FROM training_per_question
-                ORDER BY participant_id ASC, question_number ASC;
-                """
-            )
+            # 2. Per-participant demographics, training responses, and final thoughts from public.participant_results
+            cur.execute("SELECT * FROM public.participant_results ORDER BY created_at ASC, participant_id ASC;")
             training_responses = []
-            for row in cur.fetchall():
-                raw = row.get('raw_training_response')
-                if isinstance(raw, dict) and raw.get('participantId'):
-                    training_responses.append(raw)
-                else:
-                    training_responses.append({
-                        "participantId": row["participant_id"],
-                        "sessionId": row.get("session_id") or "",
-                        "timestamp": row.get("timestamp_iso") or "",
-                        "questionNumber": row["question_number"],
-                        "selectedKey": row.get("selected_key"),
-                        "correctKey": row.get("correct_option"),
-                        "isCorrect": row.get("is_correct"),
-                        "responseTimeMs": row.get("response_time_ms"),
-                        "isTraining": True
-                    })
-
-            # 3. Demographics from experiment_data
-            cur.execute("SELECT * FROM experiment_data ORDER BY id ASC;")
             demographics = {}
+            final_thoughts = {}
+
             for row in cur.fetchall():
                 pid = row["participant_id"]
-                raw = row.get("raw_demographic")
-                if isinstance(raw, dict) and raw.get("participantId"):
-                    demographics[pid] = raw
-                elif row.get("age") is not None or row.get("gender") is not None or row.get("education") is not None:
+
+                # Demographics
+                raw_demo = row.get("raw_demographic")
+                if isinstance(raw_demo, dict) and raw_demo.get("participantId"):
+                    demographics[pid] = raw_demo
+                else:
                     demographics[pid] = {
                         "participantId": pid,
                         "sessionId": row.get("session_id") or "",
@@ -1026,15 +1180,36 @@ def load_db_data():
                         "countryOfOrigin": row.get("country_of_origin") or ""
                     }
 
-            # 4. Questionnaire / Final Thoughts
-            cur.execute("SELECT * FROM questionnaire ORDER BY id ASC;")
-            final_thoughts = {}
-            for row in cur.fetchall():
-                pid = row["participant_id"]
-                raw = row.get("raw_final_thought")
-                if isinstance(raw, dict) and raw.get("participantId"):
-                    final_thoughts[pid] = raw
+                # Training responses (T1-T4)
+                raw_tr_list = row.get("raw_training_responses")
+                if isinstance(raw_tr_list, list) and len(raw_tr_list) > 0:
+                    for item in raw_tr_list:
+                        if isinstance(item, dict) and item.get("participantId"):
+                            training_responses.append(item)
                 else:
+                    for t_idx in range(1, 5):
+                        sk = row.get(f"t{t_idx}_selected_key")
+                        if sk is not None:
+                            training_responses.append({
+                                "participantId": pid,
+                                "sessionId": row.get("session_id") or "",
+                                "questionNumber": t_idx,
+                                "selectedKey": sk,
+                                "correctKey": row.get(f"t{t_idx}_correct_option"),
+                                "isCorrect": row.get(f"t{t_idx}_is_correct"),
+                                "responseTimeMs": row.get(f"t{t_idx}_time_ms"),
+                                "isTraining": True
+                            })
+
+                # Final thoughts / Questionnaire
+                raw_ft = row.get("raw_final_thought")
+                if isinstance(raw_ft, dict) and raw_ft.get("participantId"):
+                    final_thoughts[pid] = raw_ft
+                elif (
+                    row.get("likert_clarity") is not None
+                    or row.get("duration_expectation")
+                    or row.get("final_thoughts")
+                ):
                     final_thoughts[pid] = {
                         "participantId": pid,
                         "likertRatings": {
@@ -1057,11 +1232,14 @@ def load_db_data():
         conn.close()
 
 def generate_anova_csv_bytes():
-    """Queries anova_export_view directly in PostgreSQL and formats the 66-column ANOVA CSV in memory."""
+    """Queries the 66 columns directly from public.all_participant_responses and formats the ANOVA CSV in memory."""
     conn = get_db_connection()
     try:
         with conn.cursor() as cur:
-            cur.execute("SELECT * FROM anova_export_view;")
+            cols_sql = ", ".join(CSV_HEADERS)
+            cur.execute(
+                f"SELECT {cols_sql} FROM public.all_participant_responses ORDER BY participant_id ASC, question_number ASC;"
+            )
             rows = cur.fetchall()
             buf = io.StringIO()
             writer = csv.writer(buf)
@@ -1170,7 +1348,6 @@ class TelemetryHandler(http.server.SimpleHTTPRequestHandler):
             self.send_json(403, {"status": "error", "message": "Forbidden"})
             return
 
-        # Block direct access to unbundled raw JS source files so participants cannot inspect unminified source
         if parsed_path.startswith('/js/') and parsed_path not in ('/js/study.bundle.min.js', '/js/admin.bundle.min.js'):
             if not self.is_admin_authenticated():
                 self.send_json(403, {"status": "error", "message": "Forbidden"})
@@ -1250,7 +1427,6 @@ class TelemetryHandler(http.server.SimpleHTTPRequestHandler):
                     try:
                         with conn:
                             with conn.cursor() as cur:
-                                # Handle incremental payloads from live study participants
                                 if payload.get('newDemographic'):
                                     d = payload['newDemographic']
                                     if is_legacy_demographic(d):
@@ -1274,7 +1450,6 @@ class TelemetryHandler(http.server.SimpleHTTPRequestHandler):
                                 if payload.get('newFinalThought'):
                                     upsert_final_thought_pg(cur, payload['newFinalThought'])
 
-                                # Only allow batch arrays from authenticated Admin imports
                                 if is_admin:
                                     if payload.get('demographics') and isinstance(payload['demographics'], dict):
                                         for _, v in payload['demographics'].items():
@@ -1296,7 +1471,7 @@ class TelemetryHandler(http.server.SimpleHTTPRequestHandler):
                                 elif payload.get('responses') or payload.get('demographics') or payload.get('finalThoughts'):
                                     print(f"[{pst_now}] Ignored unauthenticated batch localStorage dump on /api/save-telemetry", flush=True)
 
-                                cur.execute("SELECT COUNT(*) FROM experiment_per_question;")
+                                cur.execute("SELECT COUNT(*) FROM public.all_participant_responses;")
                                 total_count = cur.fetchone()[0]
                     finally:
                         conn.close()
@@ -1352,8 +1527,8 @@ class TelemetryHandler(http.server.SimpleHTTPRequestHandler):
                     try:
                         with conn:
                             with conn.cursor() as cur:
-                                cur.execute("DELETE FROM experiment_data WHERE participant_id = %s;", (pid,))
-                                cur.execute("DELETE FROM participant_group_assignments WHERE participant_id = %s;", (pid,))
+                                cur.execute("DELETE FROM public.participant_results WHERE participant_id = %s;", (pid,))
+                                cur.execute("DELETE FROM _internal.participant_group_assignments WHERE participant_id = %s;", (pid,))
                     finally:
                         conn.close()
                 self.send_json(200, {"status": "success", "deletedParticipantId": pid})
@@ -1371,7 +1546,7 @@ class TelemetryHandler(http.server.SimpleHTTPRequestHandler):
                     try:
                         with conn:
                             with conn.cursor() as cur:
-                                cur.execute("DELETE FROM experiment_data;")
+                                cur.execute("DELETE FROM public.participant_results;")
                     finally:
                         conn.close()
                     reset_group_rotation()

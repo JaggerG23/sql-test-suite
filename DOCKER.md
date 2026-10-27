@@ -38,16 +38,17 @@ This project runs **PostgreSQL 16** (`postgres:16-alpine`, ~35 MB RAM) inside Do
    - **Use SSH tunneling?**: Enable toggle (`Yes`)
    - **Tunnel host**: `100.22.81.170` *(or `jagger.cx`)*
    - **Tunnel port**: `22`
-   - **Username**: `ubuntu`
+   - **Username**: `admin`
    - **Authentication**: Select **Identity file**
-   - **Identity file**: Select your AWS Lightsail `.pem` private key file
-6. Click **Save**!
+   - **Identity file**: `C:\Users\fragm\Downloads\LightsailDefaultKey-us-west-2.pem`
+6. **Parameters tab** *(Required on Windows pgAdmin 4 to prevent `libpq` GSS access violation)*:
+   - Click **`+`** to add a row:
+   - **Name**: `GSS encmode`
+   - **Value**: `disable`
+7. Click **Save**!
 
-## 3. Database Tables (`sql_study` → `Schemas` → `public`)
+## 3. Database Tables (`sql_study` → `Schemas` → `public` → `Tables`)
 
-- **`extra_credit`**: Isolated student extra-credit entries (`email`, `course`, `created_at`), unlinked from participant IDs for IRB anonymity.
-- **`experiment_data`**: 1 row per participant (`participant_id`, demographics, assigned group, host language, dialect, T1–T4 training results, overall `accuracy`, `total_time`, and arrays `task_ids`, `task_accuracy`, `per_task_time`).
-- **`experiment_per_question`**: 1 row per study question (`Q1`–`Q25`) per participant.
-- **`training_per_question`**: 1 row per training question (`T1`–`T4`) per participant.
-- **`questionnaire`**: 1-to-1 post-study survey responses (`likert_clarity`, `likert_difficulty`, `likert_interface`, `likert_experience`, `duration_expectation`, `final_thoughts`).
-- **`anova_export_view`** *(View)*: Joins `experiment_per_question`, `experiment_data`, and `questionnaire` into the exact 66-column ANOVA dataset.
+- **`all_participant_responses`**: The giant 66-column master table of everyone's question responses (`Q1`–`Q25` across all participants, with training, demographic, and post-study survey columns inline on every row).
+- **`participant_results`**: 1 row per participant (`participant_id`, `assigned_group`, `questions_completed`, `accuracy`, `total_time_s`, `T1`–`T4` training metrics, full demographics, and post-study questionnaire).
+- **`extra_credit_emails`**: Isolated student extra-credit entries (`email`, `course`, `created_at`), unlinked from participant IDs for IRB anonymity.
